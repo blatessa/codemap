@@ -486,13 +486,13 @@ func TestOpen(t *testing.T) {
 	var got []string
 	s.startCmd = func(c *exec.Cmd) error { got = c.Args; return nil }
 
-	t.Setenv("VISUAL", "myed --wait")
+	t.Setenv("VISUAL", "code --wait")
 	t.Setenv("EDITOR", "other")
 	if r := do(t, ts, "POST", "/api/open", map[string]any{"file": "internal/orders/service.go", "line": 19}); r.status != 204 {
 		t.Fatalf("%d %s", r.status, r.body)
 	}
 	abs := filepath.Join(root, "internal/orders/service.go")
-	if want := []string{"myed", "--wait", "+19", abs}; !reflect.DeepEqual(got, want) {
+	if want := []string{"code", "--wait", "-g", abs + ":19"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("args %q, want %q", got, want)
 	}
 
@@ -532,6 +532,26 @@ func TestEditorArgs(t *testing.T) {
 	got, _ := editorArgs("subl", "/a b/f.go", 3)
 	if !reflect.DeepEqual(got, []string{"subl", "/a b/f.go"}) {
 		t.Errorf("%q", got)
+	}
+
+	term := func() []string { return []string{"xdg-terminal-exec"} }
+	cases := []struct {
+		ed   []string
+		want []string
+	}{
+		{[]string{"code"}, []string{"code", "-g", "/f.go:3"}},
+		{[]string{"nvim"}, []string{"xdg-terminal-exec", "nvim", "+3", "/f.go"}},
+		{[]string{"/usr/bin/hx"}, []string{"xdg-terminal-exec", "/usr/bin/hx", "/f.go:3"}},
+		{[]string{"my-launcher", "--inline"}, []string{"xdg-terminal-exec", "my-launcher", "--inline", "/f.go"}},
+	}
+	for _, c := range cases {
+		got, err := defaultEditorArgs(c.ed, "/f.go", 3, term)
+		if err != nil || !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%q: got %q, %v", c.ed, got, err)
+		}
+	}
+	if _, err := defaultEditorArgs([]string{"vim"}, "/f", 1, func() []string { return nil }); err == nil {
+		t.Error("expected an error without a terminal")
 	}
 }
 

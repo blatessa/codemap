@@ -458,7 +458,7 @@ func editorArgs(tmpl, file string, line int) ([]string, error) {
 		if len(args) == 0 {
 			return nil, errors.New("no editor: set editor in .codemap/config.yaml, or $VISUAL or $EDITOR")
 		}
-		return append(args, "+"+ln, file), nil
+		return defaultEditorArgs(args, file, line, lookTerminal)
 	}
 	args := strings.Fields(tmpl)
 	if len(args) == 0 {
@@ -475,6 +475,73 @@ func editorArgs(tmpl, file string, line int) ([]string, error) {
 		args = append(args, file)
 	}
 	return args, nil
+}
+
+// Editors whose line syntax we know. The server has no terminal of its own, so
+// terminal editors are started inside a terminal emulator.
+var (
+	guiEditors = map[string]string{ // name -> line syntax
+		"code": "-g file:line", "code-insiders": "-g file:line", "codium": "-g file:line", "cursor": "-g file:line",
+		"subl": "file:line", "zed": "file:line", "gedit": "+line file", "kate": "-l line file",
+		"idea": "--line line file", "goland": "--line line file", "webstorm": "--line line file",
+	}
+	termEditors = map[string]string{
+		"vi": "+line file", "vim": "+line file", "nvim": "+line file", "nano": "+line file",
+		"emacs": "-nw +line file", "kak": "+line file", "micro": "file:line", "hx": "file:line", "helix": "file:line",
+	}
+)
+
+// defaultEditorArgs turns $VISUAL/$EDITOR into a command. Known GUI editors run
+// directly; known terminal editors run in a terminal. Anything else (a wrapper
+// script, say) runs in a terminal with just the file, since its line syntax is
+// unknown; set editor in .codemap/config.yaml for full control.
+func defaultEditorArgs(ed []string, file string, line int, term func() []string) ([]string, error) {
+	name := filepath.Base(ed[0])
+	expand := func(syntax string) []string {
+		var out []string
+		for _, w := range strings.Fields(syntax) {
+			out = append(out, strings.NewReplacer("file", file, "line", strconv.Itoa(line)).Replace(w))
+		}
+		return out
+	}
+	if syn, ok := guiEditors[name]; ok {
+		return append(append([]string{}, ed...), expand(syn)...), nil
+	}
+	cmd := append(append([]string{}, ed...), file)
+	if syn, ok := termEditors[name]; ok {
+		cmd = append(append([]string{}, ed...), expand(syn)...)
+	}
+	t := term()
+	if t == nil {
+		return nil, errors.New("no terminal found to run " + name + " in: set $TERMINAL, or editor in .codemap/config.yaml")
+	}
+	return append(t, cmd...), nil
+}
+
+// lookTerminal finds a terminal emulator and the arguments that precede the
+// command to run in it.
+func lookTerminal() []string {
+	cands := []string{os.Getenv("TERMINAL"), "xdg-terminal-exec", "x-terminal-emulator", "ghostty", "kitty", "alacritty", "foot", "wezterm", "gnome-terminal", "konsole", "xterm"}
+	for _, c := range cands {
+		f := strings.Fields(c)
+		if len(f) == 0 {
+			continue
+		}
+		if _, err := exec.LookPath(f[0]); err != nil {
+			continue
+		}
+		switch filepath.Base(f[0]) {
+		case "xdg-terminal-exec":
+			return f
+		case "gnome-terminal", "kgx":
+			return append(f, "--")
+		case "wezterm":
+			return append(f, "start", "--")
+		default:
+			return append(f, "-e")
+		}
+	}
+	return nil
 }
 
 func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
