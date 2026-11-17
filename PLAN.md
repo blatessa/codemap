@@ -55,7 +55,8 @@ internal/graph/         types, IDs, merge, queries (callers, reach, tree)
 internal/extract/goext/  Go extractor
 internal/extract/tsext/  runs the embedded TS extractor, decodes its output
 internal/extract/sqlext/ SQL string classification + migration parser
-internal/extract/declared/  reads .codemap/external.yaml
+internal/project/        .codemap/ files, including external.yaml → graph
+internal/build/          runs extractors and merges with declared nodes
 internal/project/       loads/saves .codemap/* files
 internal/gitrev/        builds a graph at a commit, cache
 internal/server/        HTTP API, SSE, file watching, editor launch
@@ -207,7 +208,7 @@ Each extractor returns a partial graph (modules, nodes, edges). `internal/graph`
 (union by ID, fields shallow-merged, edges deduplicated by `from+to+type`). Extractors never
 read `.codemap/` except `config.yaml`.
 
-### 5.1 Go (`internal/extract/go`)
+### 5.1 Go (`internal/extract/goext`)
 
 - **Loading:** `golang.org/x/tools/go/packages` with types and syntax, for every package under
   the module root (respecting `config.exclude`). Each package becomes one module, with its doc
@@ -231,7 +232,7 @@ read `.codemap/` except `config.yaml`.
 - **Tests:** each `TestXxx` in `_test.go` becomes a `test` node with `calls` edges from its body.
 - **`main`:** each `main.main` becomes an entry node of kind `function`.
 
-### 5.2 TypeScript (`extractor-ts/`, run via `internal/extract/ts`)
+### 5.2 TypeScript (`extractor-ts/`, run via `internal/extract/tsext`)
 
 - A Node program using the TypeScript compiler API (`typescript` package, bundled with esbuild
   into one file embedded in the binary). It's invoked as `node <tmp>/extractor.js --root <dir>
@@ -253,7 +254,7 @@ read `.codemap/` except `config.yaml`.
   matches, keep the edge pointing at a placeholder route node with `fields.unmatched: true`.
 - **Tests:** `test()`/`it()` blocks in `*.test.ts(x)` and `*.spec.ts(x)` become `test` nodes.
 
-### 5.3 SQL and migrations (`internal/extract/sql`)
+### 5.3 SQL and migrations (`internal/extract/sqlext`)
 
 - **Queries in Go:** string constants passed to configured database methods (defaults cover
   `database/sql`, `pgx`, `sqlx` and `sqlc`-generated code: `Query`, `QueryRow`, `Exec`, `Get`,
