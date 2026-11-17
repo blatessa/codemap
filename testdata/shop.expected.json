@@ -1,0 +1,1566 @@
+{
+  "version": 1,
+  "rev": "worktree",
+  "modules": [
+    {
+      "id": "mod:ext:services",
+      "label": "external services",
+      "external": true
+    },
+    {
+      "id": "mod:go:shop/cmd/server",
+      "label": "cmd/server",
+      "lang": "go",
+      "path": "cmd/server",
+      "doc": "Command server runs the shop API."
+    },
+    {
+      "id": "mod:go:shop/internal/auth",
+      "label": "internal/auth",
+      "lang": "go",
+      "path": "internal/auth",
+      "doc": "Package auth handles login and the RequireUser middleware."
+    },
+    {
+      "id": "mod:go:shop/internal/events",
+      "label": "internal/events",
+      "lang": "go",
+      "path": "internal/events",
+      "doc": "Package events publishes domain events to the message queue."
+    },
+    {
+      "id": "mod:go:shop/internal/inventory",
+      "label": "internal/inventory",
+      "lang": "go",
+      "path": "internal/inventory",
+      "doc": "Package inventory tracks stock and reservations for items in open carts."
+    },
+    {
+      "id": "mod:go:shop/internal/notify",
+      "label": "internal/notify",
+      "lang": "go",
+      "path": "internal/notify",
+      "doc": "Package notify sends transactional email through Postmark."
+    },
+    {
+      "id": "mod:go:shop/internal/orders",
+      "label": "internal/orders",
+      "lang": "go",
+      "path": "internal/orders",
+      "doc": "Package orders owns the order lifecycle: placing, paying and looking up orders."
+    },
+    {
+      "id": "mod:go:shop/internal/payments",
+      "label": "internal/payments",
+      "lang": "go",
+      "path": "internal/payments",
+      "doc": "Package payments wraps Stripe. Nothing outside this package imports the Stripe SDK."
+    },
+    {
+      "id": "mod:go:shop/internal/sched",
+      "label": "internal/sched",
+      "lang": "go",
+      "path": "internal/sched",
+      "doc": "Package sched runs functions on an interval."
+    },
+    {
+      "id": "mod:queue:topics",
+      "label": "topics",
+      "external": true
+    },
+    {
+      "id": "mod:sql:database",
+      "label": "database",
+      "lang": "sql",
+      "path": "db/migrations",
+      "external": true
+    },
+    {
+      "id": "mod:ts:web/src",
+      "label": "web/src",
+      "lang": "ts",
+      "path": "web/src"
+    },
+    {
+      "id": "mod:ts:web/src/api",
+      "label": "web/src/api",
+      "lang": "ts",
+      "path": "web/src/api"
+    },
+    {
+      "id": "mod:ts:web/src/components",
+      "label": "web/src/components",
+      "lang": "ts",
+      "path": "web/src/components"
+    },
+    {
+      "id": "mod:ts:web/src/pages",
+      "label": "web/src/pages",
+      "lang": "ts",
+      "path": "web/src/pages"
+    },
+    {
+      "id": "mod:ts:web/src/state",
+      "label": "web/src/state",
+      "lang": "ts",
+      "path": "web/src/state"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ext:postmark",
+      "kind": "service",
+      "label": "postmark",
+      "module": "mod:ext:services",
+      "external": true,
+      "fields": {
+        "owner": "Platform team",
+        "setup": "Server token in POSTMARK_TOKEN",
+        "links": [
+          {
+            "label": "Account",
+            "url": "https://account.postmarkapp.com"
+          },
+          {
+            "label": "Docs",
+            "url": "https://postmarkapp.com/developer"
+          }
+        ],
+        "import": "github.com/mrz1836/postmark"
+      }
+    },
+    {
+      "id": "ext:stripe",
+      "kind": "service",
+      "label": "api.stripe.com",
+      "module": "mod:ext:services",
+      "external": true,
+      "fields": {
+        "owner": "Payments team",
+        "setup": "Live and test accounts; key in STRIPE_SECRET_KEY",
+        "limits": "100 read and 100 write requests per second in live mode",
+        "links": [
+          {
+            "label": "Dashboard",
+            "url": "https://dashboard.stripe.com"
+          },
+          {
+            "label": "API docs",
+            "url": "https://docs.stripe.com/api"
+          },
+          {
+            "label": "Status",
+            "url": "https://status.stripe.com"
+          }
+        ],
+        "import": "github.com/stripe/stripe-go/v79"
+      }
+    },
+    {
+      "id": "go:shop/cmd/server.(logConn).Publish",
+      "kind": "function",
+      "label": "logConn.Publish",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/main.go",
+      "line": 24,
+      "endLine": 27
+    },
+    {
+      "id": "go:shop/cmd/server.jobs",
+      "kind": "function",
+      "label": "jobs",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/jobs.go",
+      "line": 10,
+      "endLine": 12
+    },
+    {
+      "id": "go:shop/cmd/server.main",
+      "kind": "function",
+      "label": "main",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/main.go",
+      "line": 29,
+      "endLine": 49,
+      "entry": true
+    },
+    {
+      "id": "go:shop/cmd/server.routes",
+      "kind": "function",
+      "label": "routes",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/routes.go",
+      "line": 11,
+      "endLine": 16
+    },
+    {
+      "id": "go:shop/cmd/server.subscribers",
+      "kind": "function",
+      "label": "subscribers",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/subscribers.go",
+      "line": 8,
+      "endLine": 10
+    },
+    {
+      "id": "go:shop/internal/auth.(*Handler).Login",
+      "kind": "function",
+      "label": "Handler.Login",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/login.go",
+      "line": 32,
+      "endLine": 45,
+      "doc": "Login checks a password and returns a token."
+    },
+    {
+      "id": "go:shop/internal/auth.(*Handler).RequireUser",
+      "kind": "function",
+      "label": "Handler.RequireUser",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/middleware.go",
+      "line": 6,
+      "endLine": 20,
+      "doc": "RequireUser rejects requests without a valid token and puts the user on the context."
+    },
+    {
+      "id": "go:shop/internal/auth.(*Handler).checkPassword",
+      "kind": "function",
+      "label": "Handler.checkPassword",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/login.go",
+      "line": 47,
+      "endLine": 60
+    },
+    {
+      "id": "go:shop/internal/auth.(*Handler).issueToken",
+      "kind": "function",
+      "label": "Handler.issueToken",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/token.go",
+      "line": 14,
+      "endLine": 18,
+      "doc": "issueToken signs a 24-hour token. Tokens can't be revoked."
+    },
+    {
+      "id": "go:shop/internal/auth.(*Handler).parseToken",
+      "kind": "function",
+      "label": "Handler.parseToken",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/token.go",
+      "line": 20,
+      "endLine": 31
+    },
+    {
+      "id": "go:shop/internal/auth.(*Handler).sign",
+      "kind": "function",
+      "label": "Handler.sign",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/token.go",
+      "line": 33,
+      "endLine": 37
+    },
+    {
+      "id": "go:shop/internal/auth.(*Store).UserByID",
+      "kind": "function",
+      "label": "Store.UserByID",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/store.go",
+      "line": 37,
+      "endLine": 44,
+      "doc": "UserByID loads a user."
+    },
+    {
+      "id": "go:shop/internal/auth.CurrentUser",
+      "kind": "function",
+      "label": "CurrentUser",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/store.go",
+      "line": 25,
+      "endLine": 28,
+      "doc": "CurrentUser returns the user RequireUser put on the request."
+    },
+    {
+      "id": "go:shop/internal/auth.NewHandler",
+      "kind": "function",
+      "label": "NewHandler",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/login.go",
+      "line": 22,
+      "endLine": 24,
+      "doc": "NewHandler returns a handler."
+    },
+    {
+      "id": "go:shop/internal/auth.NewStore",
+      "kind": "function",
+      "label": "NewStore",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/store.go",
+      "line": 34,
+      "endLine": 44,
+      "doc": "NewStore returns a store on db."
+    },
+    {
+      "id": "go:shop/internal/auth.withUser",
+      "kind": "function",
+      "label": "withUser",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/store.go",
+      "line": 20,
+      "endLine": 22
+    },
+    {
+      "id": "go:shop/internal/events.(*Bus).Publish",
+      "kind": "function",
+      "label": "Bus.Publish",
+      "module": "mod:go:shop/internal/events",
+      "file": "internal/events/publish.go",
+      "line": 28,
+      "endLine": 33,
+      "doc": "Publish sends v to topic. Failures are logged, not returned: events are best-effort."
+    },
+    {
+      "id": "go:shop/internal/events.(*Bus).Subscribe",
+      "kind": "function",
+      "label": "Bus.Subscribe",
+      "module": "mod:go:shop/internal/events",
+      "file": "internal/events/publish.go",
+      "line": 36,
+      "endLine": 38,
+      "doc": "Subscribe registers h for messages on topic."
+    },
+    {
+      "id": "go:shop/internal/events.NewBus",
+      "kind": "function",
+      "label": "NewBus",
+      "module": "mod:go:shop/internal/events",
+      "file": "internal/events/publish.go",
+      "line": 25,
+      "endLine": 33,
+      "doc": "NewBus returns a bus on conn."
+    },
+    {
+      "id": "go:shop/internal/inventory.(*Store).ReleaseExpired",
+      "kind": "function",
+      "label": "Store.ReleaseExpired",
+      "module": "mod:go:shop/internal/inventory",
+      "file": "internal/inventory/reserve.go",
+      "line": 48,
+      "endLine": 52,
+      "doc": "ReleaseExpired clears reservations whose carts have expired."
+    },
+    {
+      "id": "go:shop/internal/inventory.(*Store).Reserve",
+      "kind": "function",
+      "label": "Store.Reserve",
+      "module": "mod:go:shop/internal/inventory",
+      "file": "internal/inventory/reserve.go",
+      "line": 31,
+      "endLine": 45,
+      "doc": "Reserve holds stock for each item and fails with ErrOutOfStock if any item is short. Not transactional: earlier items stay reserved if a later one fails."
+    },
+    {
+      "id": "go:shop/internal/inventory.(ErrOutOfStock).Error",
+      "kind": "function",
+      "label": "ErrOutOfStock.Error",
+      "module": "mod:go:shop/internal/inventory",
+      "file": "internal/inventory/reserve.go",
+      "line": 21,
+      "endLine": 45
+    },
+    {
+      "id": "go:shop/internal/inventory.NewStore",
+      "kind": "function",
+      "label": "NewStore",
+      "module": "mod:go:shop/internal/inventory",
+      "file": "internal/inventory/reserve.go",
+      "line": 27,
+      "endLine": 45,
+      "doc": "NewStore returns a store on db."
+    },
+    {
+      "id": "go:shop/internal/notify.(*Mailer).SendConfirmation",
+      "kind": "function",
+      "label": "Mailer.SendConfirmation",
+      "module": "mod:go:shop/internal/notify",
+      "file": "internal/notify/confirm.go",
+      "line": 16,
+      "endLine": 23,
+      "doc": "SendConfirmation emails the customer when an order is placed, before payment clears."
+    },
+    {
+      "id": "go:shop/internal/notify.(*Mailer).SendReceipt",
+      "kind": "function",
+      "label": "Mailer.SendReceipt",
+      "module": "mod:go:shop/internal/notify",
+      "file": "internal/notify/receipt.go",
+      "line": 17,
+      "endLine": 24,
+      "doc": "SendReceipt emails a receipt once an order is paid."
+    },
+    {
+      "id": "go:shop/internal/notify.NewMailer",
+      "kind": "function",
+      "label": "NewMailer",
+      "module": "mod:go:shop/internal/notify",
+      "file": "internal/notify/receipt.go",
+      "line": 14,
+      "endLine": 24,
+      "doc": "NewMailer returns a mailer using a Postmark server token."
+    },
+    {
+      "id": "go:shop/internal/orders.(*Handler).Create",
+      "kind": "function",
+      "label": "Handler.Create",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/handler.go",
+      "line": 24,
+      "endLine": 36,
+      "doc": "Create places an order for the signed-in user."
+    },
+    {
+      "id": "go:shop/internal/orders.(*Handler).Get",
+      "kind": "function",
+      "label": "Handler.Get",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/handler.go",
+      "line": 39,
+      "endLine": 46,
+      "doc": "Get returns one order."
+    },
+    {
+      "id": "go:shop/internal/orders.(*Repo).Find",
+      "kind": "function",
+      "label": "Repo.Find",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/repo.go",
+      "line": 25,
+      "endLine": 29,
+      "doc": "Find loads an order by ID."
+    },
+    {
+      "id": "go:shop/internal/orders.(*Repo).Insert",
+      "kind": "function",
+      "label": "Repo.Insert",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/repo.go",
+      "line": 16,
+      "endLine": 22,
+      "doc": "Insert saves a new order and sets its ID."
+    },
+    {
+      "id": "go:shop/internal/orders.(*Repo).UpdateStatus",
+      "kind": "function",
+      "label": "Repo.UpdateStatus",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/repo.go",
+      "line": 32,
+      "endLine": 39,
+      "doc": "UpdateStatus looks the order up by Stripe charge ID, not order ID."
+    },
+    {
+      "id": "go:shop/internal/orders.(*Service).MarkPaid",
+      "kind": "function",
+      "label": "Service.MarkPaid",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/service.go",
+      "line": 65,
+      "endLine": 71,
+      "doc": "MarkPaid is called from the Stripe webhook once a payment succeeds."
+    },
+    {
+      "id": "go:shop/internal/orders.(*Service).Place",
+      "kind": "function",
+      "label": "Service.Place",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/service.go",
+      "line": 48,
+      "endLine": 62,
+      "doc": "Place reserves stock, charges the card and saves the order, in that order. If the charge fails, the reservation is left for the expire-carts job to release."
+    },
+    {
+      "id": "go:shop/internal/orders.(CreateOrder).Total",
+      "kind": "function",
+      "label": "CreateOrder.Total",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/order.go",
+      "line": 23,
+      "endLine": 29,
+      "doc": "Total returns the order total in cents."
+    },
+    {
+      "id": "go:shop/internal/orders.NewHandler",
+      "kind": "function",
+      "label": "NewHandler",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/handler.go",
+      "line": 21,
+      "endLine": 36,
+      "doc": "NewHandler returns a handler."
+    },
+    {
+      "id": "go:shop/internal/orders.NewRepo",
+      "kind": "function",
+      "label": "NewRepo",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/repo.go",
+      "line": 13,
+      "endLine": 22,
+      "doc": "NewRepo returns a repo on db."
+    },
+    {
+      "id": "go:shop/internal/orders.NewService",
+      "kind": "function",
+      "label": "NewService",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/service.go",
+      "line": 42,
+      "endLine": 44,
+      "doc": "NewService returns a service."
+    },
+    {
+      "id": "go:shop/internal/orders.writeError",
+      "kind": "function",
+      "label": "writeError",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/handler.go",
+      "line": 53,
+      "endLine": 59
+    },
+    {
+      "id": "go:shop/internal/orders.writeJSON",
+      "kind": "function",
+      "label": "writeJSON",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/handler.go",
+      "line": 48,
+      "endLine": 51
+    },
+    {
+      "id": "go:shop/internal/payments.(*Client).Charge",
+      "kind": "function",
+      "label": "Client.Charge",
+      "module": "mod:go:shop/internal/payments",
+      "file": "internal/payments/charge.go",
+      "line": 21,
+      "endLine": 31,
+      "doc": "Charge creates a payment intent for cents on behalf of userID."
+    },
+    {
+      "id": "go:shop/internal/payments.(*Handler).HandleWebhook",
+      "kind": "function",
+      "label": "Handler.HandleWebhook",
+      "module": "mod:go:shop/internal/payments",
+      "file": "internal/payments/webhook.go",
+      "line": 31,
+      "endLine": 45,
+      "doc": "HandleWebhook receives Stripe events. It answers 200 once the signature checks out, so Stripe never retries a failed MarkPaid."
+    },
+    {
+      "id": "go:shop/internal/payments.(*Handler).verifySignature",
+      "kind": "function",
+      "label": "Handler.verifySignature",
+      "module": "mod:go:shop/internal/payments",
+      "file": "internal/payments/webhook.go",
+      "line": 47,
+      "endLine": 49
+    },
+    {
+      "id": "go:shop/internal/payments.NewClient",
+      "kind": "function",
+      "label": "NewClient",
+      "module": "mod:go:shop/internal/payments",
+      "file": "internal/payments/charge.go",
+      "line": 18,
+      "endLine": 31,
+      "doc": "NewClient returns a client using key."
+    },
+    {
+      "id": "go:shop/internal/payments.NewHandler",
+      "kind": "function",
+      "label": "NewHandler",
+      "module": "mod:go:shop/internal/payments",
+      "file": "internal/payments/webhook.go",
+      "line": 25,
+      "endLine": 27,
+      "doc": "NewHandler returns a webhook handler."
+    },
+    {
+      "id": "go:shop/internal/sched.(*Scheduler).Every",
+      "kind": "function",
+      "label": "Scheduler.Every",
+      "module": "mod:go:shop/internal/sched",
+      "file": "internal/sched/sched.go",
+      "line": 17,
+      "endLine": 32,
+      "doc": "Every runs fn every interval until the scheduler's context is done."
+    },
+    {
+      "id": "go:shop/internal/sched.New",
+      "kind": "function",
+      "label": "New",
+      "module": "mod:go:shop/internal/sched",
+      "file": "internal/sched/sched.go",
+      "line": 14,
+      "endLine": 32,
+      "doc": "New returns a scheduler bound to ctx."
+    },
+    {
+      "id": "job:expire-carts",
+      "kind": "job",
+      "label": "expire-carts",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/jobs.go",
+      "line": 11,
+      "entry": true,
+      "fields": {
+        "every": "15*time.Minute"
+      }
+    },
+    {
+      "id": "page:/checkout",
+      "kind": "page",
+      "label": "/checkout",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/main.tsx",
+      "line": 10,
+      "entry": true
+    },
+    {
+      "id": "page:/login",
+      "kind": "page",
+      "label": "/login",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/main.tsx",
+      "line": 9,
+      "entry": true
+    },
+    {
+      "id": "page:/orders/:id",
+      "kind": "page",
+      "label": "/orders/:id",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/main.tsx",
+      "line": 11,
+      "entry": true
+    },
+    {
+      "id": "route:GET /orders/:id",
+      "kind": "route",
+      "label": "/orders/:id",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/routes.go",
+      "line": 14,
+      "entry": true,
+      "fields": {
+        "method": "GET"
+      }
+    },
+    {
+      "id": "route:POST /login",
+      "kind": "route",
+      "label": "/login",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/routes.go",
+      "line": 12,
+      "entry": true,
+      "fields": {
+        "method": "POST"
+      }
+    },
+    {
+      "id": "route:POST /orders",
+      "kind": "route",
+      "label": "/orders",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/routes.go",
+      "line": 13,
+      "entry": true,
+      "fields": {
+        "method": "POST"
+      }
+    },
+    {
+      "id": "route:POST /webhooks/stripe",
+      "kind": "route",
+      "label": "/webhooks/stripe",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/routes.go",
+      "line": 15,
+      "entry": true,
+      "fields": {
+        "method": "POST"
+      }
+    },
+    {
+      "id": "sub:order.placed:go:shop/internal/notify.(*Mailer).SendConfirmation",
+      "kind": "subscriber",
+      "label": "order.placed",
+      "module": "mod:go:shop/cmd/server",
+      "file": "cmd/server/subscribers.go",
+      "line": 9,
+      "entry": true
+    },
+    {
+      "id": "table:orders",
+      "kind": "table",
+      "label": "orders",
+      "module": "mod:sql:database",
+      "external": true,
+      "fields": {
+        "columns": [
+          [
+            "id",
+            "uuid",
+            "pk"
+          ],
+          [
+            "user_id",
+            "uuid",
+            "→ users.id"
+          ],
+          [
+            "items",
+            "jsonb",
+            ""
+          ],
+          [
+            "status",
+            "text",
+            ""
+          ],
+          [
+            "created_at",
+            "timestamptz",
+            ""
+          ],
+          [
+            "charge_id",
+            "text",
+            "index"
+          ]
+        ],
+        "source": [
+          "db/migrations/0001_init.sql",
+          "db/migrations/0004_charge_id.sql"
+        ]
+      }
+    },
+    {
+      "id": "table:stock",
+      "kind": "table",
+      "label": "stock",
+      "module": "mod:sql:database",
+      "external": true,
+      "fields": {
+        "columns": [
+          [
+            "sku",
+            "text",
+            "pk"
+          ],
+          [
+            "on_hand",
+            "int",
+            ""
+          ],
+          [
+            "reserved",
+            "int",
+            ""
+          ],
+          [
+            "expires_at",
+            "timestamptz",
+            ""
+          ]
+        ],
+        "source": [
+          "db/migrations/0002_stock.sql"
+        ]
+      }
+    },
+    {
+      "id": "table:users",
+      "kind": "table",
+      "label": "users",
+      "module": "mod:sql:database",
+      "external": true,
+      "fields": {
+        "columns": [
+          [
+            "id",
+            "uuid",
+            "pk"
+          ],
+          [
+            "email",
+            "text",
+            "unique"
+          ],
+          [
+            "password_hash",
+            "bytea",
+            ""
+          ],
+          [
+            "created_at",
+            "timestamptz",
+            ""
+          ]
+        ],
+        "source": [
+          "db/migrations/0001_init.sql"
+        ]
+      }
+    },
+    {
+      "id": "test:go:shop/internal/auth.TestLogin_WrongPassword",
+      "kind": "test",
+      "label": "TestLogin_WrongPassword",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/login_test.go",
+      "line": 23,
+      "endLine": 29
+    },
+    {
+      "id": "test:go:shop/internal/auth.TestRequireUser_MissingToken",
+      "kind": "test",
+      "label": "TestRequireUser_MissingToken",
+      "module": "mod:go:shop/internal/auth",
+      "file": "internal/auth/middleware_test.go",
+      "line": 11,
+      "endLine": 18
+    },
+    {
+      "id": "test:go:shop/internal/inventory.TestReserve_InsufficientStock",
+      "kind": "test",
+      "label": "TestReserve_InsufficientStock",
+      "module": "mod:go:shop/internal/inventory",
+      "file": "internal/inventory/reserve_test.go",
+      "line": 11,
+      "endLine": 17
+    },
+    {
+      "id": "test:go:shop/internal/orders.TestPlace_ChargesAndInserts",
+      "kind": "test",
+      "label": "TestPlace_ChargesAndInserts",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/service_test.go",
+      "line": 51,
+      "endLine": 60
+    },
+    {
+      "id": "test:go:shop/internal/orders.TestPlace_OutOfStock",
+      "kind": "test",
+      "label": "TestPlace_OutOfStock",
+      "module": "mod:go:shop/internal/orders",
+      "file": "internal/orders/service_test.go",
+      "line": 62,
+      "endLine": 72
+    },
+    {
+      "id": "test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order",
+      "kind": "test",
+      "label": "navigates to the new order",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/PlaceOrderButton.test.tsx",
+      "line": 12,
+      "endLine": 16
+    },
+    {
+      "id": "topic:order.placed",
+      "kind": "topic",
+      "label": "order.placed",
+      "module": "mod:queue:topics",
+      "external": true,
+      "fields": {
+        "message": {
+          "code": "type Order struct {\n\tID        string           `json:\"id\"`\n\tUserID    string           `json:\"user_id\"`\n\tUserEmail string           `json:\"user_email\"`\n\tItems     []inventory.Item `json:\"items\"`\n\tChargeID  string           `json:\"charge_id\"`\n\tStatus    string           `json:\"status\"`\n\tTotal     int64            `json:\"total\"`\n}",
+          "lang": "go",
+          "file": "internal/orders/order.go",
+          "line": 7
+        }
+      }
+    },
+    {
+      "id": "ts:web/src/api/auth.ts#login",
+      "kind": "function",
+      "label": "login",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/auth.ts",
+      "line": 3,
+      "endLine": 6
+    },
+    {
+      "id": "ts:web/src/api/http.ts#http.get",
+      "kind": "function",
+      "label": "http.get",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/http.ts",
+      "line": 15
+    },
+    {
+      "id": "ts:web/src/api/http.ts#http.post",
+      "kind": "function",
+      "label": "http.post",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/http.ts",
+      "line": 16
+    },
+    {
+      "id": "ts:web/src/api/http.ts#request",
+      "kind": "function",
+      "label": "request",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/http.ts",
+      "line": 4,
+      "endLine": 12
+    },
+    {
+      "id": "ts:web/src/api/orders.ts#createOrder",
+      "kind": "function",
+      "label": "createOrder",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/orders.ts",
+      "line": 7,
+      "endLine": 10,
+      "doc": "POST /orders. Throws on a non-2xx response, via the shared http client."
+    },
+    {
+      "id": "ts:web/src/api/orders.ts#getOrder",
+      "kind": "function",
+      "label": "getOrder",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/orders.ts",
+      "line": 12,
+      "endLine": 15
+    },
+    {
+      "id": "ts:web/src/components/Layout.tsx#Layout",
+      "kind": "component",
+      "label": "Layout",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/Layout.tsx",
+      "line": 3,
+      "endLine": 10
+    },
+    {
+      "id": "ts:web/src/components/LoginForm.tsx#LoginForm",
+      "kind": "component",
+      "label": "LoginForm",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/LoginForm.tsx",
+      "line": 5,
+      "endLine": 24
+    },
+    {
+      "id": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+      "kind": "function",
+      "label": "LoginForm.onSubmit",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/LoginForm.tsx",
+      "line": 10,
+      "endLine": 15
+    },
+    {
+      "id": "ts:web/src/components/OrderStatus.tsx#OrderStatus",
+      "kind": "component",
+      "label": "OrderStatus",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/OrderStatus.tsx",
+      "line": 12,
+      "endLine": 15
+    },
+    {
+      "id": "ts:web/src/components/OrderStatus.tsx#useOrder",
+      "kind": "function",
+      "label": "useOrder",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/OrderStatus.tsx",
+      "line": 4,
+      "endLine": 10
+    },
+    {
+      "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+      "kind": "component",
+      "label": "PlaceOrderButton",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/PlaceOrderButton.tsx",
+      "line": 12,
+      "endLine": 25,
+      "doc": "Places the order and sends the user to its page. The button stays disabled while the request is in flight."
+    },
+    {
+      "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+      "kind": "function",
+      "label": "PlaceOrderButton.onClick",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/PlaceOrderButton.tsx",
+      "line": 15,
+      "endLine": 19
+    },
+    {
+      "id": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+      "kind": "component",
+      "label": "CheckoutPage",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/pages/CheckoutPage.tsx",
+      "line": 5,
+      "endLine": 19
+    },
+    {
+      "id": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+      "kind": "component",
+      "label": "LoginPage",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/pages/LoginPage.tsx",
+      "line": 4,
+      "endLine": 10
+    },
+    {
+      "id": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+      "kind": "component",
+      "label": "OrderPage",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/pages/OrderPage.tsx",
+      "line": 5,
+      "endLine": 12
+    },
+    {
+      "id": "ts:web/src/state/cart.ts#useCart",
+      "kind": "function",
+      "label": "useCart",
+      "module": "mod:ts:web/src/state",
+      "file": "web/src/state/cart.ts",
+      "line": 5,
+      "endLine": 8
+    }
+  ],
+  "edges": [
+    {
+      "from": "ext:stripe",
+      "to": "route:POST /webhooks/stripe",
+      "type": "declared",
+      "detail": "sends payment_intent.succeeded",
+      "declared": true
+    },
+    {
+      "from": "go:shop/cmd/server.jobs",
+      "to": "go:shop/internal/sched.(*Scheduler).Every",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/cmd/server.jobs",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/cmd/server.routes",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/cmd/server.subscribers",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/internal/auth.NewHandler",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/internal/events.NewBus",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/internal/inventory.NewStore",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/internal/notify.NewMailer",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/internal/orders.NewHandler",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/internal/orders.NewRepo",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/internal/orders.NewService",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/internal/payments.NewClient",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/internal/payments.NewHandler",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.main",
+      "to": "go:shop/internal/sched.New",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/cmd/server.subscribers",
+      "to": "go:shop/internal/events.(*Bus).Subscribe",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/auth.(*Handler).Login",
+      "to": "go:shop/internal/auth.(*Handler).checkPassword",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/auth.(*Handler).Login",
+      "to": "go:shop/internal/auth.(*Handler).issueToken",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/auth.(*Handler).RequireUser",
+      "to": "go:shop/internal/auth.(*Handler).parseToken",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/auth.(*Handler).RequireUser",
+      "to": "go:shop/internal/auth.(*Store).UserByID",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/auth.(*Handler).RequireUser",
+      "to": "go:shop/internal/auth.withUser",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/auth.(*Handler).checkPassword",
+      "to": "table:users",
+      "type": "reads",
+      "detail": "SELECT id, password_hash FROM users WHERE email = $1"
+    },
+    {
+      "from": "go:shop/internal/auth.(*Handler).issueToken",
+      "to": "go:shop/internal/auth.(*Handler).sign",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/auth.(*Handler).parseToken",
+      "to": "go:shop/internal/auth.(*Handler).sign",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/auth.(*Store).UserByID",
+      "to": "table:users",
+      "type": "reads",
+      "detail": "SELECT id, email FROM users WHERE id = $1"
+    },
+    {
+      "from": "go:shop/internal/auth.NewHandler",
+      "to": "go:shop/internal/auth.NewStore",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/events.(*Bus).Publish",
+      "to": "go:shop/cmd/server.(logConn).Publish",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/inventory.(*Store).ReleaseExpired",
+      "to": "table:stock",
+      "type": "writes",
+      "detail": "UPDATE stock SET reserved = 0 WHERE expires_at < now()"
+    },
+    {
+      "from": "go:shop/internal/inventory.(*Store).Reserve",
+      "to": "table:stock",
+      "type": "writes",
+      "detail": "UPDATE stock SET reserved = reserved + $2 WHERE sku = $1 AND on_hand - reserved >= $2"
+    },
+    {
+      "from": "go:shop/internal/notify.(*Mailer).SendConfirmation",
+      "to": "ext:postmark",
+      "type": "calls",
+      "detail": "SendTemplatedEmail"
+    },
+    {
+      "from": "go:shop/internal/notify.(*Mailer).SendReceipt",
+      "to": "ext:postmark",
+      "type": "calls",
+      "detail": "SendTemplatedEmail"
+    },
+    {
+      "from": "go:shop/internal/notify.NewMailer",
+      "to": "ext:postmark",
+      "type": "calls",
+      "detail": "NewClient"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Handler).Create",
+      "to": "go:shop/internal/auth.CurrentUser",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Handler).Create",
+      "to": "go:shop/internal/orders.(*Service).Place",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Handler).Create",
+      "to": "go:shop/internal/orders.writeError",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Handler).Create",
+      "to": "go:shop/internal/orders.writeJSON",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Handler).Get",
+      "to": "go:shop/internal/orders.(*Repo).Find",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Handler).Get",
+      "to": "go:shop/internal/orders.writeError",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Handler).Get",
+      "to": "go:shop/internal/orders.writeJSON",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Repo).Find",
+      "to": "table:orders",
+      "type": "reads",
+      "detail": "SELECT * FROM orders WHERE id = $1"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Repo).Insert",
+      "to": "table:orders",
+      "type": "writes",
+      "detail": "INSERT INTO orders (user_id, items, charge_id, status) VALUES ($1, $2, $3, $4) RETURNING id"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Repo).UpdateStatus",
+      "to": "table:orders",
+      "type": "writes",
+      "detail": "UPDATE orders SET status = $2 WHERE charge_id = $1 RETURNING *"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Service).MarkPaid",
+      "to": "go:shop/internal/notify.(*Mailer).SendReceipt",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Service).MarkPaid",
+      "to": "go:shop/internal/orders.(*Repo).UpdateStatus",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Service).Place",
+      "to": "go:shop/internal/events.(*Bus).Publish",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Service).Place",
+      "to": "go:shop/internal/inventory.(*Store).Reserve",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Service).Place",
+      "to": "go:shop/internal/orders.(*Repo).Insert",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Service).Place",
+      "to": "go:shop/internal/orders.(CreateOrder).Total",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Service).Place",
+      "to": "go:shop/internal/payments.(*Client).Charge",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/orders.(*Service).Place",
+      "to": "topic:order.placed",
+      "type": "publishes",
+      "detail": "order.placed"
+    },
+    {
+      "from": "go:shop/internal/payments.(*Client).Charge",
+      "to": "ext:stripe",
+      "type": "calls",
+      "detail": "PaymentIntents.New"
+    },
+    {
+      "from": "go:shop/internal/payments.(*Handler).HandleWebhook",
+      "to": "go:shop/internal/orders.(*Service).MarkPaid",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/payments.(*Handler).HandleWebhook",
+      "to": "go:shop/internal/payments.(*Handler).verifySignature",
+      "type": "calls"
+    },
+    {
+      "from": "go:shop/internal/payments.(*Handler).verifySignature",
+      "to": "ext:stripe",
+      "type": "calls",
+      "detail": "webhook.ConstructEvent"
+    },
+    {
+      "from": "go:shop/internal/payments.NewClient",
+      "to": "ext:stripe",
+      "type": "calls",
+      "detail": "client.New"
+    },
+    {
+      "from": "job:expire-carts",
+      "to": "go:shop/internal/inventory.(*Store).ReleaseExpired",
+      "type": "calls"
+    },
+    {
+      "from": "page:/checkout",
+      "to": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+      "type": "renders"
+    },
+    {
+      "from": "page:/login",
+      "to": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+      "type": "renders"
+    },
+    {
+      "from": "page:/orders/:id",
+      "to": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+      "type": "renders"
+    },
+    {
+      "from": "route:GET /orders/:id",
+      "to": "go:shop/internal/auth.(*Handler).RequireUser",
+      "type": "calls"
+    },
+    {
+      "from": "route:GET /orders/:id",
+      "to": "go:shop/internal/orders.(*Handler).Get",
+      "type": "calls"
+    },
+    {
+      "from": "route:POST /login",
+      "to": "go:shop/internal/auth.(*Handler).Login",
+      "type": "calls"
+    },
+    {
+      "from": "route:POST /orders",
+      "to": "go:shop/internal/auth.(*Handler).RequireUser",
+      "type": "calls"
+    },
+    {
+      "from": "route:POST /orders",
+      "to": "go:shop/internal/orders.(*Handler).Create",
+      "type": "calls"
+    },
+    {
+      "from": "route:POST /webhooks/stripe",
+      "to": "go:shop/internal/payments.(*Handler).HandleWebhook",
+      "type": "calls"
+    },
+    {
+      "from": "sub:order.placed:go:shop/internal/notify.(*Mailer).SendConfirmation",
+      "to": "go:shop/internal/notify.(*Mailer).SendConfirmation",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/auth.TestLogin_WrongPassword",
+      "to": "go:shop/internal/auth.(*Handler).Login",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/auth.TestLogin_WrongPassword",
+      "to": "go:shop/internal/auth.NewHandler",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/auth.TestRequireUser_MissingToken",
+      "to": "go:shop/internal/auth.(*Handler).RequireUser",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/auth.TestRequireUser_MissingToken",
+      "to": "go:shop/internal/auth.NewHandler",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/inventory.TestReserve_InsufficientStock",
+      "to": "go:shop/internal/inventory.(*Store).Reserve",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/inventory.TestReserve_InsufficientStock",
+      "to": "go:shop/internal/inventory.NewStore",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/orders.TestPlace_ChargesAndInserts",
+      "to": "go:shop/internal/orders.(*Service).Place",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/orders.TestPlace_ChargesAndInserts",
+      "to": "go:shop/internal/orders.NewRepo",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/orders.TestPlace_ChargesAndInserts",
+      "to": "go:shop/internal/orders.NewService",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/orders.TestPlace_OutOfStock",
+      "to": "go:shop/internal/orders.(*Service).Place",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/orders.TestPlace_OutOfStock",
+      "to": "go:shop/internal/orders.NewRepo",
+      "type": "calls"
+    },
+    {
+      "from": "test:go:shop/internal/orders.TestPlace_OutOfStock",
+      "to": "go:shop/internal/orders.NewService",
+      "type": "calls"
+    },
+    {
+      "from": "test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order",
+      "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+      "type": "renders"
+    },
+    {
+      "from": "topic:order.placed",
+      "to": "sub:order.placed:go:shop/internal/notify.(*Mailer).SendConfirmation",
+      "type": "subscribes",
+      "detail": "subscribe order.placed"
+    },
+    {
+      "from": "ts:web/src/api/auth.ts#login",
+      "to": "route:POST /login",
+      "type": "fetches",
+      "detail": "POST /login"
+    },
+    {
+      "from": "ts:web/src/api/auth.ts#login",
+      "to": "ts:web/src/api/http.ts#http.post",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/api/http.ts#http.get",
+      "to": "ts:web/src/api/http.ts#request",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/api/http.ts#http.post",
+      "to": "ts:web/src/api/http.ts#request",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/api/orders.ts#createOrder",
+      "to": "route:POST /orders",
+      "type": "fetches",
+      "detail": "POST /orders"
+    },
+    {
+      "from": "ts:web/src/api/orders.ts#createOrder",
+      "to": "ts:web/src/api/http.ts#http.post",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/api/orders.ts#getOrder",
+      "to": "route:GET /orders/:id",
+      "type": "fetches",
+      "detail": "GET /orders/:id"
+    },
+    {
+      "from": "ts:web/src/api/orders.ts#getOrder",
+      "to": "ts:web/src/api/http.ts#http.get",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/components/LoginForm.tsx#LoginForm",
+      "to": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+      "to": "ts:web/src/api/auth.ts#login",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/components/OrderStatus.tsx#OrderStatus",
+      "to": "ts:web/src/components/OrderStatus.tsx#useOrder",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/components/OrderStatus.tsx#useOrder",
+      "to": "ts:web/src/api/orders.ts#getOrder",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+      "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+      "to": "ts:web/src/api/orders.ts#createOrder",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+      "to": "ts:web/src/components/Layout.tsx#Layout",
+      "type": "renders"
+    },
+    {
+      "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+      "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+      "type": "renders"
+    },
+    {
+      "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+      "to": "ts:web/src/state/cart.ts#useCart",
+      "type": "calls"
+    },
+    {
+      "from": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+      "to": "ts:web/src/components/Layout.tsx#Layout",
+      "type": "renders"
+    },
+    {
+      "from": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+      "to": "ts:web/src/components/LoginForm.tsx#LoginForm",
+      "type": "renders"
+    },
+    {
+      "from": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+      "to": "ts:web/src/components/Layout.tsx#Layout",
+      "type": "renders"
+    },
+    {
+      "from": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+      "to": "ts:web/src/components/OrderStatus.tsx#OrderStatus",
+      "type": "renders"
+    }
+  ]
+}
