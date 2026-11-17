@@ -1,0 +1,16 @@
+{
+  "name": "codemap-extractor-ts",
+  "private": true,
+  "type": "module",
+  "description": "codemap's TypeScript extractor. Bundled into internal/extract/tsext/extractor.js.gz.",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "esbuild": "0.28.2",
+    "typescript": "6.0.3"
+  }
+}

@@ -1,0 +1,400 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "id": "mod:ts:web/src",
+      "label": "web/src",
+      "lang": "ts",
+      "path": "web/src"
+    },
+    {
+      "id": "mod:ts:web/src/api",
+      "label": "web/src/api",
+      "lang": "ts",
+      "path": "web/src/api"
+    },
+    {
+      "id": "mod:ts:web/src/components",
+      "label": "web/src/components",
+      "lang": "ts",
+      "path": "web/src/components"
+    },
+    {
+      "id": "mod:ts:web/src/pages",
+      "label": "web/src/pages",
+      "lang": "ts",
+      "path": "web/src/pages"
+    },
+    {
+      "id": "mod:ts:web/src/state",
+      "label": "web/src/state",
+      "lang": "ts",
+      "path": "web/src/state"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "page:/checkout",
+      "kind": "page",
+      "label": "/checkout",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/main.tsx",
+      "line": 10,
+      "entry": true
+    },
+    {
+      "id": "page:/login",
+      "kind": "page",
+      "label": "/login",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/main.tsx",
+      "line": 9,
+      "entry": true
+    },
+    {
+      "id": "page:/orders/:id",
+      "kind": "page",
+      "label": "/orders/:id",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/main.tsx",
+      "line": 11,
+      "entry": true
+    },
+    {
+      "id": "test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order",
+      "kind": "test",
+      "label": "navigates to the new order",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/PlaceOrderButton.test.tsx",
+      "line": 12,
+      "endLine": 16
+    },
+    {
+      "id": "ts:web/src/api/auth.ts#login",
+      "kind": "function",
+      "label": "login",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/auth.ts",
+      "line": 3,
+      "endLine": 6
+    },
+    {
+      "id": "ts:web/src/api/http.ts#http.get",
+      "kind": "function",
+      "label": "http.get",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/http.ts",
+      "line": 15
+    },
+    {
+      "id": "ts:web/src/api/http.ts#http.post",
+      "kind": "function",
+      "label": "http.post",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/http.ts",
+      "line": 16
+    },
+    {
+      "id": "ts:web/src/api/http.ts#request",
+      "kind": "function",
+      "label": "request",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/http.ts",
+      "line": 4,
+      "endLine": 12
+    },
+    {
+      "id": "ts:web/src/api/orders.ts#createOrder",
+      "kind": "function",
+      "label": "createOrder",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/orders.ts",
+      "line": 7,
+      "endLine": 10,
+      "doc": "POST /orders. Throws on a non-2xx response, via the shared http client."
+    },
+    {
+      "id": "ts:web/src/api/orders.ts#getOrder",
+      "kind": "function",
+      "label": "getOrder",
+      "module": "mod:ts:web/src/api",
+      "file": "web/src/api/orders.ts",
+      "line": 12,
+      "endLine": 15
+    },
+    {
+      "id": "ts:web/src/components/Layout.tsx#Layout",
+      "kind": "component",
+      "label": "Layout",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/Layout.tsx",
+      "line": 3,
+      "endLine": 10
+    },
+    {
+      "id": "ts:web/src/components/LoginForm.tsx#LoginForm",
+      "kind": "component",
+      "label": "LoginForm",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/LoginForm.tsx",
+      "line": 5,
+      "endLine": 24
+    },
+    {
+      "id": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+      "kind": "function",
+      "label": "LoginForm.onSubmit",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/LoginForm.tsx",
+      "line": 10,
+      "endLine": 15
+    },
+    {
+      "id": "ts:web/src/components/OrderStatus.tsx#OrderStatus",
+      "kind": "component",
+      "label": "OrderStatus",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/OrderStatus.tsx",
+      "line": 12,
+      "endLine": 15
+    },
+    {
+      "id": "ts:web/src/components/OrderStatus.tsx#useOrder",
+      "kind": "function",
+      "label": "useOrder",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/OrderStatus.tsx",
+      "line": 4,
+      "endLine": 10
+    },
+    {
+      "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+      "kind": "component",
+      "label": "PlaceOrderButton",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/PlaceOrderButton.tsx",
+      "line": 12,
+      "endLine": 25,
+      "doc": "Places the order and sends the user to its page. The button stays disabled while the request is in flight."
+    },
+    {
+      "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+      "kind": "function",
+      "label": "PlaceOrderButton.onClick",
+      "module": "mod:ts:web/src/components",
+      "file": "web/src/components/PlaceOrderButton.tsx",
+      "line": 15,
+      "endLine": 19
+    },
+    {
+      "id": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+      "kind": "component",
+      "label": "CheckoutPage",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/pages/CheckoutPage.tsx",
+      "line": 5,
+      "endLine": 19
+    },
+    {
+      "id": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+      "kind": "component",
+      "label": "LoginPage",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/pages/LoginPage.tsx",
+      "line": 4,
+      "endLine": 10
+    },
+    {
+      "id": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+      "kind": "component",
+      "label": "OrderPage",
+      "module": "mod:ts:web/src/pages",
+      "file": "web/src/pages/OrderPage.tsx",
+      "line": 5,
+      "endLine": 12
+    },
+    {
+      "id": "ts:web/src/state/cart.ts#useCart",
+      "kind": "function",
+      "label": "useCart",
+      "module": "mod:ts:web/src/state",
+      "file": "web/src/state/cart.ts",
+      "line": 5,
+      "endLine": 8
+    }
+  ],
+  "edges": [
+    {
+      "from": "page:/checkout",
+      "to": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+      "type": "renders"
+    },
+    {
+      "from": "page:/login",
+      "to": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+      "type": "renders"
+    },
+    {
+      "from": "page:/orders/:id",
+      "to": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+      "type": "renders"
+    },
+    {
+      "from": "test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order",
+      "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+      "type": "renders",
+      "file": "web/src/components/PlaceOrderButton.test.tsx",
+      "line": 13
+    },
+    {
+      "from": "ts:web/src/api/auth.ts#login",
+      "to": "route:POST /login",
+      "type": "fetches",
+      "detail": "POST /login",
+      "file": "web/src/api/auth.ts",
+      "line": 4
+    },
+    {
+      "from": "ts:web/src/api/auth.ts#login",
+      "to": "ts:web/src/api/http.ts#http.post",
+      "type": "calls",
+      "file": "web/src/api/auth.ts",
+      "line": 4
+    },
+    {
+      "from": "ts:web/src/api/http.ts#http.get",
+      "to": "ts:web/src/api/http.ts#request",
+      "type": "calls",
+      "file": "web/src/api/http.ts",
+      "line": 15
+    },
+    {
+      "from": "ts:web/src/api/http.ts#http.post",
+      "to": "ts:web/src/api/http.ts#request",
+      "type": "calls",
+      "file": "web/src/api/http.ts",
+      "line": 16
+    },
+    {
+      "from": "ts:web/src/api/orders.ts#createOrder",
+      "to": "route:POST /orders",
+      "type": "fetches",
+      "detail": "POST /orders",
+      "file": "web/src/api/orders.ts",
+      "line": 8
+    },
+    {
+      "from": "ts:web/src/api/orders.ts#createOrder",
+      "to": "ts:web/src/api/http.ts#http.post",
+      "type": "calls",
+      "file": "web/src/api/orders.ts",
+      "line": 8
+    },
+    {
+      "from": "ts:web/src/api/orders.ts#getOrder",
+      "to": "route:GET /orders/:param",
+      "type": "fetches",
+      "detail": "GET /orders/:id",
+      "file": "web/src/api/orders.ts",
+      "line": 13
+    },
+    {
+      "from": "ts:web/src/api/orders.ts#getOrder",
+      "to": "ts:web/src/api/http.ts#http.get",
+      "type": "calls",
+      "file": "web/src/api/orders.ts",
+      "line": 13
+    },
+    {
+      "from": "ts:web/src/components/LoginForm.tsx#LoginForm",
+      "to": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+      "type": "calls",
+      "file": "web/src/components/LoginForm.tsx",
+      "line": 18
+    },
+    {
+      "from": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+      "to": "ts:web/src/api/auth.ts#login",
+      "type": "calls",
+      "file": "web/src/components/LoginForm.tsx",
+      "line": 12
+    },
+    {
+      "from": "ts:web/src/components/OrderStatus.tsx#OrderStatus",
+      "to": "ts:web/src/components/OrderStatus.tsx#useOrder",
+      "type": "calls",
+      "file": "web/src/components/OrderStatus.tsx",
+      "line": 13
+    },
+    {
+      "from": "ts:web/src/components/OrderStatus.tsx#useOrder",
+      "to": "ts:web/src/api/orders.ts#getOrder",
+      "type": "calls",
+      "file": "web/src/components/OrderStatus.tsx",
+      "line": 7
+    },
+    {
+      "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+      "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+      "type": "calls",
+      "file": "web/src/components/PlaceOrderButton.tsx",
+      "line": 21
+    },
+    {
+      "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+      "to": "ts:web/src/api/orders.ts#createOrder",
+      "type": "calls",
+      "file": "web/src/components/PlaceOrderButton.tsx",
+      "line": 17
+    },
+    {
+      "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+      "to": "ts:web/src/components/Layout.tsx#Layout",
+      "type": "renders",
+      "file": "web/src/pages/CheckoutPage.tsx",
+      "line": 8
+    },
+    {
+      "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+      "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+      "type": "renders",
+      "file": "web/src/pages/CheckoutPage.tsx",
+      "line": 16
+    },
+    {
+      "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+      "to": "ts:web/src/state/cart.ts#useCart",
+      "type": "calls",
+      "file": "web/src/pages/CheckoutPage.tsx",
+      "line": 6
+    },
+    {
+      "from": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+      "to": "ts:web/src/components/Layout.tsx#Layout",
+      "type": "renders",
+      "file": "web/src/pages/LoginPage.tsx",
+      "line": 6
+    },
+    {
+      "from": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+      "to": "ts:web/src/components/LoginForm.tsx#LoginForm",
+      "type": "renders",
+      "file": "web/src/pages/LoginPage.tsx",
+      "line": 7
+    },
+    {
+      "from": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+      "to": "ts:web/src/components/Layout.tsx#Layout",
+      "type": "renders",
+      "file": "web/src/pages/OrderPage.tsx",
+      "line": 8
+    },
+    {
+      "from": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+      "to": "ts:web/src/components/OrderStatus.tsx#OrderStatus",
+      "type": "renders",
+      "file": "web/src/pages/OrderPage.tsx",
+      "line": 9
+    }
+  ]
+}
