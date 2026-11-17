@@ -1,0 +1,35 @@
+id:     mod:go:shop/internal/orders
+label:  internal/orders
+lang:   go
+path:   internal/orders
+doc:    Package orders owns the order lifecycle: placing, paying and looking up orders.
+
+Contains (15):
+  NewHandler                   function  internal/orders/handler.go:21
+  Handler.Create               function  internal/orders/handler.go:24
+  Handler.Get                  function  internal/orders/handler.go:39
+  writeJSON                    function  internal/orders/handler.go:48
+  writeError                   function  internal/orders/handler.go:53
+  CreateOrder.Total            function  internal/orders/order.go:23
+  NewRepo                      function  internal/orders/repo.go:13
+  Repo.Insert                  function  internal/orders/repo.go:16
+  Repo.Find                    function  internal/orders/repo.go:25
+  Repo.UpdateStatus            function  internal/orders/repo.go:32
+  NewService                   function  internal/orders/service.go:42
+  Service.Place                function  internal/orders/service.go:48
+  Service.MarkPaid             function  internal/orders/service.go:65
+  TestPlace_ChargesAndInserts  test      internal/orders/service_test.go:51
+  TestPlace_OutOfStock         test      internal/orders/service_test.go:62
+
+Depends on:
+  database            3 calls
+  internal/auth       1 call
+  internal/events     1 call
+  internal/inventory  1 call
+  internal/notify     1 call
+  internal/payments   1 call
+  topics              1 call
+
+Used by:
+  cmd/server         5 calls
+  internal/payments  1 call

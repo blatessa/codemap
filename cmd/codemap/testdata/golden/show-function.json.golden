@@ -1,0 +1,123 @@
+{
+  "node": {
+    "id": "go:shop/internal/orders.(*Service).Place",
+    "kind": "function",
+    "label": "Service.Place",
+    "module": "mod:go:shop/internal/orders",
+    "file": "internal/orders/service.go",
+    "line": 48,
+    "endLine": 62,
+    "doc": "Place reserves stock, charges the card and saves the order, in that order. If the charge fails, the reservation is left for the expire-carts job to release."
+  },
+  "reachedBy": [
+    "page:/checkout",
+    "route:POST /orders"
+  ],
+  "tests": [
+    {
+      "test": "test:go:shop/internal/orders.TestPlace_ChargesAndInserts",
+      "direct": true
+    },
+    {
+      "test": "test:go:shop/internal/orders.TestPlace_OutOfStock",
+      "direct": true
+    }
+  ],
+  "tree": {
+    "id": "go:shop/internal/orders.(*Service).Place",
+    "children": [
+      {
+        "id": "go:shop/internal/events.(*Bus).Publish",
+        "via": {
+          "from": "go:shop/internal/orders.(*Service).Place",
+          "to": "go:shop/internal/events.(*Bus).Publish",
+          "type": "calls"
+        },
+        "children": [
+          {
+            "id": "go:shop/cmd/server.(logConn).Publish",
+            "via": {
+              "from": "go:shop/internal/events.(*Bus).Publish",
+              "to": "go:shop/cmd/server.(logConn).Publish",
+              "type": "calls"
+            }
+          }
+        ]
+      },
+      {
+        "id": "go:shop/internal/inventory.(*Store).Reserve",
+        "via": {
+          "from": "go:shop/internal/orders.(*Service).Place",
+          "to": "go:shop/internal/inventory.(*Store).Reserve",
+          "type": "calls"
+        },
+        "children": [
+          {
+            "id": "table:stock",
+            "via": {
+              "from": "go:shop/internal/inventory.(*Store).Reserve",
+              "to": "table:stock",
+              "type": "writes",
+              "detail": "UPDATE stock SET reserved = reserved + $2 WHERE sku = $1 AND on_hand - reserved >= $2"
+            }
+          }
+        ]
+      },
+      {
+        "id": "go:shop/internal/orders.(*Repo).Insert",
+        "via": {
+          "from": "go:shop/internal/orders.(*Service).Place",
+          "to": "go:shop/internal/orders.(*Repo).Insert",
+          "type": "calls"
+        },
+        "children": [
+          {
+            "id": "table:orders",
+            "via": {
+              "from": "go:shop/internal/orders.(*Repo).Insert",
+              "to": "table:orders",
+              "type": "writes",
+              "detail": "INSERT INTO orders (user_id, items, charge_id, status) VALUES ($1, $2, $3, $4) RETURNING id"
+            }
+          }
+        ]
+      },
+      {
+        "id": "go:shop/internal/orders.(CreateOrder).Total",
+        "via": {
+          "from": "go:shop/internal/orders.(*Service).Place",
+          "to": "go:shop/internal/orders.(CreateOrder).Total",
+          "type": "calls"
+        }
+      },
+      {
+        "id": "go:shop/internal/payments.(*Client).Charge",
+        "via": {
+          "from": "go:shop/internal/orders.(*Service).Place",
+          "to": "go:shop/internal/payments.(*Client).Charge",
+          "type": "calls"
+        },
+        "children": [
+          {
+            "id": "ext:stripe",
+            "via": {
+              "from": "go:shop/internal/payments.(*Client).Charge",
+              "to": "ext:stripe",
+              "type": "calls",
+              "detail": "PaymentIntents.New"
+            }
+          }
+        ]
+      },
+      {
+        "id": "topic:order.placed",
+        "via": {
+          "from": "go:shop/internal/orders.(*Service).Place",
+          "to": "topic:order.placed",
+          "type": "publishes",
+          "detail": "order.placed"
+        }
+      }
+    ]
+  }
+}

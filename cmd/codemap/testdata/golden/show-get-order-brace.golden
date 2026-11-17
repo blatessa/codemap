@@ -1,0 +1,12 @@
+id:     route:GET /orders/:id
+kind:   route (entry)
+module: cmd/server
+file:   cmd/server/routes.go:14
+method: GET
+
+GET /orders/:id
+  auth.Handler.RequireUser  ...
+  orders.Handler.Get  ...
+
+Tests:
+  test:go:shop/internal/auth.TestRequireUser_MissingToken  internal/auth/middleware_test.go:11  (direct)

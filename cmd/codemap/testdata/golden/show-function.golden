@@ -1,0 +1,25 @@
+id:     go:shop/internal/orders.(*Service).Place
+kind:   function
+module: internal/orders
+file:   internal/orders/service.go:48
+doc:    Place reserves stock, charges the card and saves the order, in that order. If the charge fails, the reservation is left for the expire-carts job to release.
+
+orders.Service.Place
+  events.Bus.Publish
+    server.logConn.Publish
+  inventory.Store.Reserve
+    stock [table]  writes: UPDATE stock SET reserved = reserved + $2 WHERE sku = $1 AND on_hand - reserved >= $2
+  orders.Repo.Insert
+    orders [table]  writes: INSERT INTO orders (user_id, items, charge_id, status) VALUES ($1, $2, $3, $4) RETURNING id
+  orders.CreateOrder.Total
+  payments.Client.Charge
+    api.stripe.com [service]  PaymentIntents.New
+  order.placed [topic]  publishes
+
+Reached by:
+  page /checkout
+  POST /orders
+
+Tests:
+  test:go:shop/internal/orders.TestPlace_ChargesAndInserts  internal/orders/service_test.go:51  (direct)
+  test:go:shop/internal/orders.TestPlace_OutOfStock  internal/orders/service_test.go:62  (direct)

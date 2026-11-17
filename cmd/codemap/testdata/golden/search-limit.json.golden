@@ -1,0 +1,39 @@
+[
+  {
+    "id": "table:orders",
+    "kind": "table",
+    "label": "orders",
+    "match": "label"
+  },
+  {
+    "id": "mod:go:shop/internal/orders",
+    "kind": "module",
+    "label": "internal/orders",
+    "file": "internal/orders",
+    "match": "label"
+  },
+  {
+    "id": "page:/orders/:id",
+    "kind": "page",
+    "label": "/orders/:id",
+    "file": "web/src/main.tsx",
+    "line": 11,
+    "match": "label"
+  },
+  {
+    "id": "route:GET /orders/:id",
+    "kind": "route",
+    "label": "/orders/:id",
+    "file": "cmd/server/routes.go",
+    "line": 14,
+    "match": "label"
+  },
+  {
+    "id": "route:POST /orders",
+    "kind": "route",
+    "label": "/orders",
+    "file": "cmd/server/routes.go",
+    "line": 13,
+    "match": "label"
+  }
+]

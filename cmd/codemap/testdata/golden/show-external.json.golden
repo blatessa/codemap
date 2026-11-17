@@ -1,0 +1,60 @@
+{
+  "node": {
+    "id": "ext:stripe",
+    "kind": "service",
+    "label": "api.stripe.com",
+    "module": "mod:ext:services",
+    "external": true,
+    "fields": {
+      "import": "github.com/stripe/stripe-go/v79",
+      "limits": "100 read and 100 write requests per second in live mode",
+      "links": [
+        {
+          "label": "Dashboard",
+          "url": "https://dashboard.stripe.com"
+        },
+        {
+          "label": "API docs",
+          "url": "https://docs.stripe.com/api"
+        },
+        {
+          "label": "Status",
+          "url": "https://status.stripe.com"
+        }
+      ],
+      "owner": "Payments team",
+      "setup": "Live and test accounts; key in STRIPE_SECRET_KEY"
+    }
+  },
+  "reachedBy": [
+    "go:shop/cmd/server.main",
+    "page:/checkout",
+    "route:POST /orders",
+    "route:POST /webhooks/stripe"
+  ],
+  "tests": [
+    {
+      "test": "test:go:shop/internal/orders.TestPlace_ChargesAndInserts",
+      "direct": false
+    },
+    {
+      "test": "test:go:shop/internal/orders.TestPlace_OutOfStock",
+      "direct": false
+    }
+  ],
+  "tree": {
+    "id": "ext:stripe",
+    "children": [
+      {
+        "id": "route:POST /webhooks/stripe",
+        "via": {
+          "from": "ext:stripe",
+          "to": "route:POST /webhooks/stripe",
+          "type": "declared",
+          "detail": "sends payment_intent.succeeded",
+          "declared": true
+        }
+      }
+    ]
+  }
+}

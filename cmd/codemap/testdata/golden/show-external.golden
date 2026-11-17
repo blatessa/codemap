@@ -1,0 +1,21 @@
+id:     ext:stripe
+kind:   service (external)
+module: external services
+import: github.com/stripe/stripe-go/v79
+limits: 100 read and 100 write requests per second in live mode
+links:  [{"label":"Dashboard","url":"https://dashboard.stripe.com"},{"label":"API docs","url":"https://docs.stripe.com/api"},{"label":"Status","url":"https://status.stripe.com"}]
+owner:  Payments team
+setup:  Live and test accounts; key in STRIPE_SECRET_KEY
+
+api.stripe.com [service]
+  POST /webhooks/stripe  declared: sends payment_intent.succeeded  ...
+
+Reached by:
+  server.main
+  page /checkout
+  POST /orders
+  POST /webhooks/stripe
+
+Tests:
+  test:go:shop/internal/orders.TestPlace_ChargesAndInserts  internal/orders/service_test.go:51
+  test:go:shop/internal/orders.TestPlace_OutOfStock  internal/orders/service_test.go:62

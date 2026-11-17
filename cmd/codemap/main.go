@@ -5,6 +5,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"codemap/internal/cli"
 )
 
 const usage = `usage: codemap <command> [flags]
@@ -33,7 +35,6 @@ func main() {
 		os.Exit(2)
 	}
 	if err := run(os.Args[2:]); err != nil {
-		fmt.Fprintln(os.Stderr, "codemap:", err)
-		os.Exit(1)
+		os.Exit(cli.Report(os.Stderr, err)) // prints err; exit status from cli.ExitError, else 1
 	}
 }

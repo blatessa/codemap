@@ -1,0 +1,142 @@
+{
+  "dependsOn": [],
+  "module": {
+    "id": "mod:sql:database",
+    "label": "database",
+    "lang": "sql",
+    "path": "db/migrations",
+    "external": true
+  },
+  "nodes": [
+    {
+      "id": "table:orders",
+      "kind": "table",
+      "label": "orders",
+      "module": "mod:sql:database",
+      "external": true,
+      "fields": {
+        "columns": [
+          [
+            "id",
+            "uuid",
+            "pk"
+          ],
+          [
+            "user_id",
+            "uuid",
+            "→ users.id"
+          ],
+          [
+            "items",
+            "jsonb",
+            ""
+          ],
+          [
+            "status",
+            "text",
+            ""
+          ],
+          [
+            "created_at",
+            "timestamptz",
+            ""
+          ],
+          [
+            "charge_id",
+            "text",
+            "index"
+          ]
+        ],
+        "source": [
+          "db/migrations/0001_init.sql",
+          "db/migrations/0004_charge_id.sql"
+        ]
+      }
+    },
+    {
+      "id": "table:stock",
+      "kind": "table",
+      "label": "stock",
+      "module": "mod:sql:database",
+      "external": true,
+      "fields": {
+        "columns": [
+          [
+            "sku",
+            "text",
+            "pk"
+          ],
+          [
+            "on_hand",
+            "int",
+            ""
+          ],
+          [
+            "reserved",
+            "int",
+            ""
+          ],
+          [
+            "expires_at",
+            "timestamptz",
+            ""
+          ]
+        ],
+        "source": [
+          "db/migrations/0002_stock.sql"
+        ]
+      }
+    },
+    {
+      "id": "table:users",
+      "kind": "table",
+      "label": "users",
+      "module": "mod:sql:database",
+      "external": true,
+      "fields": {
+        "columns": [
+          [
+            "id",
+            "uuid",
+            "pk"
+          ],
+          [
+            "email",
+            "text",
+            "unique"
+          ],
+          [
+            "password_hash",
+            "bytea",
+            ""
+          ],
+          [
+            "created_at",
+            "timestamptz",
+            ""
+          ]
+        ],
+        "source": [
+          "db/migrations/0001_init.sql"
+        ]
+      }
+    }
+  ],
+  "usedBy": [
+    {
+      "module": "mod:go:shop/internal/orders",
+      "label": "internal/orders",
+      "count": 3
+    },
+    {
+      "module": "mod:go:shop/internal/auth",
+      "label": "internal/auth",
+      "count": 2
+    },
+    {
+      "module": "mod:go:shop/internal/inventory",
+      "label": "internal/inventory",
+      "count": 2
+    }
+  ]
+}

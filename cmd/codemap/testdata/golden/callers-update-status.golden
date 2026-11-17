@@ -1,0 +1,11 @@
+id:     go:shop/internal/orders.(*Repo).UpdateStatus
+kind:   function
+module: internal/orders
+file:   internal/orders/repo.go:32
+doc:    UpdateStatus looks the order up by Stripe charge ID, not order ID.
+
+orders.Repo.UpdateStatus
+  orders.Service.MarkPaid
+    payments.Handler.HandleWebhook
+      POST /webhooks/stripe
+        api.stripe.com [service]  declared: sends payment_intent.succeeded

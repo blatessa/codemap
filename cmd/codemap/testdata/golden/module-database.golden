@@ -1,0 +1,18 @@
+id:     mod:sql:database
+label:  database
+lang:   sql
+path:   db/migrations
+kind:   external
+
+Contains (3):
+  orders  table
+  stock   table
+  users   table
+
+Depends on:
+  (none)
+
+Used by:
+  internal/orders     3 calls
+  internal/auth       2 calls
+  internal/inventory  2 calls

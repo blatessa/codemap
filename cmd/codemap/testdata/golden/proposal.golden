@@ -1,0 +1,219 @@
+$ codemap proposal list
+SLUG          STATUS    PR   UPDATED     NAME
+order-search  archived  #57  2026-10-30  Order search
+refunds       open      -    2026-11-16  Refunds
+
+$ codemap proposal list --json
+[
+  {
+    "slug": "order-search",
+    "name": "Order search",
+    "status": "archived",
+    "pr": "#57",
+    "updated": "2026-10-30",
+    "nodes": [
+      {
+        "entry": true,
+        "id": "new:route:GET /orders/search",
+        "kind": "route",
+        "label": "/orders/search",
+        "method": "GET",
+        "module": "mod:go:shop/cmd/server"
+      },
+      {
+        "id": "new:orders.Service.Search",
+        "kind": "function",
+        "label": "Service.Search",
+        "module": "mod:go:shop/internal/orders"
+      }
+    ],
+    "edges": [
+      {
+        "from": "new:route:GET /orders/search",
+        "to": "go:shop/internal/auth.(*Handler).RequireUser"
+      },
+      {
+        "from": "new:route:GET /orders/search",
+        "to": "new:orders.Service.Search"
+      },
+      {
+        "detail": "SELECT … WHERE items @> $1",
+        "from": "new:orders.Service.Search",
+        "to": "table:orders"
+      }
+    ],
+    "body": "Let a signed-in user search their past orders by item name.\n\n> Shipped in #57 with a simple LIKE query. The index was left for later.\n"
+  },
+  {
+    "slug": "refunds",
+    "name": "Refunds",
+    "status": "open",
+    "updated": "2026-11-16",
+    "nodes": [
+      {
+        "id": "new:RefundButton.onClick",
+        "kind": "function",
+        "label": "RefundButton.onClick",
+        "module": "mod:ts:web/src/components"
+      },
+      {
+        "id": "new:refundOrder",
+        "kind": "function",
+        "label": "refundOrder",
+        "module": "mod:ts:web/src/api"
+      },
+      {
+        "entry": true,
+        "id": "new:route:POST /orders/:id/refund",
+        "kind": "route",
+        "label": "/orders/:id/refund",
+        "method": "POST",
+        "module": "mod:go:shop/cmd/server"
+      },
+      {
+        "id": "new:orders.Service.Refund",
+        "kind": "function",
+        "label": "Service.Refund",
+        "module": "mod:go:shop/internal/orders"
+      },
+      {
+        "id": "new:payments.Client.Refund",
+        "kind": "function",
+        "label": "Client.Refund",
+        "module": "mod:go:shop/internal/payments"
+      }
+    ],
+    "edges": [
+      {
+        "from": "page:/orders/:id",
+        "to": "new:RefundButton.onClick"
+      },
+      {
+        "from": "new:RefundButton.onClick",
+        "to": "new:refundOrder"
+      },
+      {
+        "from": "new:refundOrder",
+        "to": "new:route:POST /orders/:id/refund"
+      },
+      {
+        "from": "new:route:POST /orders/:id/refund",
+        "to": "go:shop/internal/auth.(*Handler).RequireUser"
+      },
+      {
+        "from": "new:route:POST /orders/:id/refund",
+        "to": "new:orders.Service.Refund"
+      },
+      {
+        "from": "new:orders.Service.Refund",
+        "to": "new:payments.Client.Refund"
+      },
+      {
+        "detail": "POST /v1/refunds",
+        "from": "new:payments.Client.Refund",
+        "to": "ext:stripe"
+      },
+      {
+        "from": "new:orders.Service.Refund",
+        "to": "go:shop/internal/orders.(*Repo).UpdateStatus"
+      },
+      {
+        "from": "new:orders.Service.Refund",
+        "to": "topic:order.placed"
+      }
+    ],
+    "body": "## Why\nSupport refunds orders by hand in the Stripe dashboard, so the `orders` table never learns about it.\n\n## Shape\n- **RefundButton** on the order page, support role only.\n- `POST /orders/:id/refund` goes through `RequireUser` like the other order routes.\n- `orders.Service.Refund` owns the rules; `payments.Client.Refund` only talks to Stripe.\n- Reuse `Repo.UpdateStatus` for the status change.\n\n## Open questions\n1. Partial refunds now or later?\n2. Should the webhook confirm the refund instead of trusting the API response?\n"
+  }
+]
+
+$ codemap proposal new Partial refunds --body -
+created .codemap/proposals/partial-refunds.md
+
+# partial-refunds.md
+---
+name: Partial refunds
+status: open
+base: 3f2c9e1a
+updated: "2026-11-17"
+---
+## Why
+Refund part of an order.
+
+$ codemap proposal new Partial refunds
+--- exit 1
+codemap: .codemap/proposals/partial-refunds.md already exists
+
+$ codemap proposal new Gift cards! --json
+{
+  "slug": "gift-cards",
+  "name": "Gift cards!",
+  "status": "open",
+  "base": "3f2c9e1a",
+  "updated": "2026-11-17",
+  "body": ""
+}
+
+$ codemap proposal archive refunds --pr 91
+archived refunds (#91)
+
+# refunds.md
+---
+name: Refunds
+status: archived
+updated: "2026-11-17"
+pr: '#91'
+nodes:
+  - {id: 'new:RefundButton.onClick', kind: function, label: RefundButton.onClick, module: 'mod:ts:web/src/components'}
+  - {id: 'new:refundOrder', kind: function, label: refundOrder, module: 'mod:ts:web/src/api'}
+  - {id: "new:route:POST /orders/:id/refund", kind: route, label: '/orders/:id/refund', module: 'mod:go:shop/cmd/server', entry: true, method: POST}
+  - {id: 'new:orders.Service.Refund', kind: function, label: Service.Refund, module: 'mod:go:shop/internal/orders'}
+  - {id: 'new:payments.Client.Refund', kind: function, label: Client.Refund, module: 'mod:go:shop/internal/payments'}
+edges:
+  - {from: "page:/orders/:id", to: 'new:RefundButton.onClick'}
+  - {from: 'new:RefundButton.onClick', to: 'new:refundOrder'}
+  - {from: 'new:refundOrder', to: "new:route:POST /orders/:id/refund"}
+  - {from: "new:route:POST /orders/:id/refund", to: "go:shop/internal/auth.(*Handler).RequireUser"}
+  - {from: "new:route:POST /orders/:id/refund", to: 'new:orders.Service.Refund'}
+  - {from: 'new:orders.Service.Refund', to: 'new:payments.Client.Refund'}
+  - {from: 'new:payments.Client.Refund', to: 'ext:stripe', detail: POST /v1/refunds}
+  - {from: 'new:orders.Service.Refund', to: "go:shop/internal/orders.(*Repo).UpdateStatus"}
+  - {from: 'new:orders.Service.Refund', to: 'topic:order.placed'}
+---
+## Why
+Support refunds orders by hand in the Stripe dashboard, so the `orders` table never learns about it.
+
+## Shape
+- **RefundButton** on the order page, support role only.
+- `POST /orders/:id/refund` goes through `RequireUser` like the other order routes.
+- `orders.Service.Refund` owns the rules; `payments.Client.Refund` only talks to Stripe.
+- Reuse `Repo.UpdateStatus` for the status change.
+
+## Open questions
+1. Partial refunds now or later?
+2. Should the webhook confirm the refund instead of trusting the API response?
+
+$ codemap proposal archive gift-cards --json
+{
+  "slug": "gift-cards",
+  "name": "Gift cards!",
+  "status": "archived",
+  "base": "3f2c9e1a",
+  "updated": "2026-11-17",
+  "body": "\n"
+}
+
+$ codemap proposal archive nope
+--- exit 1
+codemap: no proposal "nope" (see codemap proposal list)
+
+$ codemap proposal list
+SLUG             STATUS    PR   UPDATED     NAME
+gift-cards       archived  -    2026-11-17  Gift cards!
+order-search     archived  #57  2026-10-30  Order search
+partial-refunds  open      -    2026-11-17  Partial refunds
+refunds          archived  #91  2026-11-17  Refunds
+
+$ codemap proposal frobnicate
+--- exit 2
+codemap: usage: codemap proposal list | new <name> [--body FILE|-] | archive <slug> [--pr N]  [--root DIR] [--json]
+

@@ -1,0 +1,10 @@
+id:     page:/login
+kind:   page (entry)
+module: web/src/pages
+file:   web/src/main.tsx:9
+
+page /login
+  pages.LoginPage  renders  ...
+
+Tests:
+  (none)
