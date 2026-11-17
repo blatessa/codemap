@@ -29,7 +29,9 @@ func (fakeEvents) Publish(ctx context.Context, topic string, v any) {}
 
 type fakeNotifier struct{}
 
-func (fakeNotifier) SendReceipt(ctx context.Context, to, orderID string, total int64) error { return nil }
+func (fakeNotifier) SendReceipt(ctx context.Context, to, orderID string, total int64) error {
+	return nil
+}
 
 type fakes struct {
 	inventory *fakeInventory

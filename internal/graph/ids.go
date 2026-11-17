@@ -51,9 +51,9 @@ func ExternalID(name string) string { return "ext:" + name }
 func TestID(lang, id string) string { return "test:" + lang + ":" + id }
 
 var (
-	braceParam    = regexp.MustCompile(`\{([^}/]+)\}`)       // {id} or {id:[0-9]+}
-	templateParam = regexp.MustCompile(`\$\{[^}]*\}`)        // ${order.id}
-	colonParam    = regexp.MustCompile(`:([A-Za-z_][\w]*)`)  // :id
+	braceParam    = regexp.MustCompile(`\{([^}/]+)\}`)      // {id} or {id:[0-9]+}
+	templateParam = regexp.MustCompile(`\$\{[^}]*\}`)       // ${order.id}
+	colonParam    = regexp.MustCompile(`:([A-Za-z_][\w]*)`) // :id
 	multiSlash    = regexp.MustCompile(`/{2,}`)
 )
 

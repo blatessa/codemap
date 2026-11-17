@@ -131,7 +131,7 @@ func TestMergeAndFetchResolution(t *testing.T) {
 	}
 	web := &Graph{
 		Modules: []Module{{ID: "mod:ts:web/api", Label: "web/api"}},
-		Nodes: []Node{{ID: "ts:web/api/orders.ts#getOrder", Kind: KindFunction, Label: "getOrder", Module: "mod:ts:web/api"}},
+		Nodes:   []Node{{ID: "ts:web/api/orders.ts#getOrder", Kind: KindFunction, Label: "getOrder", Module: "mod:ts:web/api"}},
 		Edges: []Edge{
 			{From: "ts:web/api/orders.ts#getOrder", To: "route:GET /orders/:param", Type: Fetches},
 			{From: "ts:web/api/orders.ts#getOrder", To: "route:DELETE /nowhere", Type: Fetches},
