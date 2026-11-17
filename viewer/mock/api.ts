@@ -144,6 +144,12 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
     db = load();
     return send(res, 204);
   }
+  // test hook: replace the graph, as if the code changed
+  if (p === '/__mock/graph' && m === 'PUT') {
+    db.graph = (await readBody(req)) as Obj;
+    broadcast('graph-changed', ['(mock)']);
+    return send(res, 204);
+  }
   if (p === '/api/state' && m === 'GET') {
     return send(res, 200, {
       graph: db.graph,
@@ -168,6 +174,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
     let v = await readBody(req);
     if (key === 'layout') v = sortedLayout((v ?? {}) as Obj);
     db.files[key] = v;
+    // like the real server's file watcher, which also sees our own writes
+    broadcast('project-changed', [`.codemap/${key}.${key === 'layout' ? 'json' : 'yaml'}`]);
     return send(res, 200, { version: hash(v) });
   }
   if (p === '/api/proposals' && m === 'GET') return send(res, 200, [...db.proposals.values()]);
@@ -177,6 +185,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
     const cur = db.proposals.get(slug);
     if (m === 'DELETE') {
       db.proposals.delete(slug);
+      broadcast('project-changed', [`.codemap/proposals/${slug}.md`]);
       return send(res, 204);
     }
     if (m === 'PUT') {
@@ -185,6 +194,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
       const v: Obj = { ...((await readBody(req)) as Obj), slug };
       if (!cur && !v.base) v.base = 'HEAD';
       db.proposals.set(slug, v);
+      broadcast('project-changed', [`.codemap/proposals/${slug}.md`]);
       return send(res, 200, { version: hash(v) });
     }
   }

@@ -178,3 +178,87 @@ test('proposing a function and a call writes nodes and edges', async ({ page }) 
   await expect.poll(async () => (await get()).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Cancel', module: 'mod:go:shop/internal/orders' });
   await expect.poll(async () => (await get()).edges).toContainEqual({ from: 'new:Service.Cancel', to: 'go:shop/internal/orders.(*Repo).UpdateStatus' });
 });
+
+test('zooming out merges calls between modules into weighted lines', async ({ page }) => {
+  await search(page, 'Service.Place');
+  await expect(page.locator('#map')).toHaveAttribute('data-far', '0');
+  await expect(page.locator('#map .fn').first()).toBeVisible();
+  while ((await page.locator('#map').getAttribute('data-far')) === '0') await page.locator('#zout').click();
+  await expect(page.locator('#map .fn')).toHaveCount(0);
+  const agg = page.locator('#map path[data-agg]');
+  expect(await agg.count()).toBeGreaterThan(5);
+  const counts = await agg.evaluateAll((ps) => ps.map((p) => Number(p.getAttribute('data-agg'))));
+  expect(Math.max(...counts)).toBeGreaterThan(1);
+});
+
+test('collapse and expand a module', async ({ page }) => {
+  await search(page, 'Service.Place');
+  const toggle = page.locator('#map [data-toggle="mod:go:shop/internal/orders"]');
+  await toggle.click();
+  await expect(page.locator('#map [data-node="go:shop/internal/orders.(*Repo).Insert"]')).toHaveCount(0);
+  await toggle.click();
+  await expect(node(page, 'go:shop/internal/orders.(*Repo).Insert')).toBeVisible();
+});
+
+test('a graph-changed event re-fetches and keeps the selection', async ({ page }) => {
+  await search(page, 'Service.Place');
+  await expect(node(page, 'go:shop/internal/orders.(*Service).Place')).toHaveClass(/\bsel\b/);
+  const g = (await state(page)).graph;
+  g.nodes.push({ id: 'go:shop/internal/orders.(*Service).Refund', kind: 'function', label: 'Service.Refund', module: 'mod:go:shop/internal/orders' });
+  g.edges.push({ from: 'go:shop/internal/orders.(*Service).Place', to: 'go:shop/internal/orders.(*Service).Refund', type: 'calls' });
+  await page.request.put('/__mock/graph', { data: g });
+  await expect(node(page, 'go:shop/internal/orders.(*Service).Refund')).toHaveClass(/\bon\b/);
+  await expect(node(page, 'go:shop/internal/orders.(*Service).Place')).toHaveClass(/\bsel\b/);
+  await expect(page.locator('#drawer').getByRole('button', { name: 'orders.Service.Refund' })).toBeVisible();
+});
+
+test('a write that conflicts with an outside edit reloads that file', async ({ page }) => {
+  // no live updates, so the viewer doesn't hear about the outside edit
+  await page.route('**/api/events', (r) => r.abort());
+  await page.reload();
+  await expect(page.locator('#map [data-box]').first()).toBeVisible();
+  const s = await state(page);
+  const r = await page.request.put('/api/project/views', { data: [{ name: 'Theirs' }], headers: { 'If-Match': s.versions.views } });
+  expect(r.ok()).toBeTruthy();
+  await page.locator('#viewsbtn').click();
+  await page.locator('#v-name').fill('Mine');
+  await page.locator('#v-name').press('Enter');
+  await expect(page.locator('[data-view="Theirs"]')).toBeVisible();
+  await expect(page.locator('[data-view="Mine"]')).toHaveCount(0);
+  expect((await state(page)).project.views).toEqual([{ name: 'Theirs' }]);
+});
+
+test('dragging an area moves its modules and writes the layout', async ({ page }) => {
+  const head = page.locator('#map [data-area="Messaging"]');
+  const before = await mod(page, 'mod:go:shop/internal/notify').boundingBox();
+  const b = await head.boundingBox();
+  await page.mouse.move(b!.x + 30, b!.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(b!.x + 30, b!.y + 108, { steps: 6 });
+  await page.mouse.up();
+  const after = await mod(page, 'mod:go:shop/internal/notify').boundingBox();
+  expect(after!.y - before!.y).toBeGreaterThan(40);
+  await expect.poll(async () => Object.keys((await state(page)).project.layout).length).toBeGreaterThan(10);
+});
+
+test('proposing a module in an area', async ({ page }) => {
+  await openProposal(page, 'Refunds');
+  await page.locator('#addmod').click();
+  await page.locator('#f-area').selectOption('Commerce');
+  await page.locator('#f-name').fill('internal/refunds');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.locator('#map [data-box="new:mod:internal/refunds"]')).toHaveClass(/\bprop\b/);
+  type P = { slug: string; modules: { id: string; area?: string }[] };
+  const get = async () => ((await (await page.request.get('/api/proposals')).json()) as P[]).find((p) => p.slug === 'refunds')!;
+  await expect.poll(async () => (await get()).modules?.[0]?.id).toBe('new:mod:internal/refunds');
+  expect((await get()).modules[0].area).toBe('Commerce');
+});
+
+test('a proposal edge to an ID that no longer exists draws as a faint outline', async ({ page }) => {
+  const s = await state(page);
+  const p = s.project.proposals.find((x: { slug: string }) => x.slug === 'refunds');
+  p.edges.push({ from: 'new:orders.Service.Refund', to: 'go:shop/internal/orders.(*Repo).Gone' });
+  await page.request.put('/api/proposals/refunds', { data: p, headers: { 'If-Match': s.versions['proposals/refunds'] } });
+  await openProposal(page, 'Refunds');
+  await expect(page.locator('[data-node="go:shop/internal/orders.(*Repo).Gone"]')).toHaveClass(/\bghost\b/);
+});
