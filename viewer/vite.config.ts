@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { mockApi } from './mock/api';
+import { mockApi } from './mock/api.ts';
 
 export default defineConfig(({ command }) => ({
   plugins: [react(), ...(command === 'serve' && !process.env.CODEMAP_NO_MOCK ? [mockApi()] : [])],
