@@ -392,7 +392,7 @@ export function moveProposalModule(id: string, at: [number, number]) {
 
 // ---- blocks ----
 
-export function splitBlock(from: string, ids: string[], labels: string[], name: string, at: [number, number]) {
+export function splitBlock(from: string, labels: string[], name: string, at: [number, number]) {
   const s = get();
   const taken = new Set(s.blocks.map((b) => b.id));
   let id = 'block:' + slugify(name),
@@ -401,7 +401,6 @@ export function splitBlock(from: string, ids: string[], labels: string[], name: 
   const block: Block = { id, name, from, match: [...new Set(labels)].map(escapeGlob) };
   const areas = s.areas.map((a) => ((a.modules ?? []).includes(from) ? { ...a, modules: [...(a.modules ?? []), id] } : a));
   set({ blocks: [...s.blocks, block], areas, pos: { ...s.pos, [id]: at }, sel: [id], splitting: null, form: null });
-  void ids;
   persist('blocks');
   persist('areas');
   persist('layout');

@@ -35,8 +35,14 @@ export const CodeBlock = memo(function CodeBlock({ code, start }: { code: string
 });
 
 const cache = new Map<string, Promise<string>>();
+let cacheFor: unknown = null;
 
-function load(rev: string, file: string, from: number, to: number) {
+// load caches snippets until the graph changes (the code may have changed with it).
+function load(rev: string, file: string, from: number, to: number, graph: unknown) {
+  if (graph !== cacheFor) {
+    cache.clear();
+    cacheFor = graph;
+  }
   const key = [rev, file, from, to].join('\0');
   let p = cache.get(key);
   if (!p) {
@@ -47,20 +53,16 @@ function load(rev: string, file: string, from: number, to: number) {
   return p;
 }
 
-export function clearSourceCache() {
-  cache.clear();
-}
-
 // Source fetches lines from /api/source.
 export function Source({ file, from, to }: { file: string; from: number; to?: number }) {
   const rev = useStore((s) => s.rev);
   const graph = useStore((s) => s.graph); // refetch when the graph changes
   const [code, setCode] = useState<string | null>(null);
-  const end = to && to >= from ? to : from + 30;
+  const end = to && to >= from ? to : from; // no end line: show the one line (a route registration, say)
   useEffect(() => {
     let live = true;
     setCode(null);
-    load(rev, file, from, end).then(
+    load(rev, file, from, end, graph).then(
       (c) => live && setCode(c),
       () => live && setCode(''),
     );

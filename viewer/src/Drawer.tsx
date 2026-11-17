@@ -356,7 +356,7 @@ function BoxPanel({ m, id }: { m: Model; id: string }) {
               const p = pos[id] ?? [0, 0];
               const left = own.length - ids.length;
               const labels = ids.map((x) => m.node.get(x)!.row.node.label);
-              splitBlock(id, ids, labels, name, [p[0], p[1] + HEAD + left * ROW + PAD + 34]);
+              splitBlock(id, labels, name, [p[0], p[1] + HEAD + left * ROW + PAD + 34]);
             }}
           />
         ) : (
@@ -497,7 +497,7 @@ function MultiPanel({ m, ids }: { m: Model; ids: string[] }) {
               const p = pos[src!.id] ?? [0, 0];
               const left = own.length - fnIds.length;
               const labels = fnIds.map((x) => m.node.get(x)!.row.node.label);
-              splitBlock(src!.id, fnIds, labels, (src!.label.split('/').pop() ?? src!.label) + ' · new', [p[0], p[1] + HEAD + left * ROW + PAD + 34]);
+              splitBlock(src!.id, labels, (src!.label.split('/').pop() ?? src!.label) + ' · new', [p[0], p[1] + HEAD + left * ROW + PAD + 34]);
             }}
           >
             Split into a new block
