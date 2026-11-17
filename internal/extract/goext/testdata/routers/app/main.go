@@ -40,10 +40,12 @@ func withAuth(next http.Handler) http.Handler { return next }
 
 func GinAuth(c *gin.Context) {}
 func GinRate(c *gin.Context) {}
+func GinLate(c *gin.Context) {}
 
 func EchoLog(next echo.HandlerFunc) echo.HandlerFunc   { return next }
 func EchoAuth(next echo.HandlerFunc) echo.HandlerFunc  { return next }
 func EchoCache(next echo.HandlerFunc) echo.HandlerFunc { return next }
+func EchoLate(next echo.HandlerFunc) echo.HandlerFunc  { return next }
 
 // chi: a router in a struct field, Route/Group/With/Mount, a named callback and
 // an inline handler.
@@ -91,6 +93,10 @@ func ginRoutes(h *Handlers) *gin.Engine {
 	api := r.Group("/api/v2", GinAuth)
 	registerUsers(api.Group("/users"), h)
 	r.Handle("PUT", "/things/:id", h.GinThing)
+	// gin copies middleware when a group or route is created: GinLate doesn't
+	// apply to the routes above.
+	r.Use(GinLate)
+	r.GET("/late", h.GinThing)
 	return r
 }
 
@@ -107,6 +113,8 @@ func echoRoutes(h *Handlers) {
 	g := e.Group("/admin", EchoAuth)
 	g.GET("/stats", h.EchoStats, EchoCache)
 	e.Match([]string{"GET", "POST"}, "/search", h.EchoSearch)
+	// echo's root middleware runs for every route, whenever it was added.
+	e.Use(EchoLate)
 }
 
 // gorilla/mux: Methods chains, sub-routers, Path(…).HandlerFunc.

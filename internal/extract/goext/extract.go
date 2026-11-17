@@ -84,8 +84,10 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 		}
 	}
 	for _, dir := range mods {
+		// One broken module (missing dependencies, a go.mod the go command
+		// rejects) shouldn't hide the rest of the repo.
 		if err := x.extractModule(dir); err != nil {
-			return nil, err
+			Logf("%v", err)
 		}
 	}
 	return x.b.graph(), nil
@@ -149,7 +151,12 @@ type load struct {
 const loadMode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes |
 	packages.NeedTypesInfo | packages.NeedImports | packages.NeedModule
 
-func (x *extractor) extractModule(dir string) error {
+func (x *extractor) extractModule(dir string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("extracting %s: %v", dir, r)
+		}
+	}()
 	pcfg := &packages.Config{Mode: loadMode, Dir: dir, Tests: true}
 	pkgs, err := packages.Load(pcfg, "./...")
 	if err != nil {

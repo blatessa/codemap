@@ -114,6 +114,43 @@ type rnode struct {
 	parent *rnode
 	prefix string
 	mw     []string
+	// upto is how much of the parent's middleware this node inherits: the
+	// parent's len(mw) when the node was created, or -1 for all of it. Most
+	// routers copy middleware when a group or route is created (gin, echo groups,
+	// chi With/Group, fiber, routegroup); gorilla/mux and echo's root apply theirs
+	// to every route whenever it was added, and chi's Mount inherits everything.
+	upto int
+	// global marks routers whose middleware applies to all their routes.
+	global  bool
+	gorilla bool // sub-routers of gorilla routers are global too
+}
+
+func newRoot(fw, typeName string) *rnode {
+	return &rnode{global: fw == "gorilla" || fw == "echo" && typeName == "Echo", gorilla: fw == "gorilla"}
+}
+
+// rootFor returns a root router for a variable of type t.
+func rootFor(t types.Type) *rnode {
+	if p, ok := t.(*types.Pointer); ok {
+		t = p.Elem()
+	}
+	if n, ok := t.(*types.Named); ok && n.Obj().Pkg() != nil {
+		return newRoot(framework(n.Obj().Pkg().Path()), n.Obj().Name())
+	}
+	return &rnode{}
+}
+
+// child returns a group of r with the middleware r has now.
+func (n *rnode) child(prefix string, mw []string) *rnode {
+	return &rnode{parent: n, prefix: prefix, mw: mw, upto: n.snapshot(), global: n.gorilla, gorilla: n.gorilla}
+}
+
+// snapshot is the amount of n's middleware a group or route created now inherits.
+func (n *rnode) snapshot() int {
+	if n.global {
+		return -1
+	}
+	return len(n.mw)
 }
 
 func (n *rnode) fullPrefix() string {
@@ -123,15 +160,22 @@ func (n *rnode) fullPrefix() string {
 	return n.parent.fullPrefix() + n.prefix
 }
 
-func (n *rnode) chain() []string {
+// chain returns the middleware a route sees: the ancestors' inherited
+// middleware followed by n's first k entries (all of them for k < 0).
+func (n *rnode) chain(k int) []string {
 	if n == nil {
 		return nil
 	}
-	return append(n.parent.chain(), n.mw...)
+	own := n.mw
+	if k >= 0 && k < len(own) {
+		own = own[:k]
+	}
+	return append(n.parent.chain(n.upto), own...)
 }
 
 type routeReg struct {
 	node    *rnode
+	upto    int // node.snapshot() at registration
 	method  string
 	path    string
 	mw      []string
@@ -430,7 +474,7 @@ func (a *routeAnalyzer) eval1(e ast.Expr, sc *rscope) *rnode {
 			return r
 		}
 		if _, ok := o.(*types.Var); ok && isRouterType(o.Type()) {
-			r := &rnode{}
+			r := rootFor(o.Type())
 			if isPackageLevel(o) {
 				a.globals[o] = r
 			} else {
@@ -455,7 +499,7 @@ func (a *routeAnalyzer) eval1(e ast.Expr, sc *rscope) *rnode {
 			return r
 		}
 		if _, ok := o.(*types.Var); ok && isRouterType(o.Type()) {
-			r := &rnode{}
+			r := rootFor(o.Type())
 			a.globals[o] = r
 			return r
 		}
@@ -484,7 +528,11 @@ func (a *routeAnalyzer) evalCall(call *ast.CallExpr, sc *rscope) *rnode {
 	name := callee.Name()
 	if callee.Signature().Recv() == nil {
 		if routerConstructors[fw][name] {
-			return &rnode{}
+			r := newRoot(fw, "")
+			if res := callee.Signature().Results(); res.Len() > 0 {
+				r = rootFor(res.At(0).Type())
+			}
+			return r
 		}
 		if fw == "routegroup" && name == "Mount" && len(call.Args) == 2 {
 			p, _ := constString(info, call.Args[1])
@@ -512,23 +560,23 @@ func (a *routeAnalyzer) evalCall(call *ast.CallExpr, sc *rscope) *rnode {
 	}
 	switch {
 	case fw == "chi" && name == "With":
-		return &rnode{parent: recv, mw: a.handlerIDs(call.Args, sc)}
+		return recv.child("", a.handlerIDs(call.Args, sc))
 	case fw == "routegroup" && name == "Mount":
-		return &rnode{parent: recv, prefix: str(0)}
+		return recv.child(str(0), nil)
 	case fw == "routegroup" && name == "Group":
-		return &rnode{parent: recv}
+		return recv.child("", nil)
 	case fw == "routegroup" && name == "With":
-		return &rnode{parent: recv, mw: a.handlerIDs(call.Args, sc)}
+		return recv.child("", a.handlerIDs(call.Args, sc))
 	case fw == "chi" && name == "Group":
-		return &rnode{parent: recv}
+		return recv.child("", nil)
 	case (fw == "chi" || fw == "fiber") && name == "Route":
-		return &rnode{parent: recv, prefix: str(0)}
+		return recv.child(str(0), nil)
 	case (fw == "echo" || fw == "gin" || fw == "fiber") && name == "Group":
 		var mw []string
 		if len(call.Args) > 1 {
 			mw = a.handlerIDs(call.Args[1:], sc)
 		}
-		return &rnode{parent: recv, prefix: str(0), mw: mw}
+		return recv.child(str(0), mw)
 	}
 	if sig := callee.Signature(); sig.Results().Len() == 1 && isRouterType(sig.Results().At(0).Type()) {
 		return recv // methods that return the same router, like gin's Use
@@ -586,7 +634,7 @@ func (a *routeAnalyzer) gorillaSubrouter(x ast.Expr, sc *rscope) *rnode {
 				prefix = p + prefix
 			}
 			if parent := a.eval(sel.X, sc); parent != nil {
-				return &rnode{parent: parent, prefix: prefix}
+				return parent.child(prefix, nil)
 			}
 			return nil
 		}
@@ -718,7 +766,7 @@ func (a *routeAnalyzer) call(call *ast.CallExpr, sc *rscope) {
 				return
 			}
 			if child := a.eval(args[1], sc); child != nil && child.parent == nil && child != recv {
-				child.parent, child.prefix = recv, p
+				child.parent, child.prefix, child.upto = recv, p, -1
 				return
 			}
 			a.register(call, sc, recv, "ANY", strings.TrimSuffix(p, "/")+"/*", args[1:], nil)
@@ -801,7 +849,7 @@ func (a *routeAnalyzer) call(call *ast.CallExpr, sc *rscope) {
 		case name == "Route" && len(args) == 1:
 			// Route configures a new group when called on the root bundle; treating
 			// it as a group everywhere keeps its middleware off sibling routes.
-			a.callback(args[0], &rnode{parent: recv}, sc)
+			a.callback(args[0], recv.child("", nil), sc)
 		case name == "Use":
 			recv.mw = append(recv.mw, a.handlerIDs(args, sc)...)
 		}
@@ -938,7 +986,7 @@ func splitServeMuxPattern(pat string) (method, path string) {
 func (a *routeAnalyzer) register(call *ast.CallExpr, sc *rscope, r *rnode, method, path string, handler, mw []ast.Expr) {
 	file, line := a.l.pos(call.Pos())
 	a.routes = append(a.routes, routeReg{
-		node: r, method: method, path: path,
+		node: r, upto: r.snapshot(), method: method, path: path,
 		mw: a.handlerIDs(mw, sc), handler: a.handlerIDs(handler, sc),
 		module: sc.mod, file: file, line: line,
 	})
@@ -953,7 +1001,7 @@ func (a *routeAnalyzer) emit() {
 			ID: id, Kind: graph.KindRoute, Label: full, Module: rt.module, File: rt.file, Line: rt.line,
 			Entry: true, Fields: map[string]any{"method": rt.method},
 		})
-		for _, list := range [][]string{rt.node.chain(), rt.mw, rt.handler} {
+		for _, list := range [][]string{rt.node.chain(rt.upto), rt.mw, rt.handler} {
 			for _, to := range list {
 				b.addEdge(graph.Edge{From: id, To: to, Type: graph.Calls, File: rt.file, Line: rt.line})
 			}

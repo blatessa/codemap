@@ -41,10 +41,11 @@ func TestRouters(t *testing.T) {
 		"route:GET /api/v2/users/:id": "(*Handlers).GinUser GinAuth GinRate",
 		"route:POST /api/v2/users":    "(*Handlers).GinCreate GinAuth",
 		"route:PUT /things/:id":       "(*Handlers).GinThing",
+		"route:GET /late":             "(*Handlers).GinThing GinLate",
 		// echo
-		"route:GET /admin/stats": "(*Handlers).EchoStats EchoAuth EchoCache EchoLog",
-		"route:GET /search":      "(*Handlers).EchoSearch EchoLog",
-		"route:POST /search":     "(*Handlers).EchoSearch EchoLog",
+		"route:GET /admin/stats": "(*Handlers).EchoStats EchoAuth EchoCache EchoLate EchoLog",
+		"route:GET /search":      "(*Handlers).EchoSearch EchoLate EchoLog",
+		"route:POST /search":     "(*Handlers).EchoSearch EchoLate EchoLog",
 		// gorilla/mux
 		"route:GET /products/:id": "(*Handlers).Product MuxLog",
 		"route:PUT /products/:id": "(*Handlers).Product MuxLog",
