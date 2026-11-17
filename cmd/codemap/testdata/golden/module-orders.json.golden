@@ -51,7 +51,6 @@
       "module": "mod:go:shop/internal/orders",
       "file": "internal/orders/handler.go",
       "line": 21,
-      "endLine": 36,
       "doc": "NewHandler returns a handler."
     },
     {
@@ -109,7 +108,6 @@
       "module": "mod:go:shop/internal/orders",
       "file": "internal/orders/repo.go",
       "line": 13,
-      "endLine": 22,
       "doc": "NewRepo returns a repo on db."
     },
     {
@@ -178,8 +176,8 @@
       "label": "TestPlace_ChargesAndInserts",
       "module": "mod:go:shop/internal/orders",
       "file": "internal/orders/service_test.go",
-      "line": 51,
-      "endLine": 60
+      "line": 53,
+      "endLine": 62
     },
     {
       "id": "test:go:shop/internal/orders.TestPlace_OutOfStock",
@@ -187,8 +185,8 @@
       "label": "TestPlace_OutOfStock",
       "module": "mod:go:shop/internal/orders",
       "file": "internal/orders/service_test.go",
-      "line": 62,
-      "endLine": 72
+      "line": 64,
+      "endLine": 74
     }
   ],
   "usedBy": [

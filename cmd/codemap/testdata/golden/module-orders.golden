@@ -18,8 +18,8 @@ Contains (15):
   NewService                   function  internal/orders/service.go:42
   Service.Place                function  internal/orders/service.go:48
   Service.MarkPaid             function  internal/orders/service.go:65
-  TestPlace_ChargesAndInserts  test      internal/orders/service_test.go:51
-  TestPlace_OutOfStock         test      internal/orders/service_test.go:62
+  TestPlace_ChargesAndInserts  test      internal/orders/service_test.go:53
+  TestPlace_OutOfStock         test      internal/orders/service_test.go:64
 
 Depends on:
   database            3 calls

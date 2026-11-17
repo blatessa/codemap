@@ -17,5 +17,5 @@ Reached by:
   POST /webhooks/stripe
 
 Tests:
-  test:go:shop/internal/orders.TestPlace_ChargesAndInserts  internal/orders/service_test.go:51
-  test:go:shop/internal/orders.TestPlace_OutOfStock  internal/orders/service_test.go:62
+  test:go:shop/internal/orders.TestPlace_ChargesAndInserts  internal/orders/service_test.go:53
+  test:go:shop/internal/orders.TestPlace_OutOfStock  internal/orders/service_test.go:64
