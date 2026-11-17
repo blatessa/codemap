@@ -533,9 +533,11 @@ export function extract(repo: string, cfg: Config, warn: (s: string) => void = (
       if ((ts.isIdentifier(e) || ts.isPropertyAccessExpression(e)) && depth < 4) {
         const s = symOf(ts.isPropertyAccessExpression(e) ? e.name : e);
         const d = s && unalias(s).declarations?.[0];
+        // A const, or a property of an object literal (`paths.home.path`).
         if (d && ts.isVariableDeclaration(d) && d.initializer && ts.getCombinedNodeFlags(d) & ts.NodeFlags.Const) {
           return constParts(d.initializer, depth + 1);
         }
+        if (d && ts.isPropertyAssignment(d) && ts.isObjectLiteralExpression(d.parent)) return constParts(d.initializer, depth + 1);
       }
       return null;
     };
@@ -575,12 +577,22 @@ export function extract(repo: string, cfg: Config, warn: (s: string) => void = (
       }
       return undefined;
     };
+    // `axios`, or whatever name the default export of "axios" was imported as.
+    const isAxiosRef = (e: ts.Expression): boolean => {
+      e = unwrapExpr(e);
+      if (!ts.isIdentifier(e)) return false;
+      if (e.text === "axios") return true;
+      const d = symOf(e)?.declarations?.[0];
+      const imp = d && ts.findAncestor(d, ts.isImportDeclaration);
+      return !!imp && ts.isStringLiteral(imp.moduleSpecifier) && imp.moduleSpecifier.text === "axios";
+    };
+    // A value created by axios.create(…).
     const isAxiosInstance = (e: ts.Expression): boolean => {
-      const s = symOf(e);
+      const s = symOf(ts.isPropertyAccessExpression(e) ? e.name : e);
       const d = s && unalias(s).declarations?.[0];
-      if (!d || !(ts.isVariableDeclaration(d) || ts.isPropertyDeclaration(d)) || !d.initializer) return false;
+      if (!d || !(ts.isVariableDeclaration(d) || ts.isPropertyDeclaration(d) || ts.isPropertyAssignment(d)) || !d.initializer) return false;
       const init = unwrapExpr(d.initializer);
-      return ts.isCallExpression(init) && /(^|\.)axios\.create$/.test(calleeText(init.expression));
+      return ts.isCallExpression(init) && ts.isPropertyAccessExpression(init.expression) && init.expression.name.text === "create" && isAxiosRef(init.expression.expression);
     };
     const detectRequest = (call: ts.CallExpression, sf: ts.SourceFile): Request | null => {
       const callee = calleeText(call.expression);
@@ -596,11 +608,11 @@ export function extract(repo: string, cfg: Config, warn: (s: string) => void = (
       // axios.get(url), axios(config), axios.request(config), and instances from axios.create().
       let verb: string | null = null;
       let isAxios = false;
-      if (callee === "axios") isAxios = true;
+      if (isAxiosRef(call.expression)) isAxios = true;
       else if (ts.isPropertyAccessExpression(call.expression)) {
         const obj = call.expression.expression;
         const name = call.expression.name.text;
-        if (calleeText(obj) === "axios" || isAxiosInstance(obj)) {
+        if (isAxiosRef(obj) || isAxiosInstance(obj)) {
           isAxios = true;
           verb = name === "request" ? null : methodFromName(name);
           if (!verb && name !== "request") return null;

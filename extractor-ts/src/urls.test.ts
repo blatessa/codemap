@@ -25,8 +25,11 @@ test("requestPath", () => {
     [[lit("/orders/"), p("id"), lit("/refund?x="), p("x")], [], { path: "/orders/:param/refund", pretty: "/orders/:id/refund" }],
     // a dynamic base URL in front is dropped
     [[p("API_URL"), lit("/users/"), p("id")], [], { path: "/users/:param", pretty: "/users/:id" }],
-    // scheme and host are dropped
-    [[lit("https://api.example.com/v1/users")], [], { path: "/v1/users", pretty: "/v1/users" }],
+    // literal absolute URLs are other hosts, unless a prefix covers them
+    [[lit("https://api.github.com/repos/x")], [], null],
+    [[lit("//cdn.example.com/x")], [], null],
+    [[lit("https://api.example.com/v1/users")], ["https://api.example.com/v1/"], { path: "/users", pretty: "/users" }],
+    [[lit("https://api.example.com/v1")], ["https://api.example.com/v1"], { path: "/", pretty: "/" }],
     // configured base prefixes are stripped
     [[lit("/api/orders")], ["/api"], { path: "/orders", pretty: "/orders" }],
     [[lit("/api")], ["/api/"], { path: "/", pretty: "/" }],
@@ -38,6 +41,7 @@ test("requestPath", () => {
     [[lit("/"), p("path")], [], null],
     [[p("base"), p("path")], [], null],
     [[lit("not a url")], [], null],
+    [[lit("/images/rocket.jpeg")], [], null],
     // odd parameter expressions get a generic name
     [[lit("/x/"), p("a-b")], [], { path: "/x/:param", pretty: "/x/:param" }],
   ];

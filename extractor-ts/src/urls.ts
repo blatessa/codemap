@@ -29,6 +29,7 @@ export function normalizeRoutePath(p: string): string {
 }
 
 const MARK = "\u0000";
+const STATIC_ASSET = /\.(png|jpe?g|gif|svg|webp|avif|ico|css|js|mjs|map|txt|xml|woff2?|ttf|otf|mp3|mp4|webm|wasm|pdf)$/i;
 
 /** Turns an expression's name into a usable :param name. */
 export function paramName(s: string): string {
@@ -40,8 +41,11 @@ export function paramName(s: string): string {
  *
  * - A dynamic value at the very start that is followed by "/" is treated as an
  *   unknown base URL (`${API_URL}/orders`) and dropped.
- * - A scheme and host (`https://api.example.com`) are dropped.
+ * - A literal absolute URL (`https://api.github.com/…`) is treated as another
+ *   host and returns null, unless one of `prefixes` is a URL it starts with,
+ *   in which case that prefix is stripped.
  * - The query string and fragment are dropped.
+ * - Paths to static assets (`.png`, `.css`, `.woff2`, …) return null.
  * - The first matching prefix in `prefixes` (e.g. "/api") is stripped.
  *
  * Returns the path as it appears in a route ID (dynamic values become `:param`)
@@ -62,7 +66,12 @@ export function requestPath(parts: Part[], prefixes: string[] = []): { path: str
       names.push(paramName(p.param));
     }
   }
-  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#\u0000]*/i, "").replace(/^\/\/[^/?#\u0000]*/, "");
+  // A literal absolute URL is another host unless a configured prefix covers it.
+  if (/^([a-z][a-z0-9+.-]*:)?\/\//i.test(s)) {
+    const pre = prefixes.find((p) => /^[a-z][a-z0-9+.-]*:\/\//i.test(p) && (s === p || s.startsWith(p.replace(/\/$/, "") + "/")));
+    if (!pre) return null;
+    s = s.slice(pre.replace(/\/$/, "").length) || "/";
+  }
   const q = s.search(/[?#]/);
   if (q >= 0) s = s.slice(0, q);
   if (/\s/.test(s)) return null;
@@ -73,7 +82,10 @@ export function requestPath(parts: Part[], prefixes: string[] = []): { path: str
   // Reject anything with no static path segment, like "/${path}".
   const stat = s.split("/").filter((seg) => seg !== "" && !seg.includes(MARK));
   if (stat.length === 0 && s.replace(/\/+$/, "") !== "") return null;
+  // Static assets aren't server routes.
+  if (STATIC_ASSET.test(s)) return null;
   for (let pre of prefixes) {
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(pre)) continue;
     pre = normalizeRoutePath(pre);
     if (pre === "/") continue;
     if (s === pre || s === pre + "/") {

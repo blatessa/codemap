@@ -36,11 +36,12 @@ test("React Router: createBrowserRouter with nested children, Component and lazy
       import { Home } from "./pages/Home";
       import { Shell } from "@/pages/Shell";
       import { Order } from "./pages/Order";
+      const paths = { orders: { path: "orders" } } as const;
       const orderRoutes = [{ path: ":id", Component: Order }];
       export const router = createBrowserRouter([
         { path: "/", element: <Shell />, children: [
           { index: true, element: <Home /> },
-          { path: "orders", children: orderRoutes },
+          { path: paths.orders.path, children: orderRoutes },
           { path: "lazy", lazy: () => import("./pages/Lazy") },
         ] },
       ]);`,
@@ -116,10 +117,13 @@ test("fetch and axios", () => {
       export async function d() { return axios.post("/d", {}); }
       export async function e() { return api.delete("/e"); }
       export async function f() { return axios({ url: "/f", method: "patch" }); }
-      export async function g(url: string) { return fetch(url); }`,
+      export async function g(url: string) { return fetch(url); }
+      export async function h() { return fetch("https://api.github.com/repos/x"); }`,
+    "src/inst.ts": `import Axios from "axios";\nexport const client = Axios.create({});`,
+    "src/use.ts": `import { client } from "./inst";\nexport const i = () => client.put("/i");`,
   });
   const f = g.edges.filter((e) => e.type === "fetches").map((e) => `${e.from.split("#")[1]} ${e.to}`).sort();
-  assert.deepEqual(f, ["a route:GET /a", "b route:PUT /b/:param", "d route:POST /d", "e route:DELETE /e", "f route:PATCH /f"]);
+  assert.deepEqual(f, ["a route:GET /a", "b route:PUT /b/:param", "d route:POST /d", "e route:DELETE /e", "f route:PATCH /f", "i route:PUT /i"]);
 });
 
 test("functions: inner handlers, hooks, object methods, classes, docs", () => {
@@ -208,4 +212,16 @@ test("module depth", () => {
   const g = run({ "src/a/b/c.ts": "export function c() {}" }, { module_depth: 2 });
   assert.deepEqual(g.modules.map((m) => m.id), ["mod:ts:src/a"]);
   assert.equal(g.nodes[0].module, "mod:ts:src/a");
+});
+
+test("solution tsconfig with project references (Vite template)", () => {
+  const g = run({
+    "tsconfig.json": JSON.stringify({ files: [], references: [{ path: "./tsconfig.app.json" }, { path: "./tsconfig.node.json" }] }),
+    "tsconfig.app.json": JSON.stringify({ compilerOptions: { jsx: "react-jsx" }, include: ["src"] }),
+    "tsconfig.node.json": JSON.stringify({ include: ["vite.config.ts"] }),
+    "src/App.tsx": "export function App() { return <div/>; }",
+    "vite.config.ts": "export default { plugins: [] };",
+  });
+  assert.ok(ids(g).has("ts:src/App.tsx#App"));
+  assert.equal(g.nodes.find((n) => n.id === "ts:src/App.tsx#App")?.kind, "component");
 });
