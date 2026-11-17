@@ -344,7 +344,8 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   // ---- view: fit, center, zoom ----
   const size = () => {
     const r = svgRef.current!.getBoundingClientRect();
-    const W = r.width - (drawerOpen && r.width > 900 ? 400 : 0);
+    const dw = document.getElementById("drawer");
+    const W = r.width - (drawerOpen && r.width > 900 ? dw?.offsetWidth || 436 : 0);
     return { r, W };
   };
   const fit = useCallback(() => {
