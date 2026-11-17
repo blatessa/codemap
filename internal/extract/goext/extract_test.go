@@ -159,6 +159,39 @@ func TestShopExpected(t *testing.T) {
 	}
 }
 
+// TestShopMerged merges the extracted graph with .codemap/external.yaml as
+// build.Load does, and checks the traces the viewer relies on.
+func TestShopMerged(t *testing.T) {
+	g := extractShop(t)
+	proj, err := project.Load(shopRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decl := proj.External.ToGraph()
+	project.FillDeclaredDefaults(decl, g)
+	m := graph.Merge(g, decl)
+	for _, e := range graph.Validate(m) {
+		t.Error(e)
+	}
+	ix := graph.NewIndex(m)
+	start := "route:POST /orders"
+	down := ix.Down(start, ix.StopAtExternal(start))
+	for _, want := range []string{"go:shop/internal/orders.(*Service).Place", "table:orders", "table:stock", "ext:stripe", "topic:order.placed"} {
+		if !down.Nodes[want] {
+			t.Errorf("%s should reach %s", start, want)
+		}
+	}
+	if down.Nodes["go:shop/internal/payments.(*Handler).HandleWebhook"] {
+		t.Error("POST /orders should not trace through Stripe into the webhook")
+	}
+	if got := ix.EntriesReaching("go:shop/internal/orders.(*Repo).UpdateStatus"); len(got) != 1 || got[0] != "route:POST /webhooks/stripe" {
+		t.Errorf("UpdateStatus should only be reached from the webhook, got %v", got)
+	}
+	if tests := ix.TestsReaching("go:shop/internal/inventory.(*Store).Reserve"); len(tests) == 0 {
+		t.Error("no tests reach Store.Reserve")
+	}
+}
+
 func TestShopGolden(t *testing.T) {
 	g := extractShop(t)
 	var buf bytes.Buffer

@@ -389,8 +389,13 @@ func (a *routeAnalyzer) walk(body ast.Node, sc *rscope) {
 		switch s := n.(type) {
 		case *ast.FuncLit:
 			// A literal taking a router is a callback (chi Route/Group): it's
-			// walked when it's passed, with the router it receives.
-			return !a.handled[s] && !takesRouter(s, info)
+			// walked when it's passed, with the router it receives. Other
+			// literals are walked in a child scope, so their returns aren't
+			// the function's.
+			if !a.handled[s] && !takesRouter(s, info) {
+				a.walk(s.Body, &rscope{fnCtx: sc.fnCtx, parent: sc, vars: map[types.Object]*rnode{}, evals: map[ast.Expr]*rnode{}, chainP: sc.chainP})
+			}
+			return false
 		case *ast.AssignStmt:
 			if len(s.Lhs) == len(s.Rhs) {
 				for i, lhs := range s.Lhs {
