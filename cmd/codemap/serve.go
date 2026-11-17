@@ -17,21 +17,14 @@ import (
 
 	"codemap/internal/build"
 	"codemap/internal/server"
+	"codemap/internal/web"
 )
 
 func init() { commands["serve"] = runServe }
 
-// viewerAssets returns the embedded viewer, or nil for the placeholder page.
-//
-// INTEGRATION: once codemap/internal/web exists, import it and return its files:
-//
-//	return web.Dist // the server uses dist/ inside it automatically
-//
-// Extractors are not passed here: they register in build.Extractors, which
-// build.Load (and so the server) already uses.
-func viewerAssets() fs.FS {
-	return nil
-}
+// viewerAssets returns the embedded viewer. The server uses dist/ inside it.
+// Extractors register in build.Extractors (extractors.go).
+func viewerAssets() fs.FS { return web.Dist }
 
 // runServe implements `codemap serve [--root .] [--graph FILE] [--addr 127.0.0.1] [--port 7777] [--no-open]`.
 func runServe(args []string) error {

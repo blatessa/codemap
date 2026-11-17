@@ -352,6 +352,7 @@ edges:
 Support refunds orders by hand in the Stripe dashboard…
 ```
 
+- A proposed module may carry `pos: [x, y]` for where the viewer draws it.
 - Edges and nodes can refer to real IDs or `new:` IDs. Proposal nodes accept any fields
   (duck typing).
 - **Open** proposals draw over the current graph. A real ID that no longer exists shows as a
