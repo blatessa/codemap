@@ -107,11 +107,13 @@ func TestQueryGolden(t *testing.T) {
 
 func TestCommonFlagErrors(t *testing.T) {
 	t.Chdir(filepath.Join("..", "..", "testdata", "shop"))
-	got, code := runCmd(runShow, []string{"POST /orders"})
-	if code != 1 || !strings.Contains(got, "--graph FILE") {
-		t.Errorf("without --graph: exit %d\n%s", code, got)
+	// Without --graph the real extractors run, and should agree with the expected graph.
+	real, code := runCmd(runShow, []string{"POST /orders"})
+	want, _ := runCmd(runShow, []string{"POST /orders", "--graph", "../shop.expected.json"})
+	if code != 0 || real != want {
+		t.Errorf("extracted graph disagrees with the expected graph: exit %d\n%s", code, real)
 	}
-	got, code = runCmd(runShow, []string{"POST /orders", "--graph", "../shop.expected.json", "--rev", "HEAD"})
+	got, code := runCmd(runShow, []string{"POST /orders", "--graph", "../shop.expected.json", "--rev", "HEAD"})
 	if code != 1 || !strings.Contains(got, `only "worktree"`) {
 		t.Errorf("--rev HEAD: exit %d\n%s", code, got)
 	}

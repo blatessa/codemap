@@ -52,9 +52,9 @@ current direction, not as fixed rules. Any of it can change as the tool gets bui
 ```
 cmd/codemap/            main, CLI commands
 internal/graph/         types, IDs, merge, queries (callers, reach, tree)
-internal/extract/go/    Go extractor
-internal/extract/ts/    runs the embedded TS extractor, decodes its output
-internal/extract/sql/   SQL string classification + migration parser
+internal/extract/goext/  Go extractor
+internal/extract/tsext/  runs the embedded TS extractor, decodes its output
+internal/extract/sqlext/ SQL string classification + migration parser
 internal/extract/declared/  reads .codemap/external.yaml
 internal/project/       loads/saves .codemap/* files
 internal/gitrev/        builds a graph at a commit, cache

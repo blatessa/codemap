@@ -146,10 +146,17 @@ func addrHost(addr string) string {
 // Root returns the absolute repo root.
 func (s *Server) Root() string { return s.root }
 
-// rebuildGraph runs build.Load and replaces the cached graph. On error the
-// previous graph is kept.
+// rebuildGraph builds the graph and replaces the cached one. On error the
+// previous graph is kept. It uses the current .codemap/ if it loads, and the last
+// good project otherwise, so a broken .codemap file doesn't block rebuilds.
 func (s *Server) rebuildGraph() error {
-	g, _, err := build.Load(s.root, build.Options{GraphFile: s.graphFile})
+	proj, err := project.Load(s.root)
+	if err != nil {
+		s.mu.RLock()
+		proj = s.proj
+		s.mu.RUnlock()
+	}
+	g, err := build.Graph(s.root, proj, build.Options{GraphFile: s.graphFile})
 	if err != nil {
 		return err
 	}

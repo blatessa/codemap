@@ -35,26 +35,40 @@ func Load(root string, opt Options) (*graph.Graph, *project.Project, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	g, err := Graph(root, proj, opt)
+	if err != nil {
+		return nil, nil, err
+	}
+	return g, proj, nil
+}
+
+// Graph builds the merged graph using an already-loaded project (its config and
+// external.yaml). Callers that keep the last good project, like the server, use
+// this so a broken .codemap file doesn't block graph rebuilds.
+func Graph(root string, proj *project.Project, opt Options) (*graph.Graph, error) {
+	if proj == nil {
+		proj = &project.Project{}
+	}
 	var parts []*graph.Graph
 	if opt.GraphFile != "" {
 		f, err := os.Open(opt.GraphFile)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		g, err := graph.Decode(f)
 		f.Close()
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", opt.GraphFile, err)
+			return nil, fmt.Errorf("%s: %w", opt.GraphFile, err)
 		}
 		parts = append(parts, g)
 	} else {
 		if len(Extractors) == 0 {
-			return nil, nil, ErrNoExtractors
+			return nil, ErrNoExtractors
 		}
 		for _, x := range Extractors {
 			g, err := x(root, proj.Config)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
 			parts = append(parts, g)
 		}
@@ -66,5 +80,5 @@ func Load(root string, opt Options) (*graph.Graph, *project.Project, error) {
 	if g.Rev == "" {
 		g.Rev = "worktree"
 	}
-	return g, proj, nil
+	return g, nil
 }

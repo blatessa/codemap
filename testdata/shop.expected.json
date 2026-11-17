@@ -1320,6 +1320,11 @@
       "detail": "client.New"
     },
     {
+      "from": "go:shop/internal/sched.(*Scheduler).Every",
+      "to": "go:shop/internal/inventory.(*Store).ReleaseExpired",
+      "type": "calls"
+    },
+    {
       "from": "job:expire-carts",
       "to": "go:shop/internal/inventory.(*Store).ReleaseExpired",
       "type": "calls"

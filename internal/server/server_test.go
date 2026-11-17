@@ -653,7 +653,7 @@ func TestEvents(t *testing.T) {
 		t.Errorf("should keep last good areas: %+v", st.Project.Areas)
 	}
 
-	// build.Load also reads .codemap, so fix it before rebuilding the graph.
+	// Fix it again before the next steps.
 	os.WriteFile(filepath.Join(root, ".codemap/areas.yaml"), []byte("- name: Only\n  modules: []\n"), 0o644)
 	ev.wait(t, "project-changed")
 
