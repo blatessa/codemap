@@ -24,13 +24,13 @@ const Dir = ".codemap"
 
 // Project is everything in .codemap/.
 type Project struct {
-	Config    Config
-	Areas     []Area
-	Blocks    []Block
-	Layout    Layout
-	Views     []View
-	External  External
-	Proposals []*Proposal
+	Config    Config      `json:"config"`
+	Areas     []Area      `json:"areas"`
+	Blocks    []Block     `json:"blocks"`
+	Layout    Layout      `json:"layout"`
+	Views     []View      `json:"views"`
+	External  External    `json:"external"`
+	Proposals []*Proposal `json:"proposals"`
 }
 
 // Area is a user-defined group of modules and blocks.

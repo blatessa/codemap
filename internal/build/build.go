@@ -1,0 +1,70 @@
+// Package build produces the merged graph for a repo: it runs the extractors,
+// merges their partial graphs with the declared nodes from .codemap/external.yaml,
+// and loads the rest of .codemap/.
+package build
+
+import (
+	"errors"
+	"fmt"
+	"os"
+
+	"codemap/internal/graph"
+	"codemap/internal/project"
+)
+
+// Extractor produces a partial graph for the repo at root.
+type Extractor func(root string, cfg project.Config) (*graph.Graph, error)
+
+// Extractors run in order. The Go and TypeScript extractors are added here when
+// their workstreams land (PLAN.md §12).
+var Extractors []Extractor
+
+// Options controls Load.
+type Options struct {
+	// GraphFile, if set, is read instead of running extractors. Useful for
+	// developing the server, CLI and viewer against testdata/shop.expected.json.
+	GraphFile string
+}
+
+// ErrNoExtractors is returned when there is nothing to build a graph from.
+var ErrNoExtractors = errors.New("no extractors are wired in yet; pass a graph file")
+
+// Load builds the merged graph and loads .codemap/ for the repo at root.
+func Load(root string, opt Options) (*graph.Graph, *project.Project, error) {
+	proj, err := project.Load(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	var parts []*graph.Graph
+	if opt.GraphFile != "" {
+		f, err := os.Open(opt.GraphFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		g, err := graph.Decode(f)
+		f.Close()
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", opt.GraphFile, err)
+		}
+		parts = append(parts, g)
+	} else {
+		if len(Extractors) == 0 {
+			return nil, nil, ErrNoExtractors
+		}
+		for _, x := range Extractors {
+			g, err := x(root, proj.Config)
+			if err != nil {
+				return nil, nil, err
+			}
+			parts = append(parts, g)
+		}
+	}
+	base := graph.Merge(parts...)
+	decl := proj.External.ToGraph()
+	project.FillDeclaredDefaults(decl, base)
+	g := graph.Merge(base, decl)
+	if g.Rev == "" {
+		g.Rev = "worktree"
+	}
+	return g, proj, nil
+}

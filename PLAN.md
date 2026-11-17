@@ -384,14 +384,21 @@ Support refunds orders by hand in the Stripe dashboard…
 Listens on localhost only (default `127.0.0.1:7777`), serves the embedded viewer, and opens
 the browser.
 
-| Endpoint | Purpose |
-|---|---|
-| `GET /api/graph?rev=` | Merged graph + `.codemap` state for a rev (default worktree) |
-| `GET /api/source?rev=&file=&from=&to=` | Source lines for snippets |
-| `GET /api/project/{file}` · `PUT /api/project/{file}` | Read/write a `.codemap/` file (worktree only; path allow-list; atomic write) |
-| `GET /api/proposals` · `GET/PUT/DELETE /api/proposals/{slug}` | List, read, write and delete proposal files |
-| `POST /api/open` `{file, line}` | Launch the editor command |
-| `GET /api/events` (SSE) | `graph-changed` and `project-changed` events |
+The server and viewer share this JSON contract. All bodies are JSON. Go types are in
+`internal/graph` and `internal/project`.
+
+| Endpoint | Request | Response |
+|---|---|---|
+| `GET /api/state?rev=` | | `{graph: Graph, project: {config, areas, blocks, layout, views, external, proposals}, versions: {areas, blocks, layout, views, external: "<hash>", "proposals/<slug>": "<hash>"}}`. The default rev is the worktree. |
+| `PUT /api/project/{areas\|blocks\|layout\|views\|external}` | the value (array or object), header `If-Match: <version>` | `{version}`. Returns `409 {version, value}` if the file changed on disk. The server writes YAML (JSON for layout) atomically. |
+| `GET /api/proposals` | | `[Proposal]`, with the body included |
+| `PUT /api/proposals/{slug}` | `Proposal`, `If-Match` (optional for a new proposal) | `{version}` or `409`. A new proposal gets `base` set to `HEAD`. |
+| `DELETE /api/proposals/{slug}` | | `204` |
+| `GET /api/source?rev=&file=&from=&to=` | | `{file, from, lines: [string]}` |
+| `POST /api/open` | `{file, line}` | `204`. Runs `config.editor`, or `$VISUAL`/`$EDITOR`. |
+| `GET /api/events` (SSE) | | events `graph-changed` and `project-changed` (data `{files: [...]}`) |
+
+Writes only happen in worktree mode. A request for any other rev gets `405`.
 
 - **Watching:** `fsnotify` on the repo (respecting exclude and `.gitignore`), debounced by
   300 ms. Rebuild only the extractors whose files changed: a Go change re-runs Go, a TS change
