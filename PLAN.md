@@ -55,7 +55,6 @@ internal/graph/         types, IDs, merge, queries (callers, reach, tree)
 internal/extract/goext/  Go extractor
 internal/extract/tsext/  runs the embedded TS extractor, decodes its output
 internal/extract/sqlext/ SQL string classification + migration parser
-internal/project/        .codemap/ files, including external.yaml → graph
 internal/build/          runs extractors and merges with declared nodes
 internal/project/       loads/saves .codemap/* files
 internal/gitrev/        builds a graph at a commit, cache
