@@ -544,7 +544,7 @@ function FormPanel({ m }: { m: Model }) {
         const p = pos[id],
           bx = m.box.get(id);
         if (!p || !bx) continue;
-        const bottom = p[1] + HEAD + Math.max(bx.rows.length, 1) * ROW + PAD;
+        const bottom = p[1] + bx.defH;
         if (bottom > low) {
           low = bottom;
           at = [p[0], bottom + (area ? 24 : 70)];

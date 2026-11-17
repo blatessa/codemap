@@ -28,6 +28,7 @@ export interface S {
   sel: string[];
   hover: string | null;
   collapsed: Set<string>;
+  expanded: Set<string>; // boxes showing their internal rows too
   focus: boolean;
   view: { x: number; y: number; k: number };
   touchedView: boolean;
@@ -59,6 +60,7 @@ export const useStore = create<S>(() => ({
   sel: [],
   hover: null,
   collapsed: new Set(),
+  expanded: new Set(),
   focus: false,
   view: { x: 0, y: 0, k: 1 },
   touchedView: false,
@@ -160,7 +162,7 @@ export async function ensureLayout() {
   const run = ++layoutRun;
   const links: [string, string][] = m.edges.map((e) => [m.node.get(e.from)!.box.id, m.node.get(e.to)!.box.id]);
   const res = await layoutUnplaced(
-    real.map((b) => ({ id: b.id, w: b.w, rows: b.rows.length, entry: b.hasEntry, external: b.external })),
+    real.map((b) => ({ id: b.id, w: b.w, h: b.defH, entry: b.hasEntry, external: b.external, shared: b.shared })),
     links,
     s.areas.map((a) => ({ name: a.name, modules: a.modules ?? [] })),
     s.pos,
@@ -363,18 +365,30 @@ export function removeFromArea(name: string, id: string, rectOf: RectOf) {
   persist('layout');
 }
 
-// dropInto moves a box into the area under it (or out of all areas).
-export function dropInto(id: string, target: string | null, rectOf: RectOf) {
+// dropBox ends a box drag in one update: the box moves to `at` and joins `target`
+// (null: no area). Dropping on an area it's already in keeps it there.
+export function dropBox(id: string, at: [number, number], target: string | null, rectOf: RectOf) {
   const s = get();
   const cur = s.areas.filter((a) => (a.modules ?? []).includes(id)).map((a) => a.name);
-  if ((target && cur.length === 1 && cur[0] === target) || (!target && !cur.length)) return;
-  const left = leaveAreas(s.areas, [id], s.pos, rectOf, target ?? undefined);
-  const areas = left.areas.map((a) => (a.name === target && !(a.modules ?? []).includes(id) ? { ...a, modules: [...(a.modules ?? []), id] } : a));
-  set({ areas, pos: left.pos });
-  persist('areas');
+  const stay = target ? cur.includes(target) : !cur.length;
+  if (stay) set({ pos: { ...s.pos, [id]: at } });
+  else {
+    const left = leaveAreas(s.areas, [id], s.pos, rectOf, target ?? undefined);
+    const areas = left.areas.map((a) => (a.name === target && !(a.modules ?? []).includes(id) ? { ...a, modules: [...(a.modules ?? []), id] } : a));
+    set({ areas, pos: { ...left.pos, [id]: at } });
+    persist('areas');
+  }
+  persist('layout');
 }
 
 // ---- positions ----
+
+export function toggleExpanded(id: string) {
+  const e = new Set(get().expanded);
+  if (e.has(id)) e.delete(id);
+  else e.add(id);
+  set({ expanded: e });
+}
 
 export function movePos(updates: Pos) {
   set({ pos: { ...get().pos, ...updates } });
@@ -429,6 +443,7 @@ export function mergeBlock(id: string) {
 export function saveView(name: string) {
   const s = get();
   const v: View = { name, selection: [...s.sel], focus: s.focus && s.sel.length > 0, collapsed: [...s.collapsed] };
+  if (s.expanded.size) v.expanded = [...s.expanded];
   set({ views: [...s.views.filter((x) => x.name !== name), v] });
   persist('views');
 }
@@ -439,6 +454,7 @@ export function applyView(v: View) {
     sel: [...(v.selection ?? [])],
     focus: !!v.focus,
     collapsed: new Set(v.collapsed ?? []),
+    expanded: new Set(v.expanded ?? []),
     form: null,
     connectFrom: null,
     hover: null,

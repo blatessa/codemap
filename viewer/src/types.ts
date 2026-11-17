@@ -62,6 +62,7 @@ export interface View {
   selection?: string[] | null;
   focus?: boolean;
   collapsed?: string[] | null;
+  expanded?: string[] | null;
 }
 
 export type Loose = Record<string, unknown>;

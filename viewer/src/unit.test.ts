@@ -110,3 +110,50 @@ describe('model on the shop fixture', () => {
     expect(mp.edges.some((e) => e.prop && e.to === 'go:shop/gone.Func')).toBe(true);
   });
 });
+
+describe('public rows and shared modules', () => {
+  const g = JSON.parse(readFileSync(new URL('../../testdata/shop.expected.json', import.meta.url), 'utf8')) as Graph;
+
+  test('internal rows are the ones with no edge leaving their box', () => {
+    const m = buildModel(g, [], null);
+    const orders = m.box.get('mod:go:shop/internal/orders')!;
+    expect(orders.rows.filter((r) => !r.pub).map((r) => r.label).sort()).toEqual(['CreateOrder.Total', 'writeError', 'writeJSON']);
+    expect(orders.pub).toBe(orders.rows.length - 3);
+    // a block boundary counts as a module boundary
+    const mb = buildModel(g, [{ id: 'block:repo', name: 'repo', from: 'mod:go:shop/internal/orders', match: ['Repo.*'] }], null);
+    expect(mb.box.get('block:repo')!.rows.every((r) => r.pub)).toBe(true);
+  });
+
+  test('a path keeps its internal rows', () => {
+    const m = buildModel(g, [], null);
+    const S = selectionOf(m, ['go:shop/internal/orders.(*Service).Place'], [])!;
+    expect(S.path.has('go:shop/internal/orders.(CreateOrder).Total')).toBe(true);
+    expect(S.path.has('go:shop/internal/orders.writeJSON')).toBe(false);
+    // selecting a module doesn't open up its internals
+    expect(selectionOf(m, ['mod:go:shop/internal/orders'], [])!.path.size).toBe(0);
+  });
+
+  test('no shop module is shared', () => {
+    expect(buildModel(g, [], null).boxes.filter((b) => b.shared)).toEqual([]);
+  });
+
+  test('a module most others call, and that calls nothing back, is shared', () => {
+    const mods = ['a', 'b', 'c', 'd', 'core'].map((x) => ({ id: 'mod:' + x, label: x }));
+    const nodes = mods.map((mo) => ({ id: mo.label + '.F', kind: 'function', label: 'F', module: mo.id }));
+    nodes.push({ id: 'core.T', kind: 'test', label: 'T', module: 'mod:core' });
+    const edges = [
+      { from: 'a.F', to: 'b.F', type: 'calls' },
+      { from: 'a.F', to: 'core.F', type: 'calls' },
+      { from: 'b.F', to: 'core.F', type: 'calls' },
+      { from: 'c.F', to: 'core.F', type: 'calls' },
+      { from: 'd.F', to: 'c.F', type: 'calls' },
+    ];
+    const m = buildModel({ version: 1, modules: mods, nodes, edges }, [], null);
+    expect(m.box.get('mod:core')!.shared).toBe(true);
+    expect(m.box.get('mod:core')!.usedBy).toBe(3);
+    expect(m.boxes.filter((b) => b.shared).map((b) => b.id)).toEqual(['mod:core']);
+    // calling out to two other modules makes it part of the flow instead
+    edges.push({ from: 'core.F', to: 'a.F', type: 'calls' }, { from: 'core.F', to: 'd.F', type: 'calls' });
+    expect(buildModel({ version: 1, modules: mods, nodes, edges }, [], null).box.get('mod:core')!.shared).toBe(false);
+  });
+});
