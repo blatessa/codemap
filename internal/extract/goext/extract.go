@@ -142,6 +142,8 @@ type load struct {
 	// sites maps a call's Lparen position to its resolved callees (plain variants only).
 	sites map[token.Pos][]*ssa.Function
 	files map[string][]byte // source cache
+
+	queryParams map[*types.Func]int // functions passing a parameter to a DB method → its index
 }
 
 const loadMode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes |
@@ -162,6 +164,7 @@ func (x *extractor) extractModule(dir string) error {
 		pkgByTypes:  map[*types.Package]*packages.Package{},
 		sites:       map[token.Pos][]*ssa.Function{},
 		files:       map[string][]byte{},
+		queryParams: map[*types.Func]int{},
 	}
 	var initial []*packages.Package
 	for _, p := range pkgs {

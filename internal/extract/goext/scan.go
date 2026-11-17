@@ -7,6 +7,7 @@ import (
 	"go/types"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -30,10 +31,54 @@ var DefaultDBMethods = []string{
 
 // fnCtx is the function whose body is being scanned.
 type fnCtx struct {
-	p     *packages.Package
-	id    string // node ID calls are attributed to
-	mod   string
-	exprs map[types.Object]ast.Expr // local variable → last assigned expression
+	p      *packages.Package
+	id     string // node ID calls are attributed to
+	mod    string
+	fn     *types.Func               // the declared function; nil for closures in package vars
+	exprs  map[types.Object]ast.Expr // local variable → last assigned expression
+	consts map[types.Object]string   // local variables assigned exactly once, from a constant string
+	params map[types.Object]int      // parameter → index
+}
+
+func newFnCtx(p *packages.Package, id, mod string, fn *types.Func, ftype *ast.FuncType, body ast.Node) *fnCtx {
+	c := &fnCtx{p: p, id: id, mod: mod, fn: fn, params: map[types.Object]int{}}
+	c.exprs, c.consts = localExprs(body, p.TypesInfo)
+	i := 0
+	for _, f := range ftype.Params.List {
+		if len(f.Names) == 0 {
+			i++
+		}
+		for _, n := range f.Names {
+			if o := p.TypesInfo.Defs[n]; o != nil {
+				c.params[o] = i
+			}
+			i++
+		}
+	}
+	return c
+}
+
+// stringValue returns e's value if it's a constant string or a local variable
+// assigned once from one (query := `SELECT …`).
+func (c *fnCtx) stringValue(e ast.Expr) (string, bool) {
+	if s, ok := constString(c.p.TypesInfo, e); ok {
+		return s, true
+	}
+	if id, ok := ast.Unparen(e).(*ast.Ident); ok {
+		s, ok := c.consts[c.p.TypesInfo.Uses[id]]
+		return s, ok
+	}
+	return "", false
+}
+
+// paramIndex returns the parameter index e refers to, or -1.
+func (c *fnCtx) paramIndex(e ast.Expr) int {
+	if id, ok := ast.Unparen(e).(*ast.Ident); ok {
+		if i, ok := c.params[c.p.TypesInfo.Uses[id]]; ok {
+			return i
+		}
+	}
+	return -1
 }
 
 // eachFunc calls f for every function body in the repo's non-test code, with
@@ -56,8 +101,8 @@ func (l *load) eachFunc(f func(c *fnCtx, body ast.Node)) {
 					if fn == nil {
 						continue
 					}
-					c := &fnCtx{p: p, id: l.idOf(fn), mod: mod, exprs: localExprs(d.Body, p.TypesInfo)}
-					f(c, d.Body)
+					obj, _ := p.TypesInfo.Defs[d.Name].(*types.Func)
+					f(newFnCtx(p, l.idOf(fn), mod, obj, d.Type, d.Body), d.Body)
 				case *ast.GenDecl:
 					for _, s := range d.Specs {
 						vs, ok := s.(*ast.ValueSpec)
@@ -67,7 +112,7 @@ func (l *load) eachFunc(f func(c *fnCtx, body ast.Node)) {
 						for _, v := range vs.Values {
 							if lit := funcLit(v); lit != nil {
 								if fn := l.ssaFor(lit, p); fn != nil && l.varClosures[fn] != "" {
-									f(&fnCtx{p: p, id: l.varClosures[fn], mod: mod, exprs: localExprs(lit.Body, p.TypesInfo)}, lit.Body)
+									f(newFnCtx(p, l.varClosures[fn], mod, nil, lit.Type, lit.Body), lit.Body)
 								}
 							}
 						}
@@ -78,33 +123,59 @@ func (l *load) eachFunc(f func(c *fnCtx, body ast.Node)) {
 	}
 }
 
-// localExprs maps each local variable to the last expression assigned to it.
-func localExprs(body ast.Node, info *types.Info) map[types.Object]ast.Expr {
+// localExprs maps each local variable to the last expression assigned to it,
+// and each variable assigned exactly once from a constant string to its value.
+func localExprs(body ast.Node, info *types.Info) (map[types.Object]ast.Expr, map[types.Object]string) {
 	m := map[types.Object]ast.Expr{}
+	count := map[types.Object]int{}
+	assign := func(id *ast.Ident, e ast.Expr) {
+		if obj := objOf(info, id); obj != nil {
+			count[obj]++
+			if e != nil {
+				m[obj] = e
+			}
+		}
+	}
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch s := n.(type) {
 		case *ast.AssignStmt:
-			if len(s.Lhs) == len(s.Rhs) {
-				for i, lhs := range s.Lhs {
-					if id, ok := lhs.(*ast.Ident); ok {
-						if obj := objOf(info, id); obj != nil {
-							m[obj] = s.Rhs[i]
-						}
-					}
+			for i, lhs := range s.Lhs {
+				id, ok := lhs.(*ast.Ident)
+				if !ok {
+					continue
 				}
+				var rhs ast.Expr
+				if len(s.Lhs) == len(s.Rhs) && (s.Tok == token.DEFINE || s.Tok == token.ASSIGN) {
+					rhs = s.Rhs[i]
+				}
+				assign(id, rhs)
 			}
 		case *ast.ValueSpec:
-			if len(s.Names) == len(s.Values) {
-				for i, id := range s.Names {
-					if obj := objOf(info, id); obj != nil {
-						m[obj] = s.Values[i]
-					}
+			for i, id := range s.Names {
+				var v ast.Expr
+				if len(s.Names) == len(s.Values) {
+					v = s.Values[i]
+				}
+				assign(id, v)
+			}
+		case *ast.UnaryExpr:
+			if s.Op == token.AND { // &x: may be changed elsewhere
+				if id, ok := s.X.(*ast.Ident); ok {
+					assign(id, nil)
 				}
 			}
 		}
 		return true
 	})
-	return m
+	consts := map[types.Object]string{}
+	for obj, e := range m {
+		if count[obj] == 1 {
+			if v, ok := constString(info, e); ok {
+				consts[obj] = v
+			}
+		}
+	}
+	return m, consts
 }
 
 func objOf(info *types.Info, id *ast.Ident) types.Object {
@@ -207,29 +278,83 @@ func (l *load) scanCalls() {
 			return true
 		})
 	})
+	l.queryWrappers()
+}
+
+// queryWrappers follows queries passed through the repo's own helpers: when a
+// function hands one of its parameters to a DB method (fetch(ctx, query, args…)
+// calling db.QueryContext(ctx, query, args…)), a constant passed for that
+// parameter counts as a query of the caller. Chains of helpers are followed a
+// few levels deep.
+func (l *load) queryWrappers() {
+	done := map[*types.Func]bool{}
+	for round := 0; round < 4; round++ {
+		var todo []*types.Func
+		for f := range l.queryParams {
+			if !done[f] {
+				todo = append(todo, f)
+				done[f] = true
+			}
+		}
+		if len(todo) == 0 {
+			return
+		}
+		l.eachFunc(func(c *fnCtx, body ast.Node) {
+			if !l.x.b.has(c.id) {
+				return
+			}
+			ast.Inspect(body, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				callee := staticCallee(c.p.TypesInfo, call)
+				if callee == nil {
+					return true
+				}
+				f := callee.Origin()
+				idx, ok := l.queryParams[f]
+				if !ok || !slices.Contains(todo, f) || idx >= len(call.Args) {
+					return true
+				}
+				file, line := l.pos(call.Pos())
+				l.query(c, call.Args[idx], file, line)
+				return true
+			})
+		})
+	}
 }
 
 func (l *load) sqlCall(c *fnCtx, call *ast.CallExpr, file string, line int) {
-	info := c.p.TypesInfo
 	for _, a := range call.Args {
-		if !isString(info, a) {
-			continue
+		if isString(c.p.TypesInfo, a) {
+			l.query(c, a, file, line)
+			return
 		}
-		q, ok := constString(info, a)
-		if !ok {
-			return // not a constant: don't guess
-		}
-		detail := sqlext.Collapse(q)
-		for _, acc := range sqlext.Classify(q) {
-			id := sqlext.TableID(acc.Table)
-			l.ensureTable(id, acc.Table)
-			typ := graph.Reads
-			if acc.Write {
-				typ = graph.Writes
+	}
+}
+
+// query adds edges for a query argument if it's constant. If it's a parameter
+// of the enclosing function, that function is recorded as a query wrapper.
+func (l *load) query(c *fnCtx, arg ast.Expr, file string, line int) {
+	q, ok := c.stringValue(arg)
+	if !ok {
+		if i := c.paramIndex(arg); i >= 0 && c.fn != nil {
+			if _, seen := l.queryParams[c.fn]; !seen {
+				l.queryParams[c.fn] = i
 			}
-			l.x.b.addEdge(graph.Edge{From: c.id, To: id, Type: typ, Detail: detail, File: file, Line: line})
 		}
-		return
+		return // not a constant: don't guess
+	}
+	detail := sqlext.Collapse(q)
+	for _, acc := range sqlext.Classify(q) {
+		id := sqlext.TableID(acc.Table)
+		l.ensureTable(id, acc.Table)
+		typ := graph.Reads
+		if acc.Write {
+			typ = graph.Writes
+		}
+		l.x.b.addEdge(graph.Edge{From: c.id, To: id, Type: typ, Detail: detail, File: file, Line: line})
 	}
 }
 

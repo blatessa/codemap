@@ -13,7 +13,7 @@ import (
 )
 
 // Route detection (PLAN.md §5.1). Supported: net/http ServeMux (Go 1.22
-// patterns), chi, gorilla/mux, echo, gin, fiber and httprouter.
+// patterns), chi, gorilla/mux, echo, gin, fiber, httprouter and go-pkgz/routegroup.
 //
 // Routers are tracked as a tree of rnodes: a router created by a constructor is
 // a root; groups, sub-routers, With(…) chains and Route/Mount prefixes are
@@ -53,6 +53,8 @@ func framework(pkgPath string) string {
 		return "fiber"
 	case is("github.com/julienschmidt/httprouter"):
 		return "httprouter"
+	case is("github.com/go-pkgz/routegroup"):
+		return "routegroup"
 	}
 	return ""
 }
@@ -65,6 +67,7 @@ var routerTypes = map[string]map[string]bool{
 	"gin":        {"Engine": true, "RouterGroup": true, "IRouter": true, "IRoutes": true},
 	"fiber":      {"App": true, "Router": true, "Group": true},
 	"httprouter": {"Router": true},
+	"routegroup": {"Bundle": true},
 }
 
 func isRouterType(t types.Type) bool {
@@ -90,6 +93,7 @@ var routerConstructors = map[string]map[string]bool{
 	"gin":        {"New": true, "Default": true},
 	"fiber":      {"New": true},
 	"httprouter": {"New": true},
+	"routegroup": {"New": true},
 }
 
 var httpVerbs = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "CONNECT", "TRACE"}
@@ -295,7 +299,7 @@ func (a *routeAnalyzer) analyse(obj *types.Func, params map[int]*rnode) *rnode {
 	if fn == nil {
 		return nil
 	}
-	sc := a.newScope(&fnCtx{p: ref.p, id: a.l.idOf(fn), mod: a.l.moduleID(ref.p.PkgPath), exprs: localExprs(ref.decl.Body, ref.p.TypesInfo)}, nil, ref.decl.Body)
+	sc := a.newScope(newFnCtx(ref.p, a.l.idOf(fn), a.l.moduleID(ref.p.PkgPath), obj, ref.decl.Type, ref.decl.Body), nil, ref.decl.Body)
 	i := 0
 	for _, field := range ref.decl.Type.Params.List {
 		names := field.Names
@@ -320,7 +324,8 @@ func (a *routeAnalyzer) analyse(obj *types.Func, params map[int]*rnode) *rnode {
 func (a *routeAnalyzer) newScope(c *fnCtx, parent *rscope, body ast.Node) *rscope {
 	sc := &rscope{fnCtx: c, parent: parent, vars: map[types.Object]*rnode{}, evals: map[ast.Expr]*rnode{}, chainP: map[ast.Expr]*ast.CallExpr{}}
 	if parent != nil {
-		sc.evals = parent.evals
+		// evals stays per scope: a callback walked twice (avatarRoutes passed to
+		// two groups) must see its router parameter bound afresh each time.
 		sc.chainP = parent.chainP
 	}
 	ast.Inspect(body, func(n ast.Node) bool {
@@ -339,7 +344,9 @@ func (a *routeAnalyzer) walk(body ast.Node, sc *rscope) {
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch s := n.(type) {
 		case *ast.FuncLit:
-			return !a.handled[s]
+			// A literal taking a router is a callback (chi Route/Group): it's
+			// walked when it's passed, with the router it receives.
+			return !a.handled[s] && !takesRouter(s, info)
 		case *ast.AssignStmt:
 			if len(s.Lhs) == len(s.Rhs) {
 				for i, lhs := range s.Lhs {
@@ -479,6 +486,10 @@ func (a *routeAnalyzer) evalCall(call *ast.CallExpr, sc *rscope) *rnode {
 		if routerConstructors[fw][name] {
 			return &rnode{}
 		}
+		if fw == "routegroup" && name == "Mount" && len(call.Args) == 2 {
+			p, _ := constString(info, call.Args[1])
+			return &rnode{prefix: p}
+		}
 		return nil
 	}
 	sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr)
@@ -502,6 +513,12 @@ func (a *routeAnalyzer) evalCall(call *ast.CallExpr, sc *rscope) *rnode {
 	switch {
 	case fw == "chi" && name == "With":
 		return &rnode{parent: recv, mw: a.handlerIDs(call.Args, sc)}
+	case fw == "routegroup" && name == "Mount":
+		return &rnode{parent: recv, prefix: str(0)}
+	case fw == "routegroup" && name == "Group":
+		return &rnode{parent: recv}
+	case fw == "routegroup" && name == "With":
+		return &rnode{parent: recv, mw: a.handlerIDs(call.Args, sc)}
 	case fw == "chi" && name == "Group":
 		return &rnode{parent: recv}
 	case (fw == "chi" || fw == "fiber") && name == "Route":
@@ -517,6 +534,16 @@ func (a *routeAnalyzer) evalCall(call *ast.CallExpr, sc *rscope) *rnode {
 		return recv // methods that return the same router, like gin's Use
 	}
 	return nil
+}
+
+// takesRouter reports whether a function literal has a router parameter.
+func takesRouter(lit *ast.FuncLit, info *types.Info) bool {
+	for _, f := range lit.Type.Params.List {
+		if isRouterType(info.TypeOf(f.Type)) {
+			return true
+		}
+	}
+	return false
 }
 
 func returnsRouter(f *types.Func) bool {
@@ -584,6 +611,13 @@ func (a *routeAnalyzer) handlerIDs(args []ast.Expr, sc *rscope) []string {
 // with its router parameter bound to r.
 func (a *routeAnalyzer) callback(arg ast.Expr, r *rnode, sc *rscope) {
 	info := sc.p.TypesInfo
+	if id, ok := ast.Unparen(arg).(*ast.Ident); ok {
+		if x, ok := sc.exprs[info.Uses[id]]; ok {
+			if lit, ok := ast.Unparen(x).(*ast.FuncLit); ok {
+				arg = lit // routes := func(r chi.Router) {…}; r.Group(routes)
+			}
+		}
+	}
 	if lit, ok := ast.Unparen(arg).(*ast.FuncLit); ok {
 		a.handled[lit] = true
 		inner := a.newScope(sc.fnCtx, sc, lit.Body)
@@ -750,6 +784,26 @@ func (a *routeAnalyzer) call(call *ast.CallExpr, sc *rscope) {
 				}
 			}
 			recv.mw = append(recv.mw, a.handlerIDs(mws, sc)...)
+		}
+	case "routegroup":
+		switch {
+		case (name == "Handle" || name == "HandleFunc") && len(args) == 2:
+			pat, ok := str(0)
+			if !ok {
+				return
+			}
+			method, p := splitServeMuxPattern(pat)
+			a.register(call, sc, recv, method, p, args[1:], nil)
+		case (name == "HandleRoot" || name == "HandleRootFunc") && len(args) == 2:
+			if m, ok := str(0); ok {
+				a.register(call, sc, recv, strings.ToUpper(m), "", args[1:], nil)
+			}
+		case name == "Route" && len(args) == 1:
+			// Route configures a new group when called on the root bundle; treating
+			// it as a group everywhere keeps its middleware off sibling routes.
+			a.callback(args[0], &rnode{parent: recv}, sc)
+		case name == "Use":
+			recv.mw = append(recv.mw, a.handlerIDs(args, sc)...)
 		}
 	case "httprouter":
 		switch {

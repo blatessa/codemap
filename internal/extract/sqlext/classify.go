@@ -107,6 +107,17 @@ func Classify(query string) []Access {
 			continue // EXTRACT(x FROM y), SUBSTRING(s FROM 1), TRIM(BOTH FROM s)
 		}
 		switch t.up() {
+		case "INSERT", "REPLACE":
+			// MySQL allows INSERT [IGNORE] tbl SET … without INTO.
+			j := i + 1
+			if j < len(toks) && (toks[j].up() == "IGNORE" || toks[j].up() == "LOW_PRIORITY" || toks[j].up() == "DELAYED" || toks[j].up() == "HIGH_PRIORITY") {
+				j++
+			}
+			if j < len(toks) && toks[j].isIdent() && toks[j].up() != "INTO" && toks[j].up() != "OR" {
+				name, k := tableRef(toks, j, true)
+				add(name, true)
+				i = k - 1
+			}
 		case "DELETE":
 			sawDelete = true
 		case "MERGE":
