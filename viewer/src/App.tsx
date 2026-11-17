@@ -244,7 +244,10 @@ function RevPicker() {
   const rev = useStore((s) => s.rev);
   // Only the working tree for now; the git layer adds branches and commits.
   return (
-    <select className="revpick" aria-label="Revision" value={rev} onChange={(e) => setState({ rev: e.target.value })}>
+    <select className="revpick" aria-label="Revision" value={rev} onChange={(e) => {
+        setState({ rev: e.target.value });
+        void load();
+      }}>
       <option value="worktree">worktree</option>
     </select>
   );
