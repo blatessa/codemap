@@ -1,0 +1,22 @@
+{
+  "ambiguous": "NewHandler",
+  "matches": [
+    {
+      "id": "go:shop/internal/auth.NewHandler",
+      "kind": "function",
+      "module": "mod:go:shop/internal/auth"
+    },
+    {
+      "id": "go:shop/internal/orders.NewHandler",
+      "kind": "function",
+      "module": "mod:go:shop/internal/orders"
+    },
+    {
+      "id": "go:shop/internal/payments.NewHandler",
+      "kind": "function",
+      "module": "mod:go:shop/internal/payments"
+    }
+  ]
+}
+--- exit 2
+codemap: "NewHandler" matches 3 nodes; pass one of the IDs above

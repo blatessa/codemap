@@ -1,0 +1,42 @@
+{
+  "node": {
+    "id": "route:GET /orders/:id",
+    "kind": "route",
+    "label": "/orders/:id",
+    "module": "mod:go:shop/cmd/server",
+    "file": "cmd/server/routes.go",
+    "line": 14,
+    "entry": true,
+    "fields": {
+      "method": "GET"
+    }
+  },
+  "reachedBy": [],
+  "tests": [
+    {
+      "test": "test:go:shop/internal/auth.TestRequireUser_MissingToken",
+      "direct": true
+    }
+  ],
+  "tree": {
+    "id": "route:GET /orders/:id",
+    "children": [
+      {
+        "id": "go:shop/internal/auth.(*Handler).RequireUser",
+        "via": {
+          "from": "route:GET /orders/:id",
+          "to": "go:shop/internal/auth.(*Handler).RequireUser",
+          "type": "calls"
+        }
+      },
+      {
+        "id": "go:shop/internal/orders.(*Handler).Get",
+        "via": {
+          "from": "route:GET /orders/:id",
+          "to": "go:shop/internal/orders.(*Handler).Get",
+          "type": "calls"
+        }
+      }
+    ]
+  }
+}

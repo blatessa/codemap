@@ -1,0 +1,6 @@
+table:orders                 table                            label
+mod:go:shop/internal/orders  module  internal/orders          label
+page:/orders/:id             page    web/src/main.tsx:11      label
+route:GET /orders/:id        route   cmd/server/routes.go:14  label
+route:POST /orders           route   cmd/server/routes.go:13  label
+(19 more; raise --limit)

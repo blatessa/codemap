@@ -1,0 +1,67 @@
+{
+  "node": {
+    "id": "page:/checkout",
+    "kind": "page",
+    "label": "/checkout",
+    "module": "mod:ts:web/src/pages",
+    "file": "web/src/main.tsx",
+    "line": 10,
+    "entry": true
+  },
+  "reachedBy": [],
+  "tests": [
+    {
+      "test": "test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order",
+      "direct": true
+    }
+  ],
+  "tree": {
+    "id": "page:/checkout",
+    "children": [
+      {
+        "id": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+        "via": {
+          "from": "page:/checkout",
+          "to": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+          "type": "renders"
+        },
+        "children": [
+          {
+            "id": "ts:web/src/components/Layout.tsx#Layout",
+            "via": {
+              "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+              "to": "ts:web/src/components/Layout.tsx#Layout",
+              "type": "renders"
+            }
+          },
+          {
+            "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+            "via": {
+              "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+              "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+              "type": "renders"
+            },
+            "children": [
+              {
+                "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+                "via": {
+                  "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+                  "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+                  "type": "calls"
+                }
+              }
+            ]
+          },
+          {
+            "id": "ts:web/src/state/cart.ts#useCart",
+            "via": {
+              "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+              "to": "ts:web/src/state/cart.ts#useCart",
+              "type": "calls"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

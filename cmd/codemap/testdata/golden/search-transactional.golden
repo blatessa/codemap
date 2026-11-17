@@ -1,0 +1,2 @@
+go:shop/internal/inventory.(*Store).Reserve  function  internal/inventory/reserve.go:31  doc
+mod:go:shop/internal/notify                  module    internal/notify                   doc

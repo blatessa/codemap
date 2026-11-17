@@ -1,0 +1,26 @@
+{
+  "node": {
+    "id": "page:/login",
+    "kind": "page",
+    "label": "/login",
+    "module": "mod:ts:web/src/pages",
+    "file": "web/src/main.tsx",
+    "line": 9,
+    "entry": true
+  },
+  "reachedBy": [],
+  "tests": [],
+  "tree": {
+    "id": "page:/login",
+    "children": [
+      {
+        "id": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+        "via": {
+          "from": "page:/login",
+          "to": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+          "type": "renders"
+        }
+      }
+    ]
+  }
+}

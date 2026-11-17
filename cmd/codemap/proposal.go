@@ -1,0 +1,225 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"gopkg.in/yaml.v3"
+
+	"codemap/internal/cli"
+	"codemap/internal/project"
+)
+
+func init() {
+	commands["proposal"] = func(args []string) error { return runProposal(os.Stdout, os.Stdin, args) }
+}
+
+const proposalUsage = `proposal list | new <name> [--body FILE|-] | archive <slug> [--pr N]  [--root DIR] [--json]`
+
+// today and gitHead are variables so tests can fix them.
+var (
+	today   = func() string { return time.Now().Format("2006-01-02") }
+	gitHead = func(root string) string {
+		out, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(out))
+	}
+)
+
+func runProposal(w io.Writer, in io.Reader, args []string) error {
+	var c cli.Common
+	fs := cli.NewFlagSet("proposal", proposalUsage)
+	c.Register(fs)
+	body := fs.String("body", "", "new: read the Markdown body from FILE, or - for stdin")
+	pr := fs.String("pr", "", "archive: the pull request that implemented it")
+	pos, err := cli.Parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if err := c.CheckRev(); err != nil {
+		return err
+	}
+	if len(pos) == 0 {
+		return cli.Usage(proposalUsage)
+	}
+	switch {
+	case pos[0] == "list" && len(pos) == 1:
+		return proposalList(w, c)
+	case pos[0] == "new" && len(pos) >= 2:
+		return proposalNew(w, in, c, strings.Join(pos[1:], " "), *body)
+	case pos[0] == "archive" && len(pos) == 2:
+		return proposalArchive(w, c, pos[1], *pr)
+	}
+	return cli.Usage(proposalUsage)
+}
+
+func proposalList(w io.Writer, c cli.Common) error {
+	p, err := project.Load(c.Root)
+	if err != nil {
+		return err
+	}
+	if c.JSON {
+		return cli.WriteJSON(w, nonNil(p.Proposals))
+	}
+	if len(p.Proposals) == 0 {
+		fmt.Fprintln(w, "no proposals")
+		return nil
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "SLUG\tSTATUS\tPR\tUPDATED\tNAME")
+	for _, pr := range p.Proposals {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", pr.Slug, pr.Status, dash(pr.PR), dash(pr.Updated), pr.Name)
+	}
+	return tw.Flush()
+}
+
+func proposalNew(w io.Writer, in io.Reader, c cli.Common, name, bodyFrom string) error {
+	slug := project.Slugify(name)
+	rel := "proposals/" + slug + ".md"
+	full := filepath.Join(c.Root, project.Dir, filepath.FromSlash(rel))
+	if _, err := os.Stat(full); err == nil {
+		return fmt.Errorf("%s already exists", filepath.Join(project.Dir, rel))
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	var body []byte
+	var err error
+	switch bodyFrom {
+	case "":
+	case "-":
+		body, err = io.ReadAll(in)
+	default:
+		body, err = os.ReadFile(bodyFrom)
+	}
+	if err != nil {
+		return err
+	}
+	p := &project.Proposal{
+		Slug: slug, Name: name, Status: "open",
+		Base: gitHead(c.Root), Updated: today(), Body: string(body),
+	}
+	data, err := p.Marshal()
+	if err != nil {
+		return err
+	}
+	if err := project.WriteFile(c.Root, rel, data); err != nil {
+		return err
+	}
+	if c.JSON {
+		return cli.WriteJSON(w, p)
+	}
+	fmt.Fprintf(w, "created %s\n", filepath.Join(project.Dir, rel))
+	return nil
+}
+
+func proposalArchive(w io.Writer, c cli.Common, slug, pr string) error {
+	rel := "proposals/" + slug + ".md"
+	b, err := os.ReadFile(filepath.Join(c.Root, project.Dir, filepath.FromSlash(rel)))
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("no proposal %q (see codemap proposal list)", slug)
+	}
+	if err != nil {
+		return err
+	}
+	p, err := project.ParseProposal(b)
+	if err != nil {
+		return fmt.Errorf("%s: %w", rel, err)
+	}
+	p.Slug = slug
+	p.Status, p.Updated = "archived", today()
+	set := [][2]string{{"status", p.Status}}
+	if pr != "" {
+		if !strings.HasPrefix(pr, "#") && !strings.Contains(pr, "/") {
+			pr = "#" + pr
+		}
+		p.PR = pr
+		set = append(set, [2]string{"pr", pr})
+	}
+	set = append(set, [2]string{"updated", p.Updated})
+	data, err := setFrontmatter(b, set)
+	if err != nil {
+		// No frontmatter to edit in place (or it's unusual): write the whole file.
+		if data, err = p.Marshal(); err != nil {
+			return err
+		}
+	}
+	if err := project.WriteFile(c.Root, rel, data); err != nil {
+		return err
+	}
+	if c.JSON {
+		return cli.WriteJSON(w, p)
+	}
+	msg := "archived " + slug
+	if p.PR != "" {
+		msg += " (" + p.PR + ")"
+	}
+	fmt.Fprintln(w, msg)
+	return nil
+}
+
+// setFrontmatter sets top-level string keys in a proposal file's frontmatter,
+// keeping the rest of the file as written (flow-style lists stay flow-style,
+// and the body is untouched).
+func setFrontmatter(file []byte, set [][2]string) ([]byte, error) {
+	s := string(file)
+	if !strings.HasPrefix(s, "---\n") {
+		return nil, errors.New("no frontmatter")
+	}
+	rest := s[len("---\n"):]
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return nil, errors.New("frontmatter is not closed")
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(rest[:end]), &doc); err != nil {
+		return nil, err
+	}
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, errors.New("frontmatter is not a mapping")
+	}
+	m := doc.Content[0]
+	for _, kv := range set {
+		val := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: kv[1]}
+		found := false
+		for i := 0; i+1 < len(m.Content); i += 2 {
+			if m.Content[i].Value == kv[0] {
+				m.Content[i+1] = val
+				found = true
+			}
+		}
+		if !found {
+			// Put new keys before the sketch lists, next to the other scalars.
+			at := len(m.Content)
+			for i := 0; i+1 < len(m.Content); i += 2 {
+				if m.Content[i+1].Kind != yaml.ScalarNode {
+					at = i
+					break
+				}
+			}
+			key := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: kv[0]}
+			m.Content = append(m.Content[:at], append([]*yaml.Node{key, val}, m.Content[at:]...)...)
+		}
+	}
+	fm, err := project.MarshalYAML(&doc)
+	if err != nil {
+		return nil, err
+	}
+	return []byte("---\n" + string(fm) + rest[end+1:]), nil
+}
+
+func dash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
+}

@@ -1,0 +1,76 @@
+{
+  "node": {
+    "id": "route:POST /orders",
+    "kind": "route",
+    "label": "/orders",
+    "module": "mod:go:shop/cmd/server",
+    "file": "cmd/server/routes.go",
+    "line": 13,
+    "entry": true,
+    "fields": {
+      "method": "POST"
+    }
+  },
+  "tree": {
+    "id": "route:POST /orders",
+    "children": [
+      {
+        "id": "ts:web/src/api/orders.ts#createOrder",
+        "via": {
+          "from": "ts:web/src/api/orders.ts#createOrder",
+          "to": "route:POST /orders",
+          "type": "fetches",
+          "detail": "POST /orders"
+        },
+        "children": [
+          {
+            "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+            "via": {
+              "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+              "to": "ts:web/src/api/orders.ts#createOrder",
+              "type": "calls"
+            },
+            "children": [
+              {
+                "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+                "via": {
+                  "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+                  "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+                  "type": "calls"
+                },
+                "children": [
+                  {
+                    "id": "test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order",
+                    "via": {
+                      "from": "test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order",
+                      "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+                      "type": "renders"
+                    }
+                  },
+                  {
+                    "id": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+                    "via": {
+                      "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+                      "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+                      "type": "renders"
+                    },
+                    "children": [
+                      {
+                        "id": "page:/checkout",
+                        "via": {
+                          "from": "page:/checkout",
+                          "to": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+                          "type": "renders"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

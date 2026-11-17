@@ -1,0 +1,17 @@
+[
+  {
+    "id": "go:shop/internal/inventory.(*Store).Reserve",
+    "kind": "function",
+    "label": "Store.Reserve",
+    "file": "internal/inventory/reserve.go",
+    "line": 31,
+    "match": "doc"
+  },
+  {
+    "id": "mod:go:shop/internal/notify",
+    "kind": "module",
+    "label": "internal/notify",
+    "file": "internal/notify",
+    "match": "doc"
+  }
+]

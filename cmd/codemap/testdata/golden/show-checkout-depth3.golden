@@ -1,0 +1,14 @@
+id:     page:/checkout
+kind:   page (entry)
+module: web/src/pages
+file:   web/src/main.tsx:10
+
+page /checkout
+  pages.CheckoutPage  renders
+    components.Layout  renders
+    components.PlaceOrderButton  renders
+      components.PlaceOrderButton.onClick  ...
+    state.useCart
+
+Tests:
+  test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order  web/src/components/PlaceOrderButton.test.tsx:12  (direct)

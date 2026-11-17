@@ -1,0 +1,57 @@
+{
+  "node": {
+    "id": "go:shop/internal/orders.(*Repo).UpdateStatus",
+    "kind": "function",
+    "label": "Repo.UpdateStatus",
+    "module": "mod:go:shop/internal/orders",
+    "file": "internal/orders/repo.go",
+    "line": 32,
+    "endLine": 39,
+    "doc": "UpdateStatus looks the order up by Stripe charge ID, not order ID."
+  },
+  "tree": {
+    "id": "go:shop/internal/orders.(*Repo).UpdateStatus",
+    "children": [
+      {
+        "id": "go:shop/internal/orders.(*Service).MarkPaid",
+        "via": {
+          "from": "go:shop/internal/orders.(*Service).MarkPaid",
+          "to": "go:shop/internal/orders.(*Repo).UpdateStatus",
+          "type": "calls"
+        },
+        "children": [
+          {
+            "id": "go:shop/internal/payments.(*Handler).HandleWebhook",
+            "via": {
+              "from": "go:shop/internal/payments.(*Handler).HandleWebhook",
+              "to": "go:shop/internal/orders.(*Service).MarkPaid",
+              "type": "calls"
+            },
+            "children": [
+              {
+                "id": "route:POST /webhooks/stripe",
+                "via": {
+                  "from": "route:POST /webhooks/stripe",
+                  "to": "go:shop/internal/payments.(*Handler).HandleWebhook",
+                  "type": "calls"
+                },
+                "children": [
+                  {
+                    "id": "ext:stripe",
+                    "via": {
+                      "from": "ext:stripe",
+                      "to": "route:POST /webhooks/stripe",
+                      "type": "declared",
+                      "detail": "sends payment_intent.succeeded",
+                      "declared": true
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
