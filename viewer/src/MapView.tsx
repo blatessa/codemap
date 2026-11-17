@@ -149,7 +149,7 @@ function edgePath(disp: Disp, e: MEdge, far: boolean): string | null {
   return `M${x1},${y1} C${x1 + 40},${y1} ${x2 + 40},${y2} ${x2 + 2},${y2}`;
 }
 
-const Edges = memo(function Edges({ disp, S, far }: { disp: Disp; S: Sel | null; far: boolean }) {
+const Edges = memo(function Edges({ disp, S, far, shown }: { disp: Disp; S: Sel | null; far: boolean; shown: Set<string> | null }) {
   const base: React.ReactNode[] = [],
     top: React.ReactNode[] = [];
   const agg = new Map<string, { e: MEdge; n: number; on: boolean; prop: boolean; net: boolean }>();
@@ -157,6 +157,7 @@ const Edges = memo(function Edges({ disp, S, far }: { disp: Disp; S: Sel | null;
     const a = disp.row.get(e.from)!.d,
       b = disp.row.get(e.to)!.d,
       on = !!S && S.edges.has(e.i);
+    if (shown && !shown.has(a.b.id) && !shown.has(b.b.id)) continue;
     if (a !== b && a.col && b.col) {
       const key = a.b.id + '>' + b.b.id;
       const g = agg.get(key) ?? { e, n: 0, on: false, prop: true, net: e.net };
@@ -337,6 +338,29 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   const [dragging, setDragging] = useState(false);
 
   const disp = useMemo(() => buildDisp(m, S, pos, over, collapsed, focus, far, areas), [m, S, pos, over, collapsed, focus, far, areas]);
+
+  // Big maps only draw what's near the viewport. The culling window moves in
+  // whole-screen steps, so panning re-renders rarely.
+  const [vsize, setVsize] = useState({ w: 1500, h: 900 });
+  useEffect(() => {
+    const el = svgRef.current!;
+    const ro = new ResizeObserver(() => setVsize({ w: el.clientWidth || 1500, h: el.clientHeight || 900 }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const big = disp.row.size > 800;
+  const cw = vsize.w / view.k,
+    ch = vsize.h / view.k;
+  const tx = big ? Math.floor(-view.x / view.k / cw) : 0,
+    ty = big ? Math.floor(-view.y / view.k / ch) : 0;
+  const shown = useMemo(() => {
+    if (!big) return null;
+    const x0 = (tx - 1) * cw,
+      y0 = (ty - 1) * ch,
+      x1 = (tx + 3) * cw,
+      y1 = (ty + 3) * ch;
+    return new Set(disp.boxes.filter((d) => d.x < x1 && d.x + d.w > x0 && d.y < y1 && d.y + d.h > y0).map((d) => d.b.id));
+  }, [big, disp, tx, ty, cw, ch]);
   const dispRef = useRef(disp);
   dispRef.current = disp;
 
@@ -370,7 +394,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     }
     const pad = W < 600 ? 12 : 28,
       top = 58;
-    const k = Math.max(0.05, Math.min((W - pad * 2) / (x1 - x0), (r.height - top - pad) / (y1 - y0), 1.4));
+    const k = Math.max(0.02, Math.min((W - pad * 2) / (x1 - x0), (r.height - top - pad) / (y1 - y0), 1.4));
     setState({ view: { k, x: (W - (x1 - x0) * k) / 2 - x0 * k, y: top - y0 * k } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawerOpen]);
@@ -577,8 +601,8 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
         {disp.areas.map(({ a, r }) => (
           <AreaG key={a.name} a={a} r={r} sel={sel.includes('area:' + a.name)} far={far} />
         ))}
-        <Edges disp={disp} S={S} far={far} />
-        {disp.boxes.map((d) => (
+        <Edges disp={disp} S={S} far={far} shown={shown} />
+        {(shown ? disp.boxes.filter((d) => shown.has(d.b.id)) : disp.boxes).map((d) => (
           <BoxG
             key={d.b.id}
             d={d}
@@ -597,7 +621,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
 
 export function zoomAt(cx: number, cy: number, f: number) {
   const v = getState().view;
-  const k = Math.min(3, Math.max(0.05, v.k * f));
+  const k = Math.min(3, Math.max(0.02, v.k * f));
   setState({ view: { k, x: cx - (cx - v.x) * (k / v.k), y: cy - (cy - v.y) * (k / v.k) }, touchedView: true });
 }
 

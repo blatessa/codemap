@@ -118,7 +118,7 @@ function CallTree({ m, id }: { m: Model; id: string }) {
               key={i}
               className={`trow ${x.row.prop || r.via.prop ? 'prop' : ''}`}
               data-node={r.id}
-              style={{ paddingLeft: 6 + r.depth * 14 }}
+              style={{ paddingLeft: 6 + Math.min(r.depth, 12) * 14 }}
               onClick={() => select(r.id)}
             >
               <span className="l">
