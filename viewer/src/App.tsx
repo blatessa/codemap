@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Drawer } from './Drawer';
 import { MapView, useAreaRect, zoomCenter } from './MapView';
-import { HEAD, PAD, ROW, qn } from './model';
+import { qn } from './model';
 import {
   addArea,
   applyView,
@@ -185,7 +185,7 @@ function Tools() {
     let bottom = 0;
     for (const b of m.boxes) {
       const p = pos[b.id];
-      if (p) bottom = Math.max(bottom, p[1] + HEAD + Math.max(b.rows.length, 1) * ROW + PAD);
+      if (p) bottom = Math.max(bottom, p[1] + b.defH);
     }
     for (const a of areas) {
       const r = rectOf(a);

@@ -262,3 +262,66 @@ test('a proposal edge to an ID that no longer exists draws as a faint outline', 
   await openProposal(page, 'Refunds');
   await expect(page.locator('[data-node="go:shop/internal/orders.(*Repo).Gone"]')).toHaveClass(/\bghost\b/);
 });
+
+type AreaJ = { name: string; modules: string[] };
+const areaOf = async (page: Page, name: string) => ((await state(page)).project.areas as AreaJ[]).find((a) => a.name === name)?.modules;
+
+test('dragging a module out of its area leaves the area behind and removes it', async ({ page }) => {
+  const area = page.locator('#map [data-area-box="Messaging"] .arect');
+  const before = await area.boundingBox();
+  const src = await mod(page, 'mod:go:shop/internal/events').boundingBox();
+  await page.mouse.move(src!.x + 10, src!.y + 6);
+  await page.mouse.down();
+  // still inside its own area: that's the drop target
+  await page.mouse.move(src!.x + 16, src!.y + 12, { steps: 3 });
+  await expect(page.locator('#map [data-area-box="Messaging"]')).toHaveClass(/\bdrop\b/);
+  // below everything: no target, and the area doesn't follow the box
+  await page.mouse.move(src!.x + 10, src!.y + 256, { steps: 8 });
+  await expect(page.locator('#map .area.drop')).toHaveCount(0);
+  expect(await area.boundingBox()).toEqual(before);
+  const last = await mod(page, 'mod:go:shop/internal/events').boundingBox();
+  await page.mouse.up();
+  await expect.poll(() => areaOf(page, 'Messaging')).toEqual(['mod:go:shop/internal/notify', 'mod:go:shop/internal/sched']);
+  // the box stays where it was dropped, and the area shrinks to its other members
+  expect(await mod(page, 'mod:go:shop/internal/events').boundingBox()).toEqual(last);
+  expect((await area.boundingBox())!.height).toBeLessThan(before!.height);
+});
+
+test('dragging a module into another area highlights it and moves the module there', async ({ page }) => {
+  const src = await mod(page, 'mod:go:shop/internal/sched').boundingBox();
+  const target = await page.locator('#map [data-area-box="Commerce"] .arect').boundingBox();
+  await page.mouse.move(src!.x + 10, src!.y + 6);
+  await page.mouse.down();
+  await page.mouse.move(target!.x + target!.width - 40, target!.y + target!.height - 16, { steps: 10 });
+  await expect(page.locator('#map [data-area-box="Commerce"]')).toHaveClass(/\bdrop\b/);
+  await expect(page.locator('#map .area.drop')).toHaveCount(1);
+  const last = await mod(page, 'mod:go:shop/internal/sched').boundingBox();
+  await page.mouse.up();
+  await expect(page.locator('#map .area.drop')).toHaveCount(0);
+  await expect.poll(() => areaOf(page, 'Commerce')).toContain('mod:go:shop/internal/sched');
+  expect(await areaOf(page, 'Messaging')).not.toContain('mod:go:shop/internal/sched');
+  // no jump on drop, nor after the writes come back from the server
+  expect(await mod(page, 'mod:go:shop/internal/sched').boundingBox()).toEqual(last);
+  await expect.poll(async () => Object.keys((await state(page)).project.layout)).toContain('mod:go:shop/internal/sched');
+  await page.waitForTimeout(400);
+  expect(await mod(page, 'mod:go:shop/internal/sched').boundingBox()).toEqual(last);
+});
+
+test('a module shows its public functions, and +N internal expands it', async ({ page }) => {
+  const total = 'go:shop/internal/orders.(CreateOrder).Total',
+    writeJSON = 'go:shop/internal/orders.writeJSON';
+  await search(page, 'Service.Place');
+  const more = page.locator('#map [data-more="mod:go:shop/internal/orders"]');
+  // an internal row on the selected path still shows
+  await expect(node(page, total)).toBeVisible();
+  await expect(page.locator(`#map [data-node="${writeJSON}"]`)).toHaveCount(0);
+  await expect(more).toHaveText('+2 internal');
+  await page.locator('#drawer .x').first().click();
+  await expect(more).toHaveText('+3 internal');
+  await expect(page.locator(`#map [data-node="${total}"]`)).toHaveCount(0);
+  await more.click();
+  await expect(node(page, writeJSON)).toBeVisible();
+  await expect(more).toHaveText('− 3 internal');
+  await more.click();
+  await expect(page.locator(`#map [data-node="${writeJSON}"]`)).toHaveCount(0);
+});

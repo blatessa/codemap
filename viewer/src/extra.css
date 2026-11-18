@@ -19,3 +19,8 @@ body{margin:0}
 .kv dd{margin:0;min-width:0;word-break:break-word}
 .edge.ghost{opacity:.5}
 .tools .tool,.tools>*{pointer-events:auto}
+.area.drop .arect{fill:color-mix(in srgb,var(--accent-soft) 55%,var(--lane));stroke:var(--accent);stroke-width:1.5;stroke-dasharray:none}
+.more{cursor:pointer}
+.more text{font-family:var(--sans);font-size:11px;fill:var(--muted)}
+.more:hover .hit{fill:var(--bg)}
+.more:hover text{fill:var(--ink)}

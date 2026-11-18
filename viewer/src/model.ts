@@ -7,8 +7,12 @@ import type { Block, GEdge, GModule, GNode, Graph, Loose, Proposal } from './typ
 export const ROW = 28,
   HEAD = 36,
   PAD = 8,
+  MORE = 24, // the "+N internal" row
   FAR = 0.55,
   FARH = 64;
+
+// heightOf is a box's height showing `rows` rows, plus the "+N internal" row when `more`.
+export const heightOf = (rows: number, more: boolean) => HEAD + (more ? rows : Math.max(rows, 1)) * ROW + (more ? MORE : 0) + PAD;
 
 export interface Row {
   id: string;
@@ -19,6 +23,7 @@ export interface Row {
   node: GNode;
   prop: boolean; // added by the open proposal
   ghost: boolean; // referenced by the proposal but not in the code
+  pub: boolean; // shown by default: entry, external, or an edge crosses the box
 }
 
 export interface Box {
@@ -37,6 +42,10 @@ export interface Box {
   hasEntry: boolean;
   propPos?: [number, number];
   propArea?: string;
+  pub: number; // public rows
+  defH: number; // height with only public rows showing (what layout uses)
+  shared: boolean; // used by most other modules; laid out along the bottom
+  usedBy: number; // modules with edges into this one
 }
 
 export interface MEdge {
@@ -97,7 +106,7 @@ function widthOf(b: Box): number {
 const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v));
 
 function rowFor(n: GNode, prop: boolean, ghost: boolean): Row {
-  return { id: n.id, label: n.label || n.id, prefix: prefixOf(n), tag: n.external ? n.kind : '', tagClass: '', node: n, prop, ghost };
+  return { id: n.id, label: n.label || n.id, prefix: prefixOf(n), tag: n.external ? n.kind : '', tagClass: '', node: n, prop, ghost, pub: false };
 }
 
 const sortRows = (a: Row, b: Row) =>
@@ -115,7 +124,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
   const gedges = g.edges ?? [];
   const box = new Map<string, Box>();
   const mkBox = (id: string, label: string, extra: Partial<Box> = {}): Box => {
-    const b: Box = { id, label, sub: '', external: false, prop: false, ghost: false, rows: [], w: 0, hasEntry: false, ...extra };
+    const b: Box = { id, label, sub: '', external: false, prop: false, ghost: false, rows: [], w: 0, hasEntry: false, pub: 0, defH: 0, shared: false, usedBy: 0, ...extra };
     box.set(id, b);
     return b;
   };
@@ -206,16 +215,77 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
   const fullOut = new Map<string, GEdge[]>();
   for (const e of gedges) (fullOut.get(e.from) ?? fullOut.set(e.from, []).get(e.from)!).push(e);
 
+  // public rows: entry points, external nodes, and anything with an edge leaving its box
+  for (const e of edges) {
+    const a = node.get(e.from)!,
+      b = node.get(e.to)!;
+    if (a.box !== b.box) a.row.pub = b.row.pub = true;
+  }
+
   const boxes: Box[] = [];
   for (const b of box.values()) {
     if (!b.rows.length && !b.prop && !b.block) continue; // modules with only tests, or nothing
     b.rows.sort((x, y) => Number(x.prop || x.ghost) - Number(y.prop || y.ghost) || sortRows(x, y));
+    for (const r of b.rows) if (r.node.entry || r.node.external || r.prop || r.ghost) r.pub = true;
+    b.pub = b.rows.filter((r) => r.pub).length;
+    b.defH = heightOf(b.pub, b.pub < b.rows.length);
     b.hasEntry = b.rows.some((r) => r.node.entry);
     b.sub = subOf(b.rows, b.prop);
     b.w = widthOf(b);
     boxes.push(b);
   }
+  markShared(boxes, box, node, gedges, fullNode, blocks);
   return { boxes, box, node, edges, out, inn, tests, full: { out: fullOut, node: fullNode } };
+}
+
+// markShared finds modules that most others depend on (a graph package, a config
+// package): at least 40% of the other modules in their part of the map (minimum 3)
+// have edges into them, and they call at most one other module. Callers count by
+// module, tests included, since a module's tests depend on what they call too.
+export const SHARED_SHARE = 0.4;
+function markShared(
+  boxes: Box[],
+  box: Map<string, Box>,
+  node: Map<string, { row: Row; box: Box }>,
+  gedges: GEdge[],
+  full: Map<string, GNode>,
+  blocks: Block[],
+) {
+  const cand = new Set(boxes.filter((b) => !b.external && !b.prop && !b.ghost).map((b) => b.id));
+  const boxOf = (id: string): string | undefined => {
+    const x = node.get(id);
+    if (x) return x.box.id;
+    const n = full.get(id);
+    if (!n) return undefined;
+    const b = box.get(blockFor(blocks, n) || n.module);
+    return b ? b.id : undefined;
+  };
+  const users = new Map<string, Set<string>>(),
+    calls = new Map<string, Set<string>>(),
+    parent = new Map<string, string>();
+  const find = (x: string): string => {
+    while (parent.has(x) && parent.get(x) !== x) x = parent.get(x)!;
+    return x;
+  };
+  const add = (m: Map<string, Set<string>>, k: string, v: string) => (m.get(k) ?? m.set(k, new Set()).get(k)!).add(v);
+  for (const e of gedges) {
+    const a = boxOf(e.from),
+      b = boxOf(e.to);
+    if (!a || !b || a === b || !cand.has(a) || !cand.has(b)) continue;
+    add(users, b, a);
+    if (!isTest(full.get(e.from)!)) add(calls, a, b);
+    const ra = find(a),
+      rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  }
+  const size = new Map<string, number>();
+  for (const id of cand) size.set(find(id), (size.get(find(id)) ?? 0) + 1);
+  for (const id of cand) {
+    const b = box.get(id)!;
+    b.usedBy = users.get(id)?.size ?? 0;
+    const others = size.get(find(id))! - 1;
+    b.shared = b.usedBy >= Math.max(3, Math.ceil(SHARED_SHARE * others)) && (calls.get(id)?.size ?? 0) <= 1;
+  }
 }
 
 export function proposalNode(raw: Loose): GNode | null {
@@ -239,6 +309,7 @@ export function proposalNode(raw: Loose): GNode | null {
 
 export interface Sel {
   nodes: Set<string>;
+  path: Set<string>; // rows on a traced path; always drawn, even when internal
   edges: Set<number>;
   up: Set<string>;
   down: Set<string>;
@@ -272,14 +343,14 @@ export interface AreaLike {
 }
 
 export function selectionOf(m: Model, ids: string[], areas: AreaLike[]): Sel | null {
-  const S: Sel = { nodes: new Set(), edges: new Set(), up: new Set(), down: new Set() };
+  const S: Sel = { nodes: new Set(), edges: new Set(), up: new Set(), down: new Set(), path: new Set() };
   let any = false;
   for (const id of ids) {
     if (m.node.has(id)) {
       const d = walk(m, id, true),
         u = walk(m, id, false);
-      d.nodes.forEach((n) => (S.nodes.add(n), S.down.add(n)));
-      u.nodes.forEach((n) => (S.nodes.add(n), S.up.add(n)));
+      d.nodes.forEach((n) => (S.nodes.add(n), S.down.add(n), S.path.add(n)));
+      u.nodes.forEach((n) => (S.nodes.add(n), S.up.add(n), S.path.add(n)));
       d.edges.forEach((e) => S.edges.add(e));
       u.edges.forEach((e) => S.edges.add(e));
       any = true;
