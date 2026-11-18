@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"codemap/internal/graph"
 	"codemap/internal/project"
@@ -80,5 +81,8 @@ func Graph(root string, proj *project.Project, opt Options) (*graph.Graph, error
 	if g.Rev == "" {
 		g.Rev = "worktree"
 	}
+	graph.AssignRoles(g, func(file string) ([]byte, error) {
+		return os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+	})
 	return g, nil
 }

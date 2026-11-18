@@ -1,0 +1,22 @@
+id:     go:shop/internal/orders.writeJSON
+kind:   function
+module: internal/orders
+file:   internal/orders/handler.go:48
+role:   utility
+
+orders.writeJSON
+  orders.Handler.Create
+    POST /orders
+      api.createOrder  fetches: POST /orders
+        components.PlaceOrderButton.onClick
+          components.PlaceOrderButton
+            navigates to the new order [test]  renders
+            pages.CheckoutPage  renders
+              page /checkout  renders
+  orders.Handler.Get
+    GET /orders/:id
+      api.getOrder  fetches: GET /orders/:id
+        components.useOrder
+          components.OrderStatus
+            pages.OrderPage  renders
+              page /orders/:id  renders

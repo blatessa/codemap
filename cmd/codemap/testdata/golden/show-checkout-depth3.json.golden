@@ -51,16 +51,9 @@
                 }
               }
             ]
-          },
-          {
-            "id": "ts:web/src/state/cart.ts#useCart",
-            "via": {
-              "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
-              "to": "ts:web/src/state/cart.ts#useCart",
-              "type": "calls"
-            }
           }
-        ]
+        ],
+        "support": 1
       }
     ]
   }

@@ -27,24 +27,6 @@
     "id": "go:shop/internal/orders.(*Service).Place",
     "children": [
       {
-        "id": "go:shop/internal/events.(*Bus).Publish",
-        "via": {
-          "from": "go:shop/internal/orders.(*Service).Place",
-          "to": "go:shop/internal/events.(*Bus).Publish",
-          "type": "calls"
-        },
-        "children": [
-          {
-            "id": "go:shop/cmd/server.(logConn).Publish",
-            "via": {
-              "from": "go:shop/internal/events.(*Bus).Publish",
-              "to": "go:shop/cmd/server.(logConn).Publish",
-              "type": "calls"
-            }
-          }
-        ]
-      },
-      {
         "id": "go:shop/internal/inventory.(*Store).Reserve",
         "via": {
           "from": "go:shop/internal/orders.(*Service).Place",
@@ -118,6 +100,7 @@
           "detail": "order.placed"
         }
       }
-    ]
+    ],
+    "support": 1
   }
 }

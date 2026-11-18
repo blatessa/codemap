@@ -4,9 +4,7 @@ module: internal/orders
 file:   internal/orders/service.go:48
 doc:    Place reserves stock, charges the card and saves the order, in that order. If the charge fails, the reservation is left for the expire-carts job to release.
 
-orders.Service.Place
-  events.Bus.Publish
-    server.logConn.Publish
+orders.Service.Place  (+1 support)
   inventory.Store.Reserve
     stock [table]  writes: UPDATE stock SET reserved = reserved + $2 WHERE sku = $1 AND on_hand - reserved >= $2
   orders.Repo.Insert

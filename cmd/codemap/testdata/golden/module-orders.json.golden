@@ -51,7 +51,10 @@
       "module": "mod:go:shop/internal/orders",
       "file": "internal/orders/handler.go",
       "line": 21,
-      "doc": "NewHandler returns a handler."
+      "doc": "NewHandler returns a handler.",
+      "fields": {
+        "role": "wiring"
+      }
     },
     {
       "id": "go:shop/internal/orders.(*Handler).Create",
@@ -80,7 +83,10 @@
       "module": "mod:go:shop/internal/orders",
       "file": "internal/orders/handler.go",
       "line": 48,
-      "endLine": 51
+      "endLine": 51,
+      "fields": {
+        "role": "utility"
+      }
     },
     {
       "id": "go:shop/internal/orders.writeError",
@@ -89,7 +95,10 @@
       "module": "mod:go:shop/internal/orders",
       "file": "internal/orders/handler.go",
       "line": 53,
-      "endLine": 59
+      "endLine": 59,
+      "fields": {
+        "role": "utility"
+      }
     },
     {
       "id": "go:shop/internal/orders.(CreateOrder).Total",
@@ -108,7 +117,10 @@
       "module": "mod:go:shop/internal/orders",
       "file": "internal/orders/repo.go",
       "line": 13,
-      "doc": "NewRepo returns a repo on db."
+      "doc": "NewRepo returns a repo on db.",
+      "fields": {
+        "role": "wiring"
+      }
     },
     {
       "id": "go:shop/internal/orders.(*Repo).Insert",
@@ -148,7 +160,10 @@
       "file": "internal/orders/service.go",
       "line": 42,
       "endLine": 44,
-      "doc": "NewService returns a service."
+      "doc": "NewService returns a service.",
+      "fields": {
+        "role": "wiring"
+      }
     },
     {
       "id": "go:shop/internal/orders.(*Service).Place",

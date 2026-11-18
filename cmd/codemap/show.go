@@ -13,16 +13,21 @@ func init() {
 	commands["show"] = func(args []string) error { return runShow(os.Stdout, args) }
 }
 
-const showUsage = `show <node> [--depth N] [--root DIR] [--graph FILE] [--rev worktree] [--json]`
+const showUsage = `show <node> [--depth N] [--detail features|code] [--root DIR] [--graph FILE] [--rev worktree] [--json]`
 
 func runShow(w io.Writer, args []string) error {
 	var c cli.Common
 	fs := cli.NewFlagSet("show", showUsage)
 	c.Register(fs)
 	depth := fs.Int("depth", 0, "limit the tree to N levels (0 = no limit)")
+	detail := cli.DetailFlag(fs)
 	pos, err := cli.Parse(fs, args)
 	if err != nil {
 		return err
+	}
+	level, err := detail()
+	if err != nil {
+		return &cli.ExitError{Code: 2, Err: err}
 	}
 	if len(pos) != 1 {
 		return cli.Usage(showUsage)
@@ -55,6 +60,9 @@ func runShow(w io.Writer, args []string) error {
 		tests = ix.TestsReaching(id)
 	}
 
+	if level == cli.DetailFeatures {
+		tree = cli.Features(ix, tree)
+	}
 	if c.JSON {
 		return cli.WriteJSON(w, map[string]any{
 			"node":      n,
