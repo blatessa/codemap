@@ -167,7 +167,7 @@ func WriteTree(w io.Writer, ix *graph.Index, t *graph.TreeNode, opt TreeOptions)
 			row += "  " + note
 		}
 		if t.Support > 0 {
-			row += fmt.Sprintf("  (+%d support)", t.Support)
+			row += fmt.Sprintf("  (+%d)", t.Support)
 		}
 		if t.Seen {
 			row += "  (see above)"

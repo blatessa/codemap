@@ -3,6 +3,7 @@ package graph
 import (
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Index is a read-only lookup structure over a graph, used by queries, the server
@@ -15,6 +16,42 @@ type Index struct {
 	In      map[string][]*Edge
 	ByLabel map[string][]string // label -> node IDs
 	site    map[*Edge]int       // how many targets each calls edge's call site has
+
+	commonOnce sync.Once
+	common     map[Effect]bool
+}
+
+// CommonShare is how many of a repo's entry points must share an effect for it
+// to be common: something nearly every feature does (opening the store,
+// loading the session), which says nothing about any one feature.
+const CommonShare = 0.6
+
+// CommonEffects returns the effects more than CommonShare of the entry points
+// reach. A repo with fewer than ten entry points has none.
+func (ix *Index) CommonEffects() map[Effect]bool {
+	ix.commonOnce.Do(func() {
+		ix.common = map[Effect]bool{}
+		count := map[Effect]int{}
+		n := 0
+		for _, nd := range ix.G.Nodes {
+			if !nd.Entry || nd.Kind == KindTest {
+				continue
+			}
+			n++
+			for _, f := range ix.EffectsBeneath(nd.ID) {
+				count[f]++
+			}
+		}
+		if n < 10 {
+			return
+		}
+		for f, k := range count {
+			if float64(k)/float64(n) > CommonShare {
+				ix.common[f] = true
+			}
+		}
+	})
+	return ix.common
 }
 
 // WideCall is how many targets a call site may resolve to before it counts as
@@ -249,6 +286,17 @@ func (ix *Index) EffectsBeneath(id string) []Effect {
 // treeRows turns the edges out of (or, up, into) a node into tree rows,
 // folding each wide call site into one row whose Targets are its ends.
 func (ix *Index) treeRows(edges []*Edge, up bool) []*TreeNode {
+	if !up {
+		// in the order the code makes the calls, so a trace reads like the code
+		edges = append([]*Edge(nil), edges...)
+		sort.SliceStable(edges, func(i, j int) bool {
+			a, b := edges[i], edges[j]
+			if a.File != b.File {
+				return a.File < b.File
+			}
+			return a.Line < b.Line
+		})
+	}
 	var out []*TreeNode
 	wide := map[[3]any]*TreeNode{}
 	for _, e := range edges {

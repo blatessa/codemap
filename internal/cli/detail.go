@@ -9,7 +9,82 @@ import (
 // shared functions not gone into), FeatureDepth levels deep, with every row
 // listing the effects it reaches through code the tree doesn't show.
 func Trace(ix *graph.Index, id string) *graph.TreeNode {
-	return Settle(Rollup(ix, Cut(Features(ix, ix.Tree(id, 0)), FeatureDepth)))
+	return Settle(Rollup(ix, Cut(Prune(ix, Features(ix, ix.Tree(id, 0))), FeatureDepth)))
+}
+
+// Prune keeps the branches of a tree that lead somewhere: to data, a service,
+// a topic, a screen or another program's API, other than what most features
+// reach (graph.CommonEffects). The rest (argument parsing, lookups of
+// settings, error and translation helpers) is counted on the row above, and
+// rows shown higher up aren't repeated. When nothing leads anywhere, the first
+// level stays, so a tree is never empty.
+func Prune(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
+	common := ix.CommonEffects()
+	beneath := map[string]bool{}
+	distinct := func(id string) bool {
+		if v, ok := beneath[id]; ok {
+			return v
+		}
+		v := false
+		for _, f := range ix.EffectsBeneath(id) {
+			if !common[f] {
+				v = true
+				break
+			}
+		}
+		beneath[id] = v
+		return v
+	}
+	memo := map[*graph.TreeNode]bool{}
+	var leads func(c *graph.TreeNode) bool
+	leads = func(c *graph.TreeNode) bool {
+		if v, ok := memo[c]; ok {
+			return v
+		}
+		v := false
+		switch {
+		case c.Targets != nil || c.Seen:
+		case c.Via != nil && ix.IsEffect(c.Via):
+			v = !common[graph.Effect{To: c.ID, Type: c.Via.Type}]
+		case len(c.Children) == 0:
+			v = distinct(c.ID) // a shared function, or a leaf: what it does itself
+		default:
+			for _, k := range c.Children {
+				if leads(k) {
+					v = true
+				}
+			}
+		}
+		memo[c] = v
+		return v
+	}
+	var walk func(t *graph.TreeNode) *graph.TreeNode
+	walk = func(t *graph.TreeNode) *graph.TreeNode {
+		out := *t
+		out.Children = nil
+		for _, c := range t.Children {
+			if leads(c) {
+				out.Children = append(out.Children, walk(c))
+			} else {
+				out.Support++
+			}
+		}
+		return &out
+	}
+	res := walk(t)
+	if len(res.Children) == 0 && len(t.Children) > 0 {
+		res.Support = t.Support
+		for _, c := range t.Children {
+			if c.Seen {
+				res.Support++
+				continue
+			}
+			leaf := *c
+			leaf.Children = nil
+			res.Children = append(res.Children, &leaf)
+		}
+	}
+	return res
 }
 
 // RoleOf is a node's fields.role, or "".
@@ -122,6 +197,8 @@ func Settle(t *graph.TreeNode) *graph.TreeNode {
 // Reaches. A row shown higher up ("see above") covers its own effects there.
 // It changes t in place and returns it.
 func Rollup(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
+	common := ix.CommonEffects()
+	root := t
 	cache := map[string][]graph.Effect{}
 	beneath := func(id string) []graph.Effect {
 		if r, ok := cache[id]; ok {
@@ -155,6 +232,9 @@ func Rollup(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
 		}
 		t.Reaches = nil
 		for _, f := range beneath(t.ID) {
+			if common[f] && t != root {
+				continue // said once, on the root
+			}
 			if !covered[f] {
 				t.Reaches = append(t.Reaches, f)
 				covered[f] = true

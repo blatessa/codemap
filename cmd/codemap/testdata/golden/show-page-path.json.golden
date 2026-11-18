@@ -22,14 +22,6 @@
         },
         "children": [
           {
-            "id": "ts:web/src/components/Layout.tsx#Layout",
-            "via": {
-              "from": "ts:web/src/pages/LoginPage.tsx#LoginPage",
-              "to": "ts:web/src/components/Layout.tsx#Layout",
-              "type": "renders"
-            }
-          },
-          {
             "id": "ts:web/src/components/LoginForm.tsx#LoginForm",
             "via": {
               "from": "ts:web/src/pages/LoginPage.tsx#LoginPage",
@@ -68,7 +60,8 @@
               }
             ]
           }
-        ]
+        ],
+        "support": 1
       }
     ]
   }

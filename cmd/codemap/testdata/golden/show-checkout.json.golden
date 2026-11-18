@@ -27,14 +27,6 @@
         },
         "children": [
           {
-            "id": "ts:web/src/components/Layout.tsx#Layout",
-            "via": {
-              "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
-              "to": "ts:web/src/components/Layout.tsx#Layout",
-              "type": "renders"
-            }
-          },
-          {
             "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
             "via": {
               "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
@@ -90,7 +82,7 @@
             ]
           }
         ],
-        "support": 1
+        "support": 2
       }
     ]
   }

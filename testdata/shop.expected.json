@@ -707,7 +707,7 @@
           [
             "user_id",
             "uuid",
-            "→ users.id"
+            "\u2192 users.id"
           ],
           [
             "items",
@@ -1263,33 +1263,45 @@
     {
       "from": "go:shop/internal/orders.(*Service).Place",
       "to": "go:shop/internal/events.(*Bus).Publish",
-      "type": "calls"
+      "type": "calls",
+      "file": "internal/orders/service.go",
+      "line": 60
     },
     {
       "from": "go:shop/internal/orders.(*Service).Place",
       "to": "go:shop/internal/inventory.(*Store).Reserve",
-      "type": "calls"
+      "type": "calls",
+      "file": "internal/orders/service.go",
+      "line": 49
     },
     {
       "from": "go:shop/internal/orders.(*Service).Place",
       "to": "go:shop/internal/orders.(*Repo).Insert",
-      "type": "calls"
+      "type": "calls",
+      "file": "internal/orders/service.go",
+      "line": 57
     },
     {
       "from": "go:shop/internal/orders.(*Service).Place",
       "to": "go:shop/internal/orders.(CreateOrder).Total",
-      "type": "calls"
+      "type": "calls",
+      "file": "internal/orders/service.go",
+      "line": 52
     },
     {
       "from": "go:shop/internal/orders.(*Service).Place",
       "to": "go:shop/internal/payments.(*Client).Charge",
-      "type": "calls"
+      "type": "calls",
+      "file": "internal/orders/service.go",
+      "line": 52
     },
     {
       "from": "go:shop/internal/orders.(*Service).Place",
       "to": "topic:order.placed",
       "type": "publishes",
-      "detail": "order.placed"
+      "detail": "order.placed",
+      "file": "internal/orders/service.go",
+      "line": 60
     },
     {
       "from": "go:shop/internal/payments.(*Client).Charge",

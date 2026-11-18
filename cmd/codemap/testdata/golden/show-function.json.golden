@@ -31,7 +31,9 @@
         "via": {
           "from": "go:shop/internal/orders.(*Service).Place",
           "to": "go:shop/internal/inventory.(*Store).Reserve",
-          "type": "calls"
+          "type": "calls",
+          "file": "internal/orders/service.go",
+          "line": 49
         },
         "children": [
           {
@@ -46,38 +48,13 @@
         ]
       },
       {
-        "id": "go:shop/internal/orders.(*Repo).Insert",
-        "via": {
-          "from": "go:shop/internal/orders.(*Service).Place",
-          "to": "go:shop/internal/orders.(*Repo).Insert",
-          "type": "calls"
-        },
-        "children": [
-          {
-            "id": "table:orders",
-            "via": {
-              "from": "go:shop/internal/orders.(*Repo).Insert",
-              "to": "table:orders",
-              "type": "writes",
-              "detail": "INSERT INTO orders (user_id, items, charge_id, status) VALUES ($1, $2, $3, $4) RETURNING id"
-            }
-          }
-        ]
-      },
-      {
-        "id": "go:shop/internal/orders.(CreateOrder).Total",
-        "via": {
-          "from": "go:shop/internal/orders.(*Service).Place",
-          "to": "go:shop/internal/orders.(CreateOrder).Total",
-          "type": "calls"
-        }
-      },
-      {
         "id": "go:shop/internal/payments.(*Client).Charge",
         "via": {
           "from": "go:shop/internal/orders.(*Service).Place",
           "to": "go:shop/internal/payments.(*Client).Charge",
-          "type": "calls"
+          "type": "calls",
+          "file": "internal/orders/service.go",
+          "line": 52
         },
         "children": [
           {
@@ -92,15 +69,38 @@
         ]
       },
       {
+        "id": "go:shop/internal/orders.(*Repo).Insert",
+        "via": {
+          "from": "go:shop/internal/orders.(*Service).Place",
+          "to": "go:shop/internal/orders.(*Repo).Insert",
+          "type": "calls",
+          "file": "internal/orders/service.go",
+          "line": 57
+        },
+        "children": [
+          {
+            "id": "table:orders",
+            "via": {
+              "from": "go:shop/internal/orders.(*Repo).Insert",
+              "to": "table:orders",
+              "type": "writes",
+              "detail": "INSERT INTO orders (user_id, items, charge_id, status) VALUES ($1, $2, $3, $4) RETURNING id"
+            }
+          }
+        ]
+      },
+      {
         "id": "topic:order.placed",
         "via": {
           "from": "go:shop/internal/orders.(*Service).Place",
           "to": "topic:order.placed",
           "type": "publishes",
-          "detail": "order.placed"
+          "detail": "order.placed",
+          "file": "internal/orders/service.go",
+          "line": 60
         }
       }
     ],
-    "support": 1
+    "support": 2
   }
 }

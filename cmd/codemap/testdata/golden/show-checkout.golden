@@ -4,11 +4,10 @@ module: web/src/pages
 file:   web/src/main.tsx:10
 
 page /checkout
-  pages.CheckoutPage  renders  (+1 support)
-    components.Layout  renders
+  pages.CheckoutPage  renders  (+2)
     components.PlaceOrderButton  renders
       components.PlaceOrderButton.onClick
-        api.createOrder  (+1 support)  → writes orders, stock · reads users · publishes order.placed · calls api.stripe.com · fetches POST /orders
+        api.createOrder  (+1)  → writes orders, stock · reads users · publishes order.placed · calls api.stripe.com · fetches POST /orders
 
 Tests:
   test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order  web/src/components/PlaceOrderButton.test.tsx:12  (direct)

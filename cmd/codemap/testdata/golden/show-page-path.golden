@@ -4,11 +4,10 @@ module: web/src/pages
 file:   web/src/main.tsx:9
 
 page /login
-  pages.LoginPage  renders
-    components.Layout  renders
+  pages.LoginPage  renders  (+1)
     components.LoginForm  renders
       components.LoginForm.onSubmit
-        api.login  (+1 support)  → reads users · fetches POST /login
+        api.login  (+1)  → reads users · fetches POST /login
 
 Tests:
   (none)

@@ -5,10 +5,10 @@ file:   cmd/server/routes.go:14
 method: GET
 
 GET /orders/:id
-  auth.Handler.RequireUser  (+2 support)
+  auth.Handler.RequireUser  (+2)
     auth.Store.UserByID
       users [table]  reads: SELECT id, email FROM users WHERE id = $1
-  orders.Handler.Get  (+2 support)
+  orders.Handler.Get  (+2)
     orders.Repo.Find
       orders [table]  reads: SELECT * FROM orders WHERE id = $1
 

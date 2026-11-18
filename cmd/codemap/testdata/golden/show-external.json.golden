@@ -102,26 +102,13 @@
                     ]
                   }
                 ]
-              },
+              }
+            ],
+            "support": 1,
+            "reaches": [
               {
-                "id": "go:shop/internal/payments.(*Handler).verifySignature",
-                "via": {
-                  "from": "go:shop/internal/payments.(*Handler).HandleWebhook",
-                  "to": "go:shop/internal/payments.(*Handler).verifySignature",
-                  "type": "calls"
-                },
-                "children": [
-                  {
-                    "id": "ext:stripe",
-                    "via": {
-                      "from": "go:shop/internal/payments.(*Handler).verifySignature",
-                      "to": "ext:stripe",
-                      "type": "calls",
-                      "detail": "webhook.ConstructEvent"
-                    },
-                    "seen": true
-                  }
-                ]
+                "to": "ext:stripe",
+                "type": "calls"
               }
             ]
           }
