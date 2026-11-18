@@ -9,14 +9,12 @@ import {
   addArea,
   currentProposal,
   getState,
-  hide,
   load,
   resetLayout,
   select,
   setMode,
   setState,
   subscribe,
-  unhide,
   useModel,
   useStore,
   type RectOf,
@@ -206,13 +204,6 @@ function Search() {
 
 // ---- map controls, bottom right ----
 
-function hideName(m: Model, h: { id?: string; match?: string; module?: string }) {
-  if (h.match) return h.module ? `${h.match} in ${m.box.get(h.module)?.label ?? h.module}` : h.match;
-  const id = h.id ?? '';
-  if (m.node.has(id)) return qn(m, id);
-  return m.box.get(id)?.label ?? id;
-}
-
 function useOutside<T extends HTMLElement>(open: boolean, close: () => void) {
   const ref = useRef<T>(null);
   useEffect(() => {
@@ -229,39 +220,10 @@ function useOutside<T extends HTMLElement>(open: boolean, close: () => void) {
   return ref;
 }
 
-function Hidden() {
-  const m = useModel();
-  const hidden = useStore((s) => s.hidden);
-  const [open, setOpen] = useState(false);
-  const close = useMemo(() => () => setOpen(false), []);
-  const ref = useOutside<HTMLDivElement>(open, close);
-  if (!hidden.length) return null;
-  return (
-    <div className="hidwrap" ref={ref}>
-      <button className="ctl chip" id="hiddenbtn" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {hidden.length} hidden
-      </button>
-      {open && (
-        <div className="pop up" id="hidden">
-          {hidden.map((h, i) => (
-            <div className="vrow hrow" key={i} data-hidden={h.id ?? h.match}>
-              <span className="hname">{hideName(m, h)}</span>
-              <button className="del" onClick={() => unhide(i)}>
-                Show
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function MapControls() {
   const showAll = useStore((s) => s.showAll);
   return (
     <div className="mapctl">
-      <Hidden />
       <button className="ctl" id="showall" aria-pressed={showAll} title="Every function and call (A)" onClick={toggleAll}>
         Show all
       </button>
@@ -305,8 +267,6 @@ function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
       { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('c-text')?.focus(), 50)), off: ro },
       { id: 'editor', label: 'Open in editor', run: () => void openInEditor(n.file!, n.line ?? 1), off: !n.file },
       { id: 'copy', label: 'Copy ID', run: () => void navigator.clipboard?.writeText(menu.id) },
-      null,
-      { id: 'hide', label: 'Hide from map', run: () => hide(menu.id), off: ro || x.row.prop || x.row.ghost },
     ];
   } else if (menu.kind === 'box') {
     const b = m.box.get(menu.id)!;
@@ -321,8 +281,6 @@ function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
         setState({ collapsed: c });
       } },
       { id: 'area', label: 'New area with this module', run: () => newAreaAt(m, rectOf, [menu.id]), off: ro || !real },
-      null,
-      { id: 'hide', label: 'Hide from map', run: () => hide(menu.id), off: ro || !real },
     ];
   } else items = map.filter((c) => !c.id.startsWith('cmp-') && c.id !== 'proposals');
   const shown = items.filter((c) => c === null || !c.off);

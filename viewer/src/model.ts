@@ -1,8 +1,8 @@
 // Turns graph.json + .codemap state into what the map draws: boxes (modules,
 // blocks, proposed modules) holding rows (nodes), and the edges between rows.
 // Also the walks behind selection, call trees and test reach (graph/query.go).
-import { blockFor, pathMatch } from './blocks';
-import type { Block, Detail, GEdge, GModule, GNode, Graph, Hide, Loose, Proposal } from './types';
+import { blockFor } from './blocks';
+import type { Block, GEdge, GModule, GNode, Graph, Loose, Proposal } from './types';
 
 export const ROW = 28,
   HEAD = 36,
@@ -25,8 +25,6 @@ export interface Row {
   ghost: boolean; // referenced by the proposal but not in the code
   pub: boolean; // shown by default: entry, external, or an edge crosses the box
   role: string; // fields.role: wiring, utility, passthrough, … ('' is core)
-  support: boolean; // has a role and the level is Features: behind the box's expander
-  hidden: boolean; // in .codemap/hidden.toml: drawn only on a selected path, dimmed
   moved?: string; // the proposal moves this existing node here from that module (its label)
 }
 
@@ -47,7 +45,6 @@ export interface Box {
   propPos?: [number, number];
   propArea?: string;
   pub: number; // public rows
-  shown: number; // rows not hidden
   defH: number; // height with only public rows showing at the Code level (what layout uses)
   shared: boolean; // used by most other modules; laid out along the bottom
   usedBy: number; // modules with edges into this one
@@ -77,28 +74,10 @@ export interface Model {
   inn: Map<string, MEdge[]>;
   tests: GNode[];
   full: { out: Map<string, GEdge[]>; node: Map<string, GNode> };
-  // every edge, with no passthrough collapsed: the details panel's lists and call tree
   all: { edges: MEdge[]; out: Map<string, MEdge[]>; inn: Map<string, MEdge[]> };
-  detail: Detail;
-}
-
-export interface ModelOpts {
-  detail?: Detail;
-  hidden?: Hide[];
 }
 
 export const roleOf = (n: GNode): string => (typeof n.fields?.role === 'string' ? (n.fields.role as string) : '');
-
-// hiddenBy returns the hidden.toml entry that hides n, if any. An id hides a
-// node or a whole module; a match is a glob on the label, optionally in one
-// module (by id or label).
-export function hiddenBy(rules: Hide[], n: GNode, moduleLabel?: string): Hide | undefined {
-  return rules.find(
-    (r) =>
-      (r.id && (r.id === n.id || r.id === n.module)) ||
-      (r.match && pathMatch(r.match, n.label) && (!r.module || r.module === n.module || r.module === moduleLabel)),
-  );
-}
 
 const ENTRY_PREFIX: Record<string, string> = { subscriber: 'SUB', function: 'MAIN', component: 'COMP' };
 
@@ -145,8 +124,6 @@ function rowFor(n: GNode, prop: boolean, ghost: boolean): Row {
     ghost,
     pub: false,
     role: prop || ghost ? '' : roleOf(n),
-    support: false,
-    hidden: false,
   };
 }
 
@@ -164,15 +141,13 @@ export const isTest = (n: GNode) => n.kind === 'test';
 // buildModel derives the map. `proposal` is drawn over the graph when set.
 // At the Features level, rows with a role are support rows, and edges through
 // passthroughs are drawn straight to where they lead (A → C for A → P → C).
-export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null, opts: ModelOpts = {}): Model {
-  const detail = opts.detail ?? 'code';
-  const hideRules = opts.hidden ?? [];
+export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null): Model {
   const mods = g.modules ?? [];
   const nodes = g.nodes ?? [];
   const gedges = g.edges ?? [];
   const box = new Map<string, Box>();
   const mkBox = (id: string, label: string, extra: Partial<Box> = {}): Box => {
-    const b: Box = { id, label, sub: '', external: false, prop: false, ghost: false, rows: [], w: 0, hasEntry: false, pub: 0, shown: 0, defH: 0, shared: false, usedBy: 0, ...extra };
+    const b: Box = { id, label, sub: '', external: false, prop: false, ghost: false, rows: [], w: 0, hasEntry: false, pub: 0, defH: 0, shared: false, usedBy: 0, ...extra };
     box.set(id, b);
     return b;
   };
@@ -268,12 +243,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null,
     return { out: o, inn: n };
   };
   const all = { edges, ...index(edges) };
-  for (const { row, box: b } of node.values()) {
-    row.support = detail === 'features' && !!row.role;
-    row.hidden = !row.prop && !row.ghost && !!hideRules.length && !!hiddenBy(hideRules, row.node, b.module?.label);
-  }
-  const shown = detail === 'features' ? collapse(edges, all.out, (id) => node.get(id)?.row.role === 'passthrough') : edges;
-  const { out, inn } = shown === edges ? all : index(shown);
+  const { out, inn } = all;
   // external rows get a colour from how they're used, never from their kind
   for (const { row } of node.values()) {
     if (!row.tag) continue;
@@ -285,8 +255,8 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null,
   for (const e of gedges) (fullOut.get(e.from) ?? fullOut.set(e.from, []).get(e.from)!).push(e);
 
   // public rows: entry points, external nodes, and anything with an edge leaving
-  // its box; never support or hidden rows
-  for (const e of shown) {
+  // its box
+  for (const e of edges) {
     const a = node.get(e.from)!,
       b = node.get(e.to)!;
     if (a.box !== b.box) a.row.pub = b.row.pub = true;
@@ -306,45 +276,18 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null,
     b.rows.sort((x, y) => Number(x.prop || x.ghost) - Number(y.prop || y.ghost) || sortRows(x, y));
     for (const r of b.rows) {
       if (r.node.entry || r.node.external || r.prop || r.ghost) r.pub = true;
-      if (r.support || r.hidden) r.pub = false;
       if (shownRows.has(r.id)) r.pub = true;
     }
     b.pub = b.rows.filter((r) => r.pub).length;
-    b.shown = b.rows.filter((r) => !r.hidden).length;
-    const lp = b.rows.filter((r) => !r.hidden && (codePub.has(r.id) || r.node.entry || r.node.external || r.prop || r.ghost)).length;
-    b.defH = heightOf(lp, lp < b.shown);
+    const lp = b.rows.filter((r) => (codePub.has(r.id) || r.node.entry || r.node.external || r.prop || r.ghost)).length;
+    b.defH = heightOf(lp, lp < b.rows.length);
     b.hasEntry = b.rows.some((r) => r.node.entry);
     b.sub = subOf(b.rows, b.prop);
     b.w = widthOf(b);
     boxes.push(b);
   }
   markShared(boxes, box, node, gedges, fullNode, blocks);
-  return { boxes, box, node, edges: shown, out, inn, tests, full: { out: fullOut, node: fullNode }, all, detail };
-}
-
-// collapse redraws edges through passthroughs: A → P → C becomes A → C, with
-// the type and detail of the last hop. Edges out of passthroughs are dropped.
-function collapse(edges: MEdge[], out: Map<string, MEdge[]>, isPass: (id: string) => boolean): MEdge[] {
-  const res: MEdge[] = [];
-  const seen = new Set<string>();
-  const add = (e: MEdge, from: string, via: string[]) => {
-    const k = from + '\0' + e.to + '\0' + e.type;
-    if (seen.has(k) || from === e.to) return;
-    seen.add(k);
-    res.push({ ...e, i: res.length, from, ...(via.length ? { via } : {}) });
-  };
-  const follow = (e: MEdge, from: string, via: string[]) => {
-    if (!isPass(e.to) || e.prop) return add(e, from, via);
-    if (via.includes(e.to) || via.length > 8) return;
-    const next = out.get(e.to) ?? [];
-    if (!next.length) return add(e, from, via);
-    for (const n of next) follow(n, from, [...via, e.to]);
-  };
-  for (const e of edges) {
-    if (isPass(e.from) && !e.prop) continue;
-    follow(e, e.from, []);
-  }
-  return res;
+  return { boxes, box, node, edges, out, inn, tests, full: { out: fullOut, node: fullNode }, all };
 }
 
 // markShared finds modules that most others depend on (a graph package, a config

@@ -207,7 +207,6 @@ array of tables under a singular key (`[[area]]`, `[[block]]`, `[[view]]`).
 | `areas.toml` | `[[area]]` / `name = "Commerce"` / `modules = ["mod:…", "block:…"]`. Any number of areas. |
 | `blocks.toml` | Splits of a module into named blocks, as **rules** so new code lands automatically (§4.1). |
 | `layout.json` | Positions written by the viewer: `{ "<module or block id>": [x, y], "area:<name>": [x, y] }`. Machine-written, sorted keys. |
-| `hidden.toml` | Things taken off the map, one `[[hide]]` each: `id = "<node or module id>"`, or `match = "*.String"` (a glob on labels) with an optional `module`. Hidden nodes draw only on a selected path, dimmed. |
 | `external.toml` | Declared nodes and edges, plus extra fields merged into extracted nodes (§5.6). |
 | `proposals/<slug>.md` | One proposal per file (§6). |
 
@@ -509,8 +508,6 @@ and wording.
   - collapse and expand, drag modules
   - Focus (`F`), which shows only the selected path
   - Shift-click multi-selection, offering "Split into a new block" and "New area from these"
-  - Hide, from the right-click menu, writes `hidden.toml`; a "N hidden" chip by the map
-    controls lists them to show again
 - **Selection:**
   - Selecting a node lights up everything upstream and downstream of it. Traced paths stop at
     external nodes unless the external node itself is selected.
@@ -543,10 +540,10 @@ and wording.
   commands (`/` or ⌘K/Ctrl K: functions, modules, and commands such as "show all", "new
   area", "reset layout", compare presets), and Proposals (right). Zoom, Fit and Show all float
   bottom-left. Right-click menus on functions (show only this path, comment, open in editor,
-  copy ID, hide), modules (show what's inside, comment, collapse, new area, hide) and the
+  copy ID), modules (show what's inside, comment, collapse, new area) and the
   canvas (show all, fit, collapse all, new area, reset layout). Keys: `A` show all, `0` fit,
-  `F` focus, `C` comment, Esc back out. The URL keeps the selection and the comparison
-  (`#compare=…&sel=…`), so a link or bookmark replaces saved views.
+  `F` focus, `C` comment, Esc back out. The URL keeps the comparison (`#compare=…`), not the
+  selection.
 - **Copy:** minimal text, no explanatory paragraphs, no per-row status badges. Both light and
   dark themes, following the prototype's tokens.
 

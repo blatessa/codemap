@@ -17,8 +17,6 @@ import (
 const (
 	AreaKey  = "area"
 	BlockKey = "block"
-	ViewKey  = "view"
-	HideKey  = "hide"
 )
 
 // MarshalTOML encodes v as TOML. Free-form maps (declared nodes, proposal

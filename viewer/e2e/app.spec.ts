@@ -46,18 +46,15 @@ test('detail follows what you select: overview, a module, a trace, show all', as
   await page.locator('#showall').click();
   await expect(node(page, INSERT)).toBeVisible();
   await expect(page.locator(`#map [data-more]`)).toHaveCount(0);
+  await expect(page.locator('#drawer .dhead')).toHaveCount(0);
 });
 
-test('search runs commands, and right-click hides and the chip brings it back', async ({ page }) => {
+test('search runs commands; switching selections keeps one panel', async ({ page }) => {
   await open(page);
   await search(page, 'show all');
   await expect(page.locator('#showall')).toHaveAttribute('aria-pressed', 'true');
-  await node(page, INSERT).click({ button: 'right' });
-  await page.locator('#ctxmenu [data-cmd="hide"]').click();
-  await expect(page.locator(`#map [data-node="${INSERT}"]`)).toHaveCount(0);
-  await page.locator('#hiddenbtn').click();
-  await page.locator('#hidden [data-hidden="' + INSERT + '"] button').click();
-  await expect(node(page, INSERT)).toBeVisible();
+  for (const q of ['web/src/api', 'internal/auth', 'Handler.Login']) await search(page, q);
+  await expect(page.locator('#drawer .dhead')).toHaveCount(1);
 });
 
 test('a new area, with a module dragged in', async ({ page }) => {
@@ -136,11 +133,3 @@ test('a big map folds folders into groups, and a trace opens the ones it runs th
   await expect(box(page, 'mod:go:big/internal/plugins/p5')).toHaveCount(0);
 });
 
-test('the URL keeps the selection', async ({ page }) => {
-  await open(page);
-  await search(page, 'Service.Place');
-  await expect(page).toHaveURL(/sel=/);
-  await page.reload();
-  await expect(page.locator('#drawer h2')).toHaveText('Service.Place');
-  await expect(node(page, 'go:shop/internal/orders.(*Service).Place')).toHaveClass(/\bsel\b/);
-});

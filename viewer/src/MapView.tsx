@@ -174,14 +174,12 @@ function buildDisp(
   const openBoxes = new Set(selIds.filter((id) => m.box.has(id)));
   const visible = (b: Box): { rows: Row[]; more: number; moreWord: string; open: boolean } => {
     if (focusOn) return { rows: b.rows.filter((r) => S.nodes.has(r.id)), more: 0, moreWord: '', open: false };
-    const all = b.shown === b.rows.length ? b.rows : b.rows.filter((r) => !r.hidden || S?.path.has(r.id));
+    const all = b.rows;
     if (showAll || openBoxes.has(b.id)) return { rows: all, more: 0, moreWord: '', open: openBoxes.has(b.id) };
     const keep = (r: Row) => r.node.entry || r.node.external || r.prop || r.ghost || !!r.moved || !!nodeStatus(r.id) || !!S?.path.has(r.id);
     const rows = all.filter(keep);
     return { rows, more: all.length - rows.length, moreWord: 'more', open: false };
   };
-  // a box whose rows are all hidden doesn't draw, unless the selected path runs through it
-  const gone = (b: Box) => b.rows.length > 0 && b.shown === 0 && !b.rows.some((r) => S?.path.has(r.id));
 
   // Folded groups open when the user opens them, or for the selection: the
   // groups holding what's selected and, for a traced path, every box on it.
@@ -331,7 +329,6 @@ function buildDisp(
     };
   }
   function add(b: Box, p: [number, number], inG?: string) {
-    if (gone(b)) return;
     const v = visible(b);
     if (focusOn && !v.rows.length) return;
     const fh = heightOf(v.rows.length, v.more > 0);
@@ -708,7 +705,7 @@ const BoxG = memo(function BoxG({ d, S, selKey, hover, connectFrom, canAdd }: Bo
           {d.rows.map((r, i) => {
             const ry = y + HEAD + i * ROW,
               cy = ry + ROW / 2 + 4;
-            const c = ['fn', S ? (S.nodes.has(r.id) ? 'on' : 'dim') : '', r.hidden && 'hid', d.open && r.role && 'role', (r.prop || r.moved) && 'prop', r.ghost && 'ghost', rowCls(r.id), sels.includes(r.id) && 'sel', connectFrom === r.id && 'from', hover === r.id && 'hov']
+            const c = ['fn', S ? (S.nodes.has(r.id) ? 'on' : 'dim') : '', d.open && r.role && 'role', (r.prop || r.moved) && 'prop', r.ghost && 'ghost', rowCls(r.id), sels.includes(r.id) && 'sel', connectFrom === r.id && 'from', hover === r.id && 'hov']
               .filter(Boolean)
               .join(' ');
             return (
@@ -935,9 +932,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     if (!fitPending.current && disp.boxes.length && fitSeq) {
       fitPending.current = true;
       fit();
-      // opened from a link with a selection: go to it
-      const sel = getState().sel;
-      if (sel.length) setState({ centerOn: sel[0] });
     }
   }, [disp.boxes.length, fitSeq, fit]);
   useEffect(() => {

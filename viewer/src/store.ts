@@ -5,7 +5,7 @@ import { escapeGlob, slugify } from './blocks';
 import { layoutUnplaced, type Pos } from './layout';
 import { buildGrouping, isGroup, layoutH, topOf, type Grouping } from './groups';
 import { buildModel, selectionOf, type Model, type Sel } from './model';
-import type { Area, Block, Detail, Graph, Hide, Layout, Loose, Proposal, View } from './types';
+import type { Area, Block, Graph, Layout, Loose, Proposal } from './types';
 
 export type Mode = 'explore' | 'propose';
 export interface Form {
@@ -22,9 +22,6 @@ export interface S {
   graph: Graph;
   areas: Area[];
   blocks: Block[];
-  views: View[];
-  hidden: Hide[];
-  detail: Detail;
   proposals: Proposal[];
   versions: Record<string, string>;
   pos: Pos; // box and empty-area positions; mirrors layout.json once anything is dragged
@@ -60,9 +57,6 @@ export const useStore = create<S>(() => ({
   graph: empty,
   areas: [],
   blocks: [],
-  views: [],
-  hidden: [],
-  detail: 'code',
   proposals: [],
   versions: {},
   pos: {},
@@ -95,12 +89,11 @@ const get = useStore.getState;
 
 // ---- derived ----
 
-let memo: { g?: Graph; b?: Block[]; p?: Proposal | null; d?: Detail; h?: Hide[]; m?: Model } = {};
+let memo: { g?: Graph; b?: Block[]; p?: Proposal | null; m?: Model } = {};
 export function modelOf(s: S): Model {
   const p = s.mode === 'propose' ? currentProposal(s) : null;
   const g = p && s.baseGraph ? s.baseGraph : s.graph;
-  if (memo.g !== g || memo.b !== s.blocks || memo.p !== p || memo.d !== s.detail || memo.h !== s.hidden)
-    memo = { g, b: s.blocks, p, d: s.detail, h: s.hidden, m: buildModel(g, s.blocks, p, { detail: s.detail, hidden: s.hidden }) };
+  if (memo.g !== g || memo.b !== s.blocks || memo.p !== p) memo = { g, b: s.blocks, p, m: buildModel(g, s.blocks, p) };
   return memo.m!;
 }
 export const useModel = () => useStore(modelOf);
@@ -172,10 +165,6 @@ export async function load() {
     else next.versions!.areas = s.versions.areas;
     if (!keep('blocks')) next.blocks = pr.blocks ?? [];
     else next.versions!.blocks = s.versions.blocks;
-    if (!keep('views')) next.views = pr.views ?? [];
-    else next.versions!.views = s.versions.views;
-    if (!keep('hidden')) next.hidden = pr.hidden ?? [];
-    else next.versions!.hidden = s.versions.hidden;
     if (!keep('layout')) {
       const l = pr.layout ?? {};
       next.pos = first ? { ...l } : { ...s.pos, ...l };
@@ -284,8 +273,6 @@ function valueOf(file: api.ProjectFile): unknown {
   const s = get();
   if (file === 'areas') return s.areas;
   if (file === 'blocks') return s.blocks;
-  if (file === 'views') return s.views;
-  if (file === 'hidden') return s.hidden;
   if (file === 'layout') return layoutValue(s);
   return null;
 }
@@ -325,8 +312,6 @@ function applyConflict(file: api.ProjectFile, c: api.Conflict) {
   const versions = { ...s.versions, [file]: c.version };
   if (file === 'areas') set({ areas: (c.value as Area[]) ?? [], versions });
   else if (file === 'blocks') set({ blocks: (c.value as Block[]) ?? [], versions });
-  else if (file === 'views') set({ views: (c.value as View[]) ?? [], versions });
-  else if (file === 'hidden') set({ hidden: (c.value as Hide[]) ?? [], versions });
   else if (file === 'layout') set({ pos: { ...s.pos, ...((c.value as Layout) ?? {}) }, versions });
   else set({ versions });
 }
@@ -525,25 +510,6 @@ export function mergeBlock(id: string) {
   persist('layout');
 }
 
-// ---- detail level and hidden things ----
-
-export function setDetail(detail: Detail) {
-  set({ detail });
-}
-
-// hide adds an id (a node or a module) to hidden.toml.
-export function hide(id: string) {
-  const s = get();
-  if (s.hidden.some((h) => h.id === id && !h.match)) return;
-  set({ hidden: [...s.hidden, { id }], sel: s.sel.filter((x) => x !== id), form: null, splitting: null });
-  persist('hidden');
-}
-
-// unhide removes one hidden.toml entry, pattern entries included.
-export function unhide(i: number) {
-  set({ hidden: get().hidden.filter((_, j) => j !== i) });
-  persist('hidden');
-}
 
 
 // ---- proposals ----

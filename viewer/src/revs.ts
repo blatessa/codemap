@@ -344,34 +344,19 @@ export function writeHash() {
   const parts: string[] = [];
   if (spec) parts.push(`compare=${enc(spec.from)}..${enc(spec.to)}`);
   else if (!isWorktree(v)) parts.push(`rev=${enc(v)}`);
-  const sel = pendingSel ?? getMain().sel;
-  if (sel.length) parts.push('sel=' + sel.map(enc).join(','));
   const h = parts.length ? '#' + parts.join('&') : '';
   if (location.hash !== h) history.replaceState(null, '', location.pathname + location.search + h);
 }
 
-export function readHash(): { compare?: Spec; rev?: string; sel?: string[] } {
-  const out: { compare?: Spec; rev?: string; sel?: string[] } = {};
+export function readHash(): { compare?: Spec; rev?: string } {
+  const out: { compare?: Spec; rev?: string } = {};
   for (const part of location.hash.slice(1).split('&')) {
     const m = /^compare=(.*?)\.\.(.*)$/.exec(part);
     if (m) out.compare = { from: decodeURIComponent(m[1]), to: decodeURIComponent(m[2]) };
     const r = /^rev=(.+)$/.exec(part);
     if (r) out.rev = decodeURIComponent(r[1]);
-    const sl = /^sel=(.+)$/.exec(part);
-    if (sl) out.sel = sl[1].split(',').map(decodeURIComponent);
   }
   return out;
-}
-
-// pendingSel is the URL's selection, applied once the map it names has loaded.
-let pendingSel: string[] | null = null;
-function applySel() {
-  const s = getMain();
-  if (!pendingSel || s.status !== 'ready' || get().busy) return;
-  const m = modelOf(s);
-  const ids = pendingSel.filter((id) => m.node.has(id) || m.box.has(id));
-  pendingSel = null;
-  if (ids.length) setMain({ sel: ids, centerOn: ids[0] });
 }
 
 // start applies the URL hash and keeps revs and the diff fresh as things change.
@@ -379,19 +364,12 @@ function applySel() {
 let started = false;
 export function start(): boolean {
   const h = readHash();
-  if (h.sel && !started) pendingSel = h.sel;
   void loadRevs();
   if (h.compare) void compare(h.compare.from, h.compare.to);
   else if (h.rev) void view(h.rev);
   const took = !!(h.compare || h.rev);
   if (started) return took;
   started = true;
-  // the selection lives in the URL, so a link or bookmark comes back to it
-  useStore.subscribe((st, prev) => {
-    if (pendingSel) applySel();
-    else if (st.sel !== prev.sel) writeHash();
-  });
-  useCompare.subscribe(() => pendingSel && applySel());
   // On a branch, the map opens on what the branch changed (PLAN.md §9), unless
   // the URL says what to show.
   if (!took && !location.hash)

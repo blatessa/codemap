@@ -57,26 +57,6 @@ export interface Block {
 
 export type Layout = Record<string, [number, number]>;
 
-export interface View {
-  name: string;
-  selection?: string[] | null;
-  focus?: boolean;
-  collapsed?: string[] | null;
-  expanded?: string[] | null;
-  detail?: Detail;
-}
-
-// Features shows a feature's spine and leaves support rows (fields.role) out;
-// Code shows everything.
-export type Detail = 'features' | 'code';
-
-// One [[hide]] entry in .codemap/hidden.toml: an id (node or module), or a
-// glob on node labels, optionally only in one module.
-export interface Hide {
-  id?: string;
-  match?: string;
-  module?: string;
-}
 
 export type Loose = Record<string, unknown>;
 
@@ -98,8 +78,6 @@ export interface Project {
   areas: Area[] | null;
   blocks: Block[] | null;
   layout: Layout | null;
-  views: View[] | null;
-  hidden?: Hide[] | null;
   external: unknown;
   proposals: Proposal[] | null;
 }

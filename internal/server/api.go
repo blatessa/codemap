@@ -65,12 +65,6 @@ func projectJSON(p *project.Project) project.Project {
 	if c.Blocks == nil {
 		c.Blocks = []project.Block{}
 	}
-	if c.Views == nil {
-		c.Views = []project.View{}
-	}
-	if c.Hidden == nil {
-		c.Hidden = []project.Hide{}
-	}
 	if c.Layout == nil {
 		c.Layout = project.Layout{}
 	}
@@ -146,16 +140,6 @@ var kinds = map[string]fileKind{
 			if b := &(*v)[i]; b.ID == "" && b.Name != "" {
 				b.ID = "block:" + project.Slugify(b.Name)
 			}
-		}
-	}),
-	"views": listKind(project.ViewKey, func(v *[]project.View) {
-		if *v == nil {
-			*v = []project.View{}
-		}
-	}),
-	"hidden": listKind(project.HideKey, func(v *[]project.Hide) {
-		if *v == nil {
-			*v = []project.Hide{}
 		}
 	}),
 	"external": tomlKind(project.External{}, nil),

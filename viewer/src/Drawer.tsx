@@ -119,7 +119,7 @@ function CallTree({ m, id }: { m: Model; id: string }) {
           return (
             <button
               key={i}
-              className={`trow ${x.row.prop || r.via.prop ? 'prop' : ''} ${x.row.support || x.row.hidden ? 'sup' : ''}`}
+              className={`trow ${x.row.prop || r.via.prop ? 'prop' : ''} ${x.row.role ? 'sup' : ''}`}
               data-node={r.id}
               style={{ paddingLeft: 6 + Math.min(r.depth, 12) * 14 }}
               onClick={() => select(r.id)}
@@ -688,7 +688,7 @@ export function Drawer() {
       onMouseLeave={() => getState().hover && setState({ hover: null })}
     >
       {content}
-      {!readOnly && !form && sel.length > 0 && content && <Comment key={sel.join('\0')} m={m} ids={sel} />}
+      {!readOnly && !form && sel.length > 0 && content && <Comment key={'comment:' + sel.join('\0')} m={m} ids={sel} />}
     </aside>
   );
 }

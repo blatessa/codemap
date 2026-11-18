@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { blockFor, escapeGlob, globMatch, pathMatch } from './blocks';
 import { classify, humanize } from './fields';
 import { GROUP_AT, buildGrouping, chain } from './groups';
-import { buildModel, callTree, hiddenBy, selectionOf, testsReaching } from './model';
+import { buildModel, selectionOf, testsReaching } from './model';
 import type { Graph } from './types';
 
 describe('blocks (port of project.BlockFor)', () => {
@@ -198,74 +198,5 @@ describe('folder groups', () => {
     const G = group([...many('internal/reader', 20), ...many('internal/plugins', 20)], ['mod:internal/reader/p7'])!;
     expect(G.top).toContain('mod:internal/reader/p7');
     expect(G.groups.get('group:internal/reader')!.members).not.toContain('mod:internal/reader/p7');
-  });
-});
-
-describe('detail levels and hidden things', () => {
-  const fnode = (id: string, module: string, role?: string) => ({ id, kind: 'function', label: id, module, ...(role ? { fields: { role } } : {}) });
-  const g: Graph = {
-    version: 1,
-    modules: [
-      { id: 'm:a', label: 'a' },
-      { id: 'm:b', label: 'b' },
-      { id: 'm:db', label: 'db', external: true },
-    ],
-    nodes: [
-      { id: 'route', kind: 'route', label: '/x', module: 'm:a', entry: true },
-      fnode('h', 'm:a'),
-      fnode('pass', 'm:a', 'passthrough'),
-      fnode('svc', 'm:b'),
-      fnode('util', 'm:b', 'utility'),
-      fnode('svc.String', 'm:b'),
-      { id: 't', kind: 'table', label: 't', module: 'm:db', external: true },
-    ],
-    edges: [
-      { from: 'route', to: 'h', type: 'calls' },
-      { from: 'h', to: 'pass', type: 'calls' },
-      { from: 'pass', to: 'svc', type: 'calls' },
-      { from: 'h', to: 'util', type: 'calls' },
-      { from: 'svc', to: 'util', type: 'calls' },
-      { from: 'svc', to: 't', type: 'writes' },
-    ],
-  };
-
-  test('Features draws A → C through a passthrough; Code draws every edge', () => {
-    const code = buildModel(g, [], null, { detail: 'code' });
-    expect(code.edges.map((e) => `${e.from}>${e.to}`)).toContain('h>pass');
-    const f = buildModel(g, [], null, { detail: 'features' });
-    const pairs = f.edges.map((e) => `${e.from}>${e.to}`);
-    expect(pairs).toContain('h>svc');
-    expect(pairs.some((p) => p.includes('pass'))).toBe(false);
-    expect(f.edges.find((e) => e.from === 'h' && e.to === 'svc')!.via).toEqual(['pass']);
-    // the call tree still shows the passthrough
-    expect(callTree(f, 'h').map((r) => r.id)).toEqual(['pass', 'svc', 'util', 't', 'util']);
-  });
-
-  test('support rows are never public at Features; they are in Code', () => {
-    const f = buildModel(g, [], null, { detail: 'features' });
-    expect(f.node.get('util')!.row.support).toBe(true);
-    expect(f.node.get('util')!.row.pub).toBe(false);
-    const code = buildModel(g, [], null, { detail: 'code' });
-    expect(code.node.get('util')!.row.support).toBe(false);
-    expect(code.node.get('util')!.row.pub).toBe(true);
-  });
-
-  test('a selected path still reaches through support rows', () => {
-    const f = buildModel(g, [], null, { detail: 'features' });
-    const S = selectionOf(f, ['route'], [])!;
-    expect(S.path.has('util')).toBe(true);
-    expect(S.path.has('t')).toBe(true);
-  });
-
-  test('hidden.toml entries match by id, module, or label glob in a module', () => {
-    const n = (id: string, module: string) => ({ id, kind: 'function', label: id, module });
-    expect(hiddenBy([{ id: 'svc' }], n('svc', 'm:b'))).toBeTruthy();
-    expect(hiddenBy([{ id: 'm:b' }], n('svc', 'm:b'))).toBeTruthy();
-    expect(hiddenBy([{ match: '*.String' }], n('svc.String', 'm:b'))).toBeTruthy();
-    expect(hiddenBy([{ match: '*.String', module: 'a' }], n('svc.String', 'm:b'))).toBeFalsy();
-    expect(hiddenBy([{ match: '*.String', module: 'b' }], n('svc.String', 'm:b'), 'b')).toBeTruthy();
-    const m = buildModel(g, [], null, { hidden: [{ match: '*.String' }] });
-    expect(m.node.get('svc.String')!.row.hidden).toBe(true);
-    expect(m.box.get('m:b')!.shown).toBe(2);
   });
 });

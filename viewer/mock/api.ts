@@ -18,9 +18,9 @@ const GRAPH = path.resolve(process.env.CODEMAP_MOCK_GRAPH ?? path.join(here, '..
 const DIR = path.join(ROOT, '.codemap');
 
 type Obj = Record<string, unknown>;
-const FILES = ['areas', 'blocks', 'layout', 'views', 'hidden', 'external'] as const;
+const FILES = ['areas', 'blocks', 'layout', 'external'] as const;
 // the [[key]] each list file keeps its entries under
-const LIST_KEY: Record<string, string> = { areas: 'area', blocks: 'block', views: 'view', hidden: 'hide' };
+const LIST_KEY: Record<string, string> = { areas: 'area', blocks: 'block' };
 type FileKey = (typeof FILES)[number];
 
 interface Mock {
@@ -169,8 +169,6 @@ const projectOf = () => ({
   areas: db.files.areas,
   blocks: db.files.blocks,
   layout: db.files.layout,
-  views: db.files.views,
-  hidden: db.files.hidden,
   external: db.files.external,
   proposals: [...db.proposals.values()],
 });
@@ -207,11 +205,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
   }
   // test hook: serve another graph with an empty .codemap (reset restores the fixture)
   if (p === '/__mock/load' && m === 'PUT') {
-    db = { graph: (await readBody(req)) as Obj, config: {}, files: { areas: [], blocks: [], layout: {}, views: [], hidden: [], external: {} }, proposals: new Map() };
+    db = { graph: (await readBody(req)) as Obj, config: {}, files: { areas: [], blocks: [], layout: {}, external: {} }, proposals: new Map() };
     return send(res, 204);
   }
   if (p === '/api/state' && m === 'GET') return send(res, 200, { graph: db.graph, project: projectOf(), versions: versions() });
-  const pf = /^\/api\/project\/(areas|blocks|layout|views|hidden|external)$/.exec(p);
+  const pf = /^\/api\/project\/(areas|blocks|layout|external)$/.exec(p);
   if (pf && m === 'PUT') {
     const key = pf[1] as FileKey;
     const cur = hash(db.files[key]);

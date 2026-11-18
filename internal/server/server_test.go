@@ -31,7 +31,7 @@ func setup(t *testing.T) (*Server, *httptest.Server, string) {
 		t.Fatal(err)
 	}
 	// Viewer state from trying the fixture locally isn't part of it.
-	for _, f := range []string{"layout.json", "views.toml", "blocks.toml", "hidden.toml"} {
+	for _, f := range []string{"layout.json", "blocks.toml"} {
 		os.Remove(filepath.Join(root, ".codemap", f))
 	}
 	b, err := os.ReadFile("../../testdata/shop.expected.json")
@@ -132,15 +132,13 @@ func TestState(t *testing.T) {
 	if len(st.Project.Areas) != 5 || len(st.Project.Proposals) != 2 || st.Project.Proposals[1].Body == "" {
 		t.Errorf("project: %+v", st.Project)
 	}
-	if st.Project.Blocks == nil || st.Project.Views == nil || st.Project.Hidden == nil || st.Project.Layout == nil {
+	if st.Project.Blocks == nil || st.Project.Layout == nil {
 		t.Error("empty lists should be [] / {}, not null")
 	}
 	want := map[string]string{
 		"areas":                  diskVersion(t, root, "areas.toml"),
 		"blocks":                 Missing,
 		"layout":                 Missing,
-		"views":                  Missing,
-		"hidden":                 Missing,
 		"external":               diskVersion(t, root, "external.toml"),
 		"proposals/refunds":      diskVersion(t, root, "proposals/refunds.md"),
 		"proposals/order-search": diskVersion(t, root, "proposals/order-search.md"),
@@ -174,12 +172,6 @@ func TestProjectRoundTrip(t *testing.T) {
 		{"layout", "layout.json",
 			project.Layout{"mod:go:shop/internal/orders": {1200, 80}, "area:Commerce": {10, 20.5}},
 			func(p *project.Project) any { return p.Layout }},
-		{"views", "views.toml",
-			[]project.View{{Name: "Checkout", Selection: []string{"route:POST /orders"}, Focus: true, Detail: "code"}},
-			func(p *project.Project) any { return p.Views }},
-		{"hidden", "hidden.toml",
-			[]project.Hide{{ID: "go:shop/internal/orders.writeJSON"}, {Match: "*.String", Module: "mod:go:shop/internal/orders"}},
-			func(p *project.Project) any { return p.Hidden }},
 		{"external", "external.toml",
 			project.External{
 				Nodes: []map[string]any{{"id": "ext:stripe", "owner": "Someone else"}},
@@ -289,8 +281,8 @@ func TestConflictAfterDiskEdit(t *testing.T) {
 		t.Errorf("409: %+v", cf)
 	}
 	// Creating a missing file uses the "missing" version.
-	if r := do(t, ts, "PUT", "/api/project/views", []project.View{}, "If-Match", Missing); r.status != 200 {
-		t.Errorf("create views: %d %s", r.status, r.body)
+	if r := do(t, ts, "PUT", "/api/project/blocks", []project.Block{}, "If-Match", Missing); r.status != 200 {
+		t.Errorf("create blocks: %d %s", r.status, r.body)
 	}
 	if r := do(t, ts, "PUT", "/api/project/bogus", []any{}, "If-Match", Missing); r.status != 404 {
 		t.Errorf("bogus: %d", r.status)

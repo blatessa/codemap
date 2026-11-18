@@ -120,7 +120,6 @@ These belong to the user. They edit them in the viewer, and the files are plain 
 |---|---|
 | `areas.toml` | Named groups of modules, one `[[area]]` each |
 | `blocks.toml` | A module split into blocks by pattern, one `[[block]]` each |
-| `hidden.toml` | Things the user took off the map, one `[[hide]]` each: an `id`, or a `match` glob on labels with an optional `module` |
 | `layout.json` | Box positions |
 | `external.toml` | External systems and their details (`[[node]]`): owner, links, setup. Also calls into the code that the code can't show, such as a webhook from Stripe (`[[edge]]`). |
 | `config.toml` | Extractor settings: job, subscriber and publisher call patterns, HTTP client wrappers, migration globs, the editor command |
