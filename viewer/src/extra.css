@@ -24,3 +24,12 @@ body{margin:0}
 .more text{font-family:var(--sans);font-size:11px;fill:var(--muted)}
 .more:hover .hit{fill:var(--bg)}
 .more:hover text{fill:var(--ink)}
+.grect{fill:var(--lane);stroke:var(--line);stroke-width:1}
+.grp.reveal .grect{fill:transparent;stroke-dasharray:6 5}
+.grp.gsel .grect{stroke:var(--accent);stroke-width:1.5}
+.ghead{cursor:move}
+.ghead:hover .alabel{fill:var(--ink)}
+.mod.dim .box.stack{opacity:.55}
+.farlabels{pointer-events:none}
+.farlabels.halo text{paint-order:stroke;stroke:var(--surface);stroke-linejoin:round}
+.hovname{paint-order:stroke;stroke:var(--bg);stroke-linejoin:round;pointer-events:none}

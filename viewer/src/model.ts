@@ -46,6 +46,7 @@ export interface Box {
   defH: number; // height with only public rows showing (what layout uses)
   shared: boolean; // used by most other modules; laid out along the bottom
   usedBy: number; // modules with edges into this one
+  group?: string; // set on a folder group's box (groups.ts)
 }
 
 export interface MEdge {
@@ -342,7 +343,7 @@ export interface AreaLike {
   modules: string[] | null;
 }
 
-export function selectionOf(m: Model, ids: string[], areas: AreaLike[]): Sel | null {
+export function selectionOf(m: Model, ids: string[], areas: AreaLike[], groups?: Map<string, { members: string[] }>): Sel | null {
   const S: Sel = { nodes: new Set(), edges: new Set(), up: new Set(), down: new Set(), path: new Set() };
   let any = false;
   for (const id of ids) {
@@ -357,7 +358,11 @@ export function selectionOf(m: Model, ids: string[], areas: AreaLike[]): Sel | n
       continue;
     }
     let bs: Box[] = [];
-    if (id.startsWith('area:')) {
+    if (id.startsWith('group:')) {
+      const g = groups?.get(id);
+      if (!g) continue;
+      bs = g.members.map((x) => m.box.get(x)).filter((b): b is Box => !!b);
+    } else if (id.startsWith('area:')) {
       const a = areas.find((x) => 'area:' + x.name === id);
       if (a) bs = (a.modules ?? []).map((x) => m.box.get(x)).filter((b): b is Box => !!b);
       if (!a) continue;

@@ -150,6 +150,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
     broadcast('graph-changed', ['(mock)']);
     return send(res, 204);
   }
+  // test hook: serve another graph with an empty .codemap (reset restores the fixture)
+  if (p === '/__mock/load' && m === 'PUT') {
+    db = { graph: (await readBody(req)) as Obj, config: {}, files: { areas: [], blocks: [], layout: {}, views: [], external: {} }, proposals: new Map() };
+    return send(res, 204);
+  }
   if (p === '/api/state' && m === 'GET') {
     return send(res, 200, {
       graph: db.graph,
