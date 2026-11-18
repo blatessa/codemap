@@ -12,6 +12,10 @@ import (
 	"codemap/internal/project"
 )
 
+// Version is part of the cache key for revision graphs (internal/gitrev). Bump
+// it when extractor output changes in a way the binary hash would not catch.
+const Version = "1"
+
 // Extractor produces a partial graph for the repo at root.
 type Extractor func(root string, cfg project.Config) (*graph.Graph, error)
 
