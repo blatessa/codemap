@@ -57,6 +57,7 @@ type View struct {
 	Selection []string `yaml:"selection,omitempty" json:"selection,omitempty"`
 	Focus     bool     `yaml:"focus,omitempty" json:"focus,omitempty"`
 	Collapsed []string `yaml:"collapsed,omitempty" json:"collapsed,omitempty"`
+	Expanded  []string `yaml:"expanded,omitempty" json:"expanded,omitempty"`
 }
 
 // External is .codemap/external.yaml: declared nodes and edges (§5.6).
