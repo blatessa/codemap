@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Source, Where } from './Code';
 import { Fields } from './Fields';
-import { HEAD, PAD, ROW, callTree, entriesReaching, qn, shortMod, testsReaching, type MEdge, type Model } from './model';
+import { HEAD, PAD, ROW, callTree, entriesReaching, qn, sharedFn, shortMod, testsReaching, type MEdge, type Model } from './model';
 import { ProposalList, ProposalView } from './Proposals';
 import {
   addArea,
@@ -73,6 +73,16 @@ function EdgeList({ m, edges, end, detail }: { m: Model; edges: MEdge[]; end: 'f
       ))}
     </div>
   );
+}
+
+// onPath is what an entry point's tests are checked against, as in codemap
+// show: the code on the path, without shared functions (they're on every path)
+// or external nodes (other code uses them too).
+function onPath(m: Model, ids: Iterable<string>): string[] {
+  return [...ids].filter((id) => {
+    const n = m.full.node.get(id);
+    return n && !n.external && !sharedFn(n);
+  });
 }
 
 function Tests({ m, ids }: { m: Model; ids: Iterable<string> }) {
@@ -228,7 +238,7 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
         ) : null}
         {!row.prop && S && (
           <Section title="Tests along this path">
-            <Tests m={m} ids={S.down} />
+            <Tests m={m} ids={onPath(m, S.down)} />
           </Section>
         )}
       </>

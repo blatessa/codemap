@@ -110,6 +110,8 @@ func writeTests(w io.Writer, ix *graph.Index, tests []graph.TestReach) {
 		}
 		if t.Direct {
 			row += "  (direct)"
+		} else if t.Via != "" {
+			row += "  via " + cli.Name(ix, t.Via)
 		}
 		fmt.Fprintln(w, row)
 	}

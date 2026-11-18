@@ -35,11 +35,13 @@
   "tests": [
     {
       "test": "test:go:shop/internal/orders.TestPlace_ChargesAndInserts",
-      "direct": false
+      "direct": false,
+      "via": "go:shop/internal/orders.(*Service).Place"
     },
     {
       "test": "test:go:shop/internal/orders.TestPlace_OutOfStock",
-      "direct": false
+      "direct": false,
+      "via": "go:shop/internal/orders.(*Service).Place"
     }
   ],
   "tree": {

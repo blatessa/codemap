@@ -14,7 +14,7 @@ The map is context, not a spec. It comes from static analysis, so it can miss ca
 Run these from the repo root. Each one builds the graph from the working tree. The first run on a repo can take a while, and after that it's quick. Add `--json` for machine-readable output.
 
 ```sh
-codemap show "POST /orders"          # call tree below an entry point or function, with SQL and API details, then the tests that reach it
+codemap show "POST /orders"          # call tree below an entry point or function, with SQL and API details, then the tests of it
 codemap show orders.Service.Place --depth 3
 codemap callers Repo.UpdateStatus    # what reaches this, up to the entry points
 codemap module internal/orders       # contents, what it depends on, what uses it
@@ -31,10 +31,11 @@ Output conventions:
 - Edge details follow the name, such as `writes: UPDATE orders …` or `PaymentIntents.New`.
 - `(see above)` marks a node that's already expanded higher up the tree.
 - `show` and `callers` default to `--detail features`: short forwarding functions are skipped (A → C instead of A → B → C), and wiring, utility, generated and unreachable code is left out, counted on the parent line as `(+2 support)`. Utilities include widely used helpers such as a transaction wrapper or a logger. Use `--detail code` to see every call. A node's `role:` line says which kind of support code it is.
-- A widely used function that does something itself (writes data, calls a service) shows as a row ending in `...`: it's part of the path, but the tree doesn't go into it. `show` it on its own to see inside.
+- A widely used function that does something itself, or calls something that does (writes data, calls a service), shows as a row ending in `...`: it's part of the path, but the tree doesn't go into it. `show` it on its own to see inside.
 - A call that may go to many functions (through an interface or a function value) is one row, such as `Error · 107 implementations`, and isn't followed.
 - `show` at `--detail features` goes 4 levels deep; rows with more below end in `...`. Use `--depth N` for more, or `--depth 0` for everything.
 - Traces stop at external systems.
+- `Tests:` lists the tests that call the code shown, directly `(direct)` or through one helper of their own (`via …`), direct ones first. Tests that only reach it through support code or longer chains aren't listed, so a short list doesn't mean the code is untested end to end. For a table or service, it's the tests of the code that uses it.
 
 Useful before changing code: `show` an entry point to see everything a change could affect, `callers` to see who depends on a function, and `module` to see a package's boundaries.
 

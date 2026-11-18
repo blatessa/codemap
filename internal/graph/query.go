@@ -1,6 +1,9 @@
 package graph
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Index is a read-only lookup structure over a graph, used by queries, the server
 // and the CLI.
@@ -231,53 +234,114 @@ func (ix *Index) EntriesReaching(id string) []string {
 	return sortedKeys(set)
 }
 
-// TestReach reports which tests reach a node. A test's reach follows calls and
-// renders edges only, and never crosses fetches edges, external nodes or wide
-// calls: a frontend test mocks the API, a backend test doesn't exercise a
-// third-party service, and a call through err.Error() isn't a test of every error.
+// TestCalls is how far from a test the code it covers may be: the test calls
+// it, or calls a helper that does. Functions nested in another (a component's
+// handlers) count as part of it. Further out, nearly every test in a big repo
+// reaches nearly everything (through setup, fixtures and shared code), and the
+// list stops saying which tests are about this code.
+const TestCalls = 2
+
+// TestReach is a test of a node. It follows calls and renders edges only, and
+// never crosses fetches edges, external nodes, wide calls or support code
+// (utilities and shared functions): a frontend test mocks the API, a backend
+// test doesn't exercise a third-party service, a call through err.Error() isn't
+// a test of every error, and a test that logs isn't a test of everything that
+// logs.
 type TestReach struct {
 	Test   string `json:"test"`
 	Direct bool   `json:"direct"`
+	Via    string `json:"via,omitempty"` // the helper between the test and the code
 }
 
-// TestsReaching returns the tests whose reach includes any of ids.
+// Stop reports whether traces stop at a node: a utility (hidden as support
+// code) or a shared function (shown, but not gone into).
+func (ix *Index) Stop(id string) bool {
+	n := ix.Node[id]
+	if n == nil {
+		return false
+	}
+	shared, _ := n.Fields["shared"].(bool)
+	return shared || n.Fields["role"] == RoleUtility
+}
+
+// TestsReaching returns the tests of any of ids, within TestCalls calls,
+// direct ones first. An external node's tests are those of the code using it.
 func (ix *Index) TestsReaching(ids ...string) []TestReach {
-	want := map[string]bool{}
-	for _, id := range ids {
-		want[id] = true
-	}
-	skip := func(e *Edge) bool {
-		if e.Type != Calls && e.Type != Renders || ix.Wide(e) {
-			return true
+	found := map[string]TestReach{}
+	seen := map[string]bool{}
+	frontier := []string{}
+	add := func(id string) {
+		if !seen[id] {
+			seen[id] = true
+			frontier = append(frontier, id)
 		}
-		n := ix.Node[e.From]
-		return n != nil && n.External
 	}
-	var out []TestReach
-	for _, n := range ix.G.Nodes {
-		if n.Kind != KindTest {
+	for _, id := range ids {
+		// A table, service or topic is tested through the code that uses it.
+		if n := ix.Node[id]; n != nil && n.External {
+			for _, e := range ix.In[id] {
+				if e.Type != Fetches && !ix.Wide(e) {
+					if from := ix.Node[e.From]; from != nil && !from.External && from.Kind != KindTest {
+						add(e.From)
+					}
+				}
+			}
 			continue
 		}
-		direct := false
-		for _, e := range ix.Out[n.ID] {
-			if want[e.To] {
-				direct = true
-			}
-		}
-		r := ix.Down(n.ID, skip)
-		hit := false
-		for id := range want {
-			if r.Nodes[id] {
-				hit = true
-				break
-			}
-		}
-		if hit {
-			out = append(out, TestReach{Test: n.ID, Direct: direct})
-		}
+		add(id)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Test < out[j].Test })
+	for d := 0; d < TestCalls && len(frontier) > 0; d++ {
+		var next []string
+		for i := 0; i < len(frontier); i++ {
+			id := frontier[i]
+			for _, e := range ix.In[id] {
+				if e.Type != Calls && e.Type != Renders || ix.Wide(e) {
+					continue
+				}
+				from := ix.Node[e.From]
+				if from == nil || from.External {
+					continue
+				}
+				if from.Kind == KindTest {
+					if _, ok := found[e.From]; !ok {
+						r := TestReach{Test: e.From, Direct: d == 0}
+						if d > 0 {
+							r.Via = id
+						}
+						found[e.From] = r
+					}
+					continue
+				}
+				if !seen[e.From] && !ix.Stop(e.From) {
+					seen[e.From] = true
+					if nested(id, e.From) {
+						frontier = append(frontier, e.From) // part of it: no extra call
+					} else {
+						next = append(next, e.From)
+					}
+				}
+			}
+		}
+		frontier = next
+	}
+	out := make([]TestReach, 0, len(found))
+	for _, r := range found {
+		out = append(out, r)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Direct != out[j].Direct {
+			return out[i].Direct
+		}
+		return out[i].Test < out[j].Test
+	})
 	return out
+}
+
+// nested reports whether id is a function nested in parent, like a
+// component's event handler (ts:…#Button.onClick in ts:…#Button). Go closures
+// are already part of the function that defines them.
+func nested(id, parent string) bool {
+	return strings.HasPrefix(id, parent+".") && strings.Contains(parent, "#")
 }
 
 func sortedKeys(m map[string]bool) []string {

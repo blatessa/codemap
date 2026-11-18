@@ -79,7 +79,8 @@ export interface Model {
   out: Map<string, MEdge[]>;
   inn: Map<string, MEdge[]>;
   tests: GNode[];
-  full: { out: Map<string, GEdge[]>; node: Map<string, GNode> };
+  // the whole graph, tests included; wide holds edges of wide call sites
+  full: { out: Map<string, GEdge[]>; inn: Map<string, GEdge[]>; node: Map<string, GNode>; wide: Set<GEdge> };
   all: { edges: MEdge[]; out: Map<string, MEdge[]>; inn: Map<string, MEdge[]> };
 }
 
@@ -275,7 +276,18 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
   }
 
   const fullOut = new Map<string, GEdge[]>();
-  for (const e of gedges) (fullOut.get(e.from) ?? fullOut.set(e.from, []).get(e.from)!).push(e);
+  const fullInn = new Map<string, GEdge[]>();
+  const sites = new Map<string, GEdge[]>();
+  for (const e of gedges) {
+    (fullOut.get(e.from) ?? fullOut.set(e.from, []).get(e.from)!).push(e);
+    (fullInn.get(e.to) ?? fullInn.set(e.to, []).get(e.to)!).push(e);
+    if ((e.type || 'calls') === 'calls' && e.file && e.line) {
+      const k = e.from + '\0' + e.file + '\0' + e.line;
+      (sites.get(k) ?? sites.set(k, []).get(k)!).push(e);
+    }
+  }
+  const wide = new Set<GEdge>();
+  for (const es of sites.values()) if (es.length > WIDE_CALL) for (const e of es) wide.add(e);
 
   // public rows: entry points, external nodes, and anything with an edge leaving
   // its box
@@ -304,7 +316,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
     boxes.push(b);
   }
   markShared(boxes, box, node, gedges, fullNode, blocks);
-  return { boxes, box, node, edges, out, inn, tests, full: { out: fullOut, node: fullNode }, all };
+  return { boxes, box, node, edges, out, inn, tests, full: { out: fullOut, inn: fullInn, node: fullNode, wide }, all };
 }
 
 // markShared finds modules that most others depend on (a graph package, a config
@@ -461,32 +473,57 @@ export function entriesReaching(m: Model, id: string): string[] {
   return [...u.nodes].filter((n) => n !== id && m.node.get(n)?.row.node.entry);
 }
 
-// testsReaching ports graph.TestsReaching: reach follows calls and renders edges
-// only, and never continues out of external nodes.
+// TEST_CALLS matches graph.TestCalls: a test calls the code, or a helper that
+// does; functions nested in another count as part of it.
+export const TEST_CALLS = 2;
+
+// testsReaching ports graph.TestsReaching: tests within TEST_CALLS calls of
+// any of ids, over calls and renders edges, never through external nodes, wide
+// calls or support code (utilities, shared functions); an external node's
+// tests are those of the code using it. Direct tests first.
 export function testsReaching(m: Model, ids: Iterable<string>): { test: GNode; direct: boolean; via: string }[] {
-  const want = new Set(ids);
-  const res: { test: GNode; direct: boolean; via: string }[] = [];
-  for (const t of m.tests) {
-    const outs = m.full.out.get(t.id) ?? [];
-    const direct = outs.some((e) => want.has(e.to));
-    const seen = new Set([t.id]),
-      q = [t.id];
-    let hit = false;
-    while (q.length && !hit) {
-      const n = q.shift()!;
-      if (n !== t.id && m.full.node.get(n)?.external) continue;
-      for (const e of m.full.out.get(n) ?? []) {
-        if (e.type !== 'calls' && e.type !== 'renders') continue;
-        if (!seen.has(e.to)) {
-          if (want.has(e.to)) hit = true;
-          seen.add(e.to);
-          q.push(e.to);
+  const { inn, node, wide } = m.full;
+  const found = new Map<string, { test: GNode; direct: boolean; via: string }>();
+  const seen = new Set<string>();
+  let frontier: string[] = [];
+  const add = (id: string) => {
+    if (!seen.has(id)) {
+      seen.add(id);
+      frontier.push(id);
+    }
+  };
+  for (const id of ids) {
+    if (node.get(id)?.external) {
+      for (const e of inn.get(id) ?? []) {
+        const f = node.get(e.from);
+        if (e.type !== 'fetches' && !wide.has(e) && f && !f.external && !isTest(f)) add(e.from);
+      }
+    } else add(id);
+  }
+  for (let d = 0; d < TEST_CALLS && frontier.length; d++) {
+    const next: string[] = [];
+    for (let i = 0; i < frontier.length; i++) {
+      const id = frontier[i];
+      for (const e of inn.get(id) ?? []) {
+        const type = e.type || 'calls';
+        if ((type !== 'calls' && type !== 'renders') || wide.has(e)) continue;
+        const f = node.get(e.from);
+        if (!f || f.external) continue;
+        if (isTest(f)) {
+          if (!found.has(f.id)) found.set(f.id, { test: f, direct: d === 0, via: d > 0 ? (node.get(id)?.label ?? '') : '' });
+          continue;
+        }
+        if (!seen.has(f.id) && !stops(f)) {
+          seen.add(f.id);
+          // a function nested in another (a component's handler) is part of it
+          if (id.startsWith(f.id + '.') && f.id.includes('#')) frontier.push(f.id);
+          else next.push(f.id);
         }
       }
     }
-    if (hit) res.push({ test: t, direct, via: m.full.node.get(outs[0]?.to ?? '')?.label ?? '' });
+    frontier = next;
   }
-  return res.sort((a, b) => a.test.id.localeCompare(b.test.id));
+  return [...found.values()].sort((a, b) => (a.direct !== b.direct ? (a.direct ? -1 : 1) : a.test.id.localeCompare(b.test.id)));
 }
 
 export interface TreeRow {
