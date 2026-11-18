@@ -579,7 +579,12 @@ export interface Trace {
 export const TREE_DEPTH = 4;
 
 export const isEffect = (m: Model, e: MEdge): boolean =>
-  e.type === 'reads' || e.type === 'writes' || e.type === 'publishes' || e.type === 'fetches' || (e.type === 'calls' && !!m.node.get(e.to)?.row.node.external);
+  e.type === 'reads' ||
+  e.type === 'writes' ||
+  e.type === 'publishes' ||
+  e.type === 'fetches' ||
+  (e.type === 'calls' && !!m.node.get(e.to)?.row.node.external) ||
+  (e.type === 'renders' && m.node.get(e.to)?.row.node.kind === 'screen'); // a server-rendered screen, as graph.IsEffect
 
 // effectsBeneath ports graph.Index.EffectsBeneath: effects reachable over calls
 // and renders that aren't wide, and through fetched routes, not going into utilities or shared functions
@@ -776,9 +781,9 @@ export function effectSummary(m: Model, fs: Effect[]): string {
     const l = x ? (x.row.prefix ? x.row.prefix + ' ' + x.row.label : x.row.label) : f.to;
     (by.get(f.type) ?? by.set(f.type, []).get(f.type)!).push(l);
   }
-  return ['writes', 'reads', 'publishes', 'calls', 'fetches']
+  return ['writes', 'reads', 'renders', 'publishes', 'calls', 'fetches']
     .filter((t) => by.has(t))
-    .map((t) => t + ' ' + by.get(t)!.sort().join(', '))
+    .map((t) => (t === 'renders' ? 'shows' : t) + ' ' + by.get(t)!.sort().join(', '))
     .join(' · ');
 }
 

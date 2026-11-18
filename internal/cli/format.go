@@ -283,10 +283,14 @@ func EffectSummary(ix *graph.Index, effs []graph.Effect) string {
 		by[f.Type] = append(by[f.Type], l)
 	}
 	var parts []string
-	for _, t := range []string{graph.Writes, graph.Reads, graph.Publishes, graph.Calls, graph.Fetches} {
+	for _, t := range []string{graph.Writes, graph.Reads, graph.Renders, graph.Publishes, graph.Calls, graph.Fetches} {
 		if ls := by[t]; len(ls) > 0 {
 			sort.Strings(ls)
-			parts = append(parts, t+" "+strings.Join(ls, ", "))
+			verb := t
+			if t == graph.Renders {
+				verb = "shows"
+			}
+			parts = append(parts, verb+" "+strings.Join(ls, ", "))
 		}
 	}
 	return strings.Join(parts, " · ")
