@@ -246,7 +246,7 @@ func (l *load) fileData(name string) []byte {
 	return d
 }
 
-// scanCalls finds SQL queries, ORM calls (orm.go), calls to external services and configured
+// scanCalls finds SQL queries, ORM calls (orm.go), SQL assembled from fragments (fragments.go), calls to external services and configured
 // job/subscriber/publisher calls in every function body.
 func (l *load) scanCalls() {
 	dbMethods := map[string]bool{}
@@ -286,6 +286,7 @@ func (l *load) scanCalls() {
 	l.reqWrapperCalls()
 	l.ormWrappers()
 	l.ormLocalAccesses()
+	l.scanFragments()
 }
 
 // queryWrappers follows queries passed through the repo's own helpers: when a
@@ -353,6 +354,7 @@ func (l *load) query(c *fnCtx, arg ast.Expr, file string, line int) {
 		}
 		return // not a constant: don't guess
 	}
+	l.sqlSeen[sqlKey{c.id, q}] = true
 	detail := sqlext.Collapse(q)
 	for _, acc := range sqlext.Classify(q) {
 		id := sqlext.TableID(acc.Table)
@@ -366,14 +368,16 @@ func (l *load) query(c *fnCtx, arg ast.Expr, file string, line int) {
 }
 
 // ensureTable adds a table node for a table that no migration defines.
-func (l *load) ensureTable(id, name string) {
-	if l.x.b.has(id) {
+func (l *load) ensureTable(id, name string) { l.x.ensureTable(id, name) }
+
+func (x *extractor) ensureTable(id, name string) {
+	if x.b.has(id) {
 		return
 	}
-	if _, ok := l.x.b.modules[sqlext.DatabaseModule]; !ok {
-		l.x.b.addModule(sqlext.DatabaseModuleFor(nil))
+	if _, ok := x.b.modules[sqlext.DatabaseModule]; !ok {
+		x.b.addModule(sqlext.DatabaseModuleFor(nil))
 	}
-	l.x.b.addNode(graph.Node{ID: id, Kind: graph.KindTable, Label: name, Module: sqlext.DatabaseModule, External: true})
+	x.b.addNode(graph.Node{ID: id, Kind: graph.KindTable, Label: name, Module: sqlext.DatabaseModule, External: true})
 }
 
 func (l *load) ensureService(id, label string, fields map[string]any) {

@@ -100,6 +100,7 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 	x.addModelColumns()
 	x.addScreens()
 	x.linkRequests()
+	x.addFragments()
 	return x.b.graph(), nil
 }
 
@@ -114,6 +115,7 @@ type extractor struct {
 	models      []modelTable    // ORM models' columns, applied once all tables are known
 	tmpl        *templates      // template files and their names (screens.go)
 	requests    []request       // calls to the repo's own HTTP API, matched to routes at the end (requests.go)
+	fragments   []sqlFragment   // table accesses in SQL fragments, kept at the end if the table is known (fragments.go)
 }
 
 // findModules returns the directories under root holding a go.mod, skipping
@@ -161,6 +163,7 @@ type load struct {
 	files map[string][]byte // source cache
 
 	queryParams map[*types.Func]int // functions passing a parameter to a DB method → its index
+	sqlSeen     map[sqlKey]bool     // queries already classified as DB method arguments
 
 	reqWrappers map[*types.Func][]reqTmpl // request helpers → their requests (requests.go)
 	reqSeen     map[*types.Func]map[string]bool
@@ -200,6 +203,7 @@ func (x *extractor) extractModule(dir string) (err error) {
 		sites:       map[token.Pos][]*ssa.Function{},
 		files:       map[string][]byte{},
 		queryParams: map[*types.Func]int{},
+		sqlSeen:     map[sqlKey]bool{},
 		reqWrappers: map[*types.Func][]reqTmpl{},
 		reqSeen:     map[*types.Func]map[string]bool{},
 		strHelpers:  map[*types.Func][]rpart{},
