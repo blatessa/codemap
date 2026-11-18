@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"codemap/internal/build"
+	"codemap/internal/gitrev"
 	"codemap/internal/graph"
 	"codemap/internal/project"
 )
@@ -67,6 +68,8 @@ type Server struct {
 
 	// startCmd launches the editor; tests replace it.
 	startCmd func(*exec.Cmd) error
+	repo     *gitrev.Repo // nil outside a git repository
+
 	// gitHead returns HEAD's sha, or "" outside a git repo; tests may replace it.
 	gitHead func() string
 }
@@ -133,7 +136,18 @@ func New(opt Options) (*Server, error) {
 	if err := s.reloadProject(); err != nil {
 		return nil, err
 	}
+	if repo, err := gitrev.Open(root); err == nil {
+		repo.Progress = s.onBuild
+		s.repo = repo
+	}
 	return s, nil
+}
+
+// Close removes the temporary worktrees used to build revisions.
+func (s *Server) Close() {
+	if s.repo != nil {
+		s.repo.Close()
+	}
 }
 
 func addrHost(addr string) string {
@@ -283,6 +297,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/proposals/{slug}", s.handlePutProposal)
 	mux.HandleFunc("DELETE /api/proposals/{slug}", s.handleDeleteProposal)
 	mux.HandleFunc("GET /api/source", s.handleSource)
+	mux.HandleFunc("GET /api/source/diff", s.handleSourceDiff)
+	mux.HandleFunc("GET /api/revs", s.handleRevs)
+	mux.HandleFunc("GET /api/diff", s.handleDiff)
 	mux.HandleFunc("POST /api/open", s.handleOpen)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 	mux.HandleFunc("GET /", s.handleAssets)

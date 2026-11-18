@@ -34,6 +34,21 @@ Output conventions:
 
 Useful before changing code: `show` an entry point to see everything a change could affect, `callers` to see who depends on a function, and `module` to see a package's boundaries.
 
+Every query takes `--rev` (a commit, branch or tag) to ask about another revision: `codemap callers Repo.Find --rev main`.
+
+## Reviewing what changed
+
+After making changes, check what they did to the architecture:
+
+```sh
+codemap diff                  # uncommitted changes (HEAD..worktree)
+codemap diff main...          # this branch since it left main, plus uncommitted changes
+codemap diff HEAD~1..HEAD     # the last commit
+codemap diff pr:42            # a GitHub pull request
+```
+
+It lists new and removed entry points, tables newly read or written (or no longer), new external services and topics, new module-to-module dependencies, and the nodes added (`+`), removed (`-`) and changed (`~`) per module. Look for surprises: an entry point you didn't mean to add or remove, a new write to a table, a dependency between modules that shouldn't know about each other. Mention them to the user. `--json` gives the full diff. The user can see the same comparison in the viewer.
+
 ## Proposals
 
 A proposal is a sketch of how the architecture could change. The user reviews and edits it in the viewer, where it's drawn in dashed purple on top of the real map. It isn't checked against the code and doesn't have to match what eventually gets built. Its job is to show the user what you have in mind.

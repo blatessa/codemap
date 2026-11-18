@@ -18,7 +18,7 @@ import (
 
 // Event is one server-sent event.
 type Event struct {
-	Name string    // graph-changed | project-changed
+	Name string    // graph-changed | project-changed | building
 	Data EventData // sent as JSON
 }
 
@@ -30,6 +30,10 @@ type EventData struct {
 	// Error is set when the reload or rebuild failed; the last good state is
 	// still being served.
 	Error string `json:"error,omitempty"`
+	// Rev and Phase are set on `building` events: the commit being built and
+	// checkout | extract | done.
+	Rev   string `json:"rev,omitempty"`
+	Phase string `json:"phase,omitempty"`
 }
 
 type broker struct {

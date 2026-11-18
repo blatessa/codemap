@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CompareControl, SummaryPanel } from './Compare';
 import { Drawer } from './Drawer';
+import { start as startRevs, useCompare } from './revs';
 import { MapView, useAreaRect, zoomCenter } from './MapView';
 import { qn } from './model';
 import {
@@ -57,6 +59,7 @@ function Search() {
     }
     return out.sort((a, b) => a.score - b.score || a.text.localeCompare(b.text)).slice(0, 8);
   }, [q, m]);
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const go = (id: string) => {
     const s = getState();
     const box = m.node.get(id)?.box.id;
@@ -79,11 +82,19 @@ function Search() {
         aria-label="Search the map"
         value={q}
         onChange={(e) => {
+          clearTimeout(closeTimer.current);
           setQ(e.target.value);
           setOpen(true);
           setAct(0);
         }}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onFocus={() => {
+          clearTimeout(closeTimer.current);
+          setOpen(true);
+        }}
+        onBlur={() => {
+          clearTimeout(closeTimer.current);
+          closeTimer.current = setTimeout(() => setOpen(false), 150);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && hits[act]) {
             e.preventDefault();
@@ -269,18 +280,7 @@ function Banner() {
   );
 }
 
-function RevPicker() {
-  const rev = useStore((s) => s.rev);
-  // Only the working tree for now; the git layer adds branches and commits.
-  return (
-    <select className="revpick" aria-label="Revision" value={rev} onChange={(e) => {
-        setState({ rev: e.target.value });
-        void load();
-      }}>
-      <option value="worktree">worktree</option>
-    </select>
-  );
-}
+
 
 function DetailPick() {
   const detail = useStore((s) => s.detail);
@@ -300,9 +300,11 @@ export function App() {
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
   const mode = useStore((s) => s.mode);
-  const drawerOpen = useStore((s) => s.sel.length > 0 || !!s.form || s.mode === 'propose');
+  const comparing = useCompare((c) => !!c.spec);
+  const summary = useStore((s) => comparing && !s.sel.length && !s.form && s.mode === 'explore');
+  const drawerOpen = useStore((s) => s.sel.length > 0 || !!s.form || s.mode === 'propose') || summary;
   useEffect(() => {
-    void load();
+    if (!startRevs()) void load();
     subscribe();
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -321,7 +323,7 @@ export function App() {
     <>
       <header className="top">
         <h1>codemap</h1>
-        <RevPicker />
+        <CompareControl />
         <DetailPick />
         <div className="seg mode" role="group" aria-label="Mode">
           <button id="m-explore" aria-pressed={mode === 'explore'} onClick={() => setMode('explore')}>
@@ -338,7 +340,7 @@ export function App() {
           <Tools />
           <Banner />
         </div>
-        {status === 'ready' && <Drawer />}
+        {status === 'ready' && (summary ? <SummaryPanel /> : <Drawer />)}
       </div>
     </>
   );

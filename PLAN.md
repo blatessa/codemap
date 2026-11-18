@@ -446,16 +446,20 @@ The server and viewer share this JSON contract. All bodies are JSON. Go types ar
 
 | Endpoint | Request | Response |
 |---|---|---|
-| `GET /api/state?rev=` | | `{graph: Graph, project: {config, areas, blocks, layout, views, external, proposals}, versions: {areas, blocks, layout, views, external: "<hash>", "proposals/<slug>": "<hash>"}}`. The default rev is the worktree. |
+| `GET /api/state?rev=` | | `{graph: Graph, project: {config, areas, blocks, layout, views, external, proposals}, versions: {areas, blocks, layout, views, external: "<hash>", "proposals/<slug>": "<hash>"}}`. The default rev is the worktree. Any other rev (commit, branch, tag, `HEAD~1`, `base:<rev>` for the merge-base with HEAD) is built through the git layer; its project comes from git and `versions` is `{}`. A build that takes longer than 90 s answers `504 {building: true}` and keeps going; retry. An unknown rev is `422`. |
 | `PUT /api/project/{areas\|blocks\|layout\|views\|external}` | the value (array or object), header `If-Match: <version>` | `{version}`. Returns `409 {version, value}` if the file changed on disk. The server writes TOML (JSON for layout) atomically. |
 | `GET /api/proposals` | | `[Proposal]`, with the body included |
 | `PUT /api/proposals/{slug}` | `Proposal`, `If-Match` (optional for a new proposal) | `{version}` or `409`. A new proposal gets `base` set to `HEAD`. |
 | `DELETE /api/proposals/{slug}` | | `204` |
-| `GET /api/source?rev=&file=&from=&to=` | | `{file, from, lines: [string]}` |
+| `GET /api/source?rev=&file=&from=&to=` | | `{file, from, lines: [string]}`. At a rev, read with `git show`. |
+| `GET /api/revs?n=100` | | `{commits: [{sha, short, subject, author, date, parents, refs}], branches, current, default, head, dirty, prs: [{number, title, headRefName, baseRefName, author: {login}, updatedAt}]}`. `default` is `main`, `master` or `origin/HEAD`. `prs` is empty unless `gh` is installed, the repo has a GitHub remote and `gh pr list` works. |
+| `GET /api/diff?from=&to=` | | `GraphDiff` (`internal/graph/diff.go`): `{from, to, addedNodes, removedNodes, changed: [id], renamed: [{from, to}], addedEdges, removedEdges, addedModules, removedModules, files: [{old, new}], summary: {entriesAdded, entriesRemoved, dataAdded, dataRemoved, externalAdded, externalRemoved, depsAdded, depsRemoved, modules: [{id, label, added, removed, changed}]}}`. `from` defaults to `HEAD`, `to` to the worktree; both come back as shas (or `worktree`). `from=pr:N` compares PR N's merge-base with its head (fetched with `git fetch origin pull/N/head` when missing). `from=base:<rev>` starts at the merge-base of `<rev>` and `to`. Removed items are taken from the `from` graph so the viewer can draw them. |
+| `GET /api/source/diff?from=&to=&file=&context=3` | | `{file, from, to, diff}`: `git diff` of one file, following renames. |
 | `POST /api/open` | `{file, line}` | `204`. Runs `config.editor`, or `$VISUAL`/`$EDITOR`. |
-| `GET /api/events` (SSE) | | events `graph-changed` and `project-changed` (data `{files: [...]}`) |
+| `GET /api/events` (SSE) | | events `graph-changed` and `project-changed` (data `{files: [...]}`), and `building` (data `{rev: sha, phase: checkout\|extract\|done}`) while a revision builds |
 
-Writes only happen in worktree mode. A request for any other rev gets `405`.
+Writes only happen in worktree mode. A request for any other rev gets `405`. Outside a git
+repository, every rev other than the worktree gets `501`.
 
 - **Watching:** `fsnotify` on the repo (respecting exclude and `.gitignore`), debounced by
   300 ms. Rebuild only the extractors whose files changed: a Go change re-runs Go, a TS change
@@ -521,7 +525,7 @@ and wording.
     calls.
 - **Live updates:** a `graph-changed` event re-fetches the graph, keeps the selection, and
   animates nothing.
-- **Revision picker:** a small control in the top bar: worktree (default), a branch, or a commit.
+- **Compare control:** in the top bar. It shows one rev (worktree by default, read-only otherwise) or compares two, with one-click presets (uncommitted changes, last commit, this branch vs the default branch, since a commit, open PRs) and a timeline of commits (click: compare with the parent; shift-click two: compare them). Comparing colours added nodes and edges green, removed ones as faded red outlines from the `from` graph, changed functions amber, and marks boxes and folder groups holding changes. "Changes only" trims the map to changes plus one hop. With nothing selected the drawer shows the summary; a changed node's source shows as a diff. The URL hash keeps the state (`#compare=HEAD~1..HEAD`, `#rev=main`).
 - **Copy:** minimal text, no explanatory paragraphs, no per-row status badges. Both light and
   dark themes, following the prototype's tokens.
 

@@ -117,7 +117,7 @@ func TestCommonFlagErrors(t *testing.T) {
 		t.Errorf("extracted graph disagrees with the expected graph: exit %d\n%s", code, real)
 	}
 	got, code := runCmd(runShow, []string{"POST /orders", "--graph", "../shop.expected.json", "--rev", "HEAD"})
-	if code != 1 || !strings.Contains(got, `only "worktree"`) {
+	if code != 1 || !strings.Contains(got, "can't be combined") {
 		t.Errorf("--rev HEAD: exit %d\n%s", code, got)
 	}
 	_, code = runCmd(runShow, nil)

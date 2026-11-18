@@ -1,0 +1,62 @@
+{
+  "mod:ext:services": [
+    2521,
+    449
+  ],
+  "mod:go:shop/cmd/server": [
+    870,
+    48
+  ],
+  "mod:go:shop/internal/auth": [
+    1118,
+    -25
+  ],
+  "mod:go:shop/internal/events": [
+    1395,
+    684
+  ],
+  "mod:go:shop/internal/inventory": [
+    2203,
+    369
+  ],
+  "mod:go:shop/internal/notify": [
+    1391,
+    536
+  ],
+  "mod:go:shop/internal/orders": [
+    1953,
+    233
+  ],
+  "mod:go:shop/internal/payments": [
+    1732,
+    361
+  ],
+  "mod:go:shop/internal/sched": [
+    1396,
+    416
+  ],
+  "mod:queue:topics": [
+    2521,
+    357
+  ],
+  "mod:sql:database": [
+    2521,
+    209
+  ],
+  "mod:ts:web/src/api": [
+    490,
+    272
+  ],
+  "mod:ts:web/src/components": [
+    262,
+    228
+  ],
+  "mod:ts:web/src/pages": [
+    47,
+    218
+  ],
+  "mod:ts:web/src/state": [
+    262,
+    136
+  ]
+}

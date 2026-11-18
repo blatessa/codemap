@@ -47,6 +47,7 @@ func runServe(args []string) error {
 	if err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}
+	defer srv.Close()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

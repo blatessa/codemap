@@ -155,6 +155,9 @@ const sortRows = (a: Row, b: Row) =>
   (a.node.line ?? 0) - (b.node.line ?? 0) ||
   a.label.localeCompare(b.label);
 
+// shownRows lets the compare view keep changed rows on show (revs.ts).
+export const shownRows = { has: (_id: string) => false };
+
 export const isTest = (n: GNode) => n.kind === 'test';
 
 // buildModel derives the map. `proposal` is drawn over the graph when set.
@@ -292,6 +295,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null,
     for (const r of b.rows) {
       if (r.node.entry || r.node.external || r.prop || r.ghost) r.pub = true;
       if (r.support || r.hidden) r.pub = false;
+      if (shownRows.has(r.id)) r.pub = true;
     }
     b.pub = b.rows.filter((r) => r.pub).length;
     b.shown = b.rows.filter((r) => !r.hidden).length;
