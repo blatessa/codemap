@@ -30,6 +30,10 @@ func PageID(path string) string { return "page:" + NormalizeRoutePath(path) }
 // JobID returns the ID of a scheduled job.
 func JobID(name string) string { return "job:" + name }
 
+// CommandID returns the ID of a CLI command. name is its full path below the
+// program, e.g. "db migrate".
+func CommandID(name string) string { return "cmd:" + name }
+
 // SubscriberID returns the ID of a topic subscriber.
 func SubscriberID(topic, handlerID string) string { return "sub:" + topic + ":" + handlerID }
 

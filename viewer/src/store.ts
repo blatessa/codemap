@@ -513,7 +513,7 @@ function uniqueNewId(base: string, p: Proposal) {
 export function proposeNode(box: string, label: string, kind: string, method: string, external: boolean) {
   const p = currentProposal(get());
   if (!p) return;
-  const entry = ['route', 'page', 'job', 'subscriber'].includes(kind);
+  const entry = ['route', 'page', 'job', 'subscriber', 'command'].includes(kind);
   const id = uniqueNewId('new:' + (method && entry ? method + ' ' : '') + label, p);
   const n: Loose = { id, kind, label, module: box };
   if (entry) n.entry = true;

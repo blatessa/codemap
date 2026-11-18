@@ -1,14 +1,14 @@
 // Package goext is codemap's Go extractor. It loads
 // every package under each go.mod in the repo with go/packages (tests included),
 // builds SSA, and resolves calls with VTA so calls through interfaces reach their
-// implementations. On top of the call graph it finds HTTP routes, configured
-// jobs, subscribers and publishers, SQL queries, and calls to external services,
-// and it reads migrations through sqlext.
+// implementations. On top of the call graph it finds HTTP routes, CLI commands,
+// configured jobs, subscribers and publishers, SQL queries, and calls to
+// external services, and it reads migrations through sqlext.
 //
 // Conventions worth knowing:
 //   - Closures are not nodes. A function literal's calls, queries and publishes
 //     are folded into the named function that encloses it. A function literal
-//     used directly as a route, job or subscriber handler gives that entry node
+//     used directly as a route, command, job or subscriber handler gives that entry node
 //     direct edges to whatever the literal calls. A function literal assigned to
 //     a package-level variable becomes a node named after the variable.
 //   - Code in _test.go files never becomes a function node and is never a callee
@@ -249,6 +249,7 @@ func (x *extractor) extractModule(dir string) (err error) {
 	l.addTests()
 	l.scanCalls()
 	l.addRoutes()
+	l.addCommands()
 	return nil
 }
 

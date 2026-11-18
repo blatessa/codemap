@@ -589,7 +589,7 @@ function MultiPanel({ m, ids }: { m: Model; ids: string[] }) {
   );
 }
 
-const KINDS = ['function', 'route', 'page', 'job', 'subscriber', 'component', 'table', 'topic', 'service'];
+const KINDS = ['function', 'route', 'page', 'job', 'subscriber', 'command', 'component', 'table', 'topic', 'service'];
 
 function FormPanel({ m }: { m: Model }) {
   const form = useStore((s) => s.form)!;

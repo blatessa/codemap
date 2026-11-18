@@ -78,6 +78,7 @@ const (
 	KindPage       = "page"
 	KindJob        = "job"
 	KindSubscriber = "subscriber"
+	KindCommand    = "command"
 	KindComponent  = "component"
 	KindTable      = "table"
 	KindTopic      = "topic"

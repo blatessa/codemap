@@ -108,7 +108,7 @@ function markWide(edges: MEdge[], node: Map<string, GNode>) {
   for (const es of sites.values()) if (es.length > WIDE_CALL) for (const e of es) e.wide = es.length;
 }
 
-const ENTRY_PREFIX: Record<string, string> = { subscriber: 'SUB', function: 'MAIN', component: 'COMP' };
+const ENTRY_PREFIX: Record<string, string> = { subscriber: 'SUB', command: 'CMD', function: 'MAIN', component: 'COMP' };
 
 export function prefixOf(n: GNode): string {
   if (!n.entry) return '';

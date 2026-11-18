@@ -72,8 +72,8 @@ type ReadFile func(file string) ([]byte, error)
 // code, and returns how many nodes got each role. Nodes without a role are
 // core. External, entry, test and proposal nodes never get one, except that
 // an entry function named main is wiring. When the repo has no route, page,
-// job or subscriber entries (a library), exported functions act as entry
-// points and get fields.entry_reason = "exported". read may be nil.
+// job, subscriber or command entries (a library), exported functions act as
+// entry points and get fields.entry_reason = "exported". read may be nil.
 func AssignRoles(g *Graph, read ReadFile) map[string]int {
 	ix := NewIndex(g)
 	counts := map[string]int{}
@@ -88,7 +88,7 @@ func AssignRoles(g *Graph, read ReadFile) map[string]int {
 	// entries, plus exported functions in a library
 	library := true
 	for _, n := range g.Nodes {
-		if n.Entry && (n.Kind == KindRoute || n.Kind == KindPage || n.Kind == KindJob || n.Kind == KindSubscriber) {
+		if n.Entry && (n.Kind == KindRoute || n.Kind == KindPage || n.Kind == KindJob || n.Kind == KindSubscriber || n.Kind == KindCommand) {
 			library = false
 			break
 		}
