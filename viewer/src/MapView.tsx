@@ -181,6 +181,12 @@ function buildDisp(
     const all = b.rows;
     if (connecting) return { rows: all, more: 0, moreWord: '', open: false };
     const open = openBoxes.has(b.id);
+    // a traced path shows only its own rows: the other commands and tables
+    // in a box aren't part of this story
+    if (S?.path.size && !open) {
+      const rows = all.filter((r) => S.path.has(r.id) || r.prop || r.ghost || !!r.moved || !!nodeStatus(r.id));
+      return { rows, more: all.length - rows.length, moreWord: 'more', open };
+    }
     const keep = (r: Row) =>
       r.node.entry || r.node.external || r.prop || r.ghost || !!r.moved || !!nodeStatus(r.id) || !!S?.path.has(r.id) || (open && r.pub && !r.role);
     const rows = all.filter(keep);

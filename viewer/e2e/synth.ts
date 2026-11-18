@@ -1,6 +1,7 @@
 // A synthetic map big enough to fold into folder groups: a handful of top-level
 // packages, plus two folders of many similar packages (internal/plugins/*,
-// internal/reader/*). api.Serve calls reader.r0.Parse, which calls plugins.p3.Run.
+// internal/reader/*). api.Serve calls reader.r0.Parse, which calls plugins.p3.Run,
+// which writes the items table.
 export function bigGraph() {
   const modules: object[] = [],
     nodes: object[] = [],
@@ -22,6 +23,10 @@ export function bigGraph() {
   e('internal/jobs.Serve', 'internal/store.Serve');
   e('internal/api.Serve', 'internal/reader/r0.Parse');
   e('internal/reader/r0.Parse', 'internal/plugins/p3.Run');
+  // p3.Run stores feed items, so the /feed trace leads through it
+  modules.push({ id: 'mod:sql:database', label: 'database', lang: 'sql', path: '', external: true });
+  nodes.push({ id: 'table:items', kind: 'table', label: 'items', module: 'mod:sql:database', external: true });
+  edges.push({ from: 'go:big/internal/plugins/p3.Run', to: 'table:items', type: 'writes' });
   for (let i = 0; i < 20; i++) e('internal/jobs.Serve', `internal/plugins/p${i}.Run`);
   for (let i = 1; i < 20; i++) e('internal/jobs.helper', `internal/reader/r${i}.Parse`);
   return { version: 1, rev: 'worktree', modules, nodes, edges };

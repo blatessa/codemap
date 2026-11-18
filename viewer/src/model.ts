@@ -578,7 +578,7 @@ export interface Trace {
 // TREE_DEPTH matches cli.FeatureDepth.
 export const TREE_DEPTH = 4;
 
-const isEffect = (m: Model, e: MEdge): boolean =>
+export const isEffect = (m: Model, e: MEdge): boolean =>
   e.type === 'reads' || e.type === 'writes' || e.type === 'publishes' || e.type === 'fetches' || (e.type === 'calls' && !!m.node.get(e.to)?.row.node.external);
 
 // effectsBeneath ports graph.Index.EffectsBeneath: effects reachable over calls
@@ -621,14 +621,59 @@ export function effectsBeneath(m: Model, id: string): Effect[] {
 // functions and external systems not gone into, TREE_DEPTH levels deep, wide
 // calls folded into one row, and every row listing the effects it reaches
 // through code the trace doesn't show.
+// COMMON_SHARE matches graph.CommonShare: effects more than this share of the
+// entry points reach (opening the store, loading the session) say nothing
+// about any one feature. Repos with fewer than ten entry points have none.
+export const COMMON_SHARE = 0.6;
+const commonMemo = new WeakMap<Model, Set<string>>();
+export function commonEffects(m: Model): Set<string> {
+  const hit = commonMemo.get(m);
+  if (hit) return hit;
+  const count = new Map<string, number>();
+  let n = 0;
+  for (const { row } of m.node.values()) {
+    if (!row.node.entry || row.prop || row.ghost) continue;
+    n++;
+    for (const f of effectsBeneath(m, row.id)) count.set(f.type + '\0' + f.to, (count.get(f.type + '\0' + f.to) ?? 0) + 1);
+  }
+  const out = new Set<string>();
+  if (n >= 10) for (const [k, c] of count) if (c / n > COMMON_SHARE) out.add(k);
+  commonMemo.set(m, out);
+  return out;
+}
+
 export function trace(m: Model, start: string): Trace {
+  const t = traceWith(m, start, true);
+  // nothing leads anywhere: the first level, so a trace is never empty
+  return t.rows.length ? t : traceWith(m, start, false);
+}
+
+function traceWith(m: Model, start: string, prune: boolean): Trace {
   const seen = new Set([start]);
+  const common = commonEffects(m);
+  const effKey = (f: Effect) => f.type + '\0' + f.to;
+  const leadsMemo = new Map<string, boolean>();
+  // a row stays when it leads somewhere: data, a service, a screen or another
+  // program's API, other than what most features reach (cli.Prune)
+  const leads = (id: string) => {
+    let v = leadsMemo.get(id);
+    if (v === undefined) leadsMemo.set(id, (v = effectsBeneath(m, id).some((f) => !common.has(effKey(f)))));
+    return v;
+  };
   const hasOut = (id: string) => (m.all.out.get(id)?.length ?? 0) > 0;
   type Kids = { rows: TreeRow[][]; support: number }; // each child with its subtree, preorder
   const kids = (id: string, parent: string, depth: number, hops = 0): Kids => {
     const res: Kids = { rows: [], support: 0 };
     const wide = new Map<string, TreeRow>();
-    for (const e of m.all.out.get(id) ?? []) {
+    // in the order the code makes the calls
+    const outs = [...(m.all.out.get(id) ?? [])].sort((a, b) => (a.file ?? '').localeCompare(b.file ?? '') || (a.line ?? 0) - (b.line ?? 0));
+    for (const e of outs) {
+      if (e.wide && prune) {
+        const k = e.file + ':' + e.line;
+        if (!wide.has(k)) res.support++; // one call site, however many targets
+        wide.set(k, null as never);
+        continue;
+      }
       if (e.wide) {
         const k = e.file + ':' + e.line;
         const w = wide.get(k);
@@ -657,12 +702,24 @@ export function trace(m: Model, start: string): Trace {
         res.support++;
         continue;
       }
+      if (prune && !e.prop) {
+        const keep = isEffect(m, e) ? !common.has(effKey({ to: e.to, type: e.type })) && !seen.has(e.type + '>' + e.to + '<' + id) : !seen.has(e.to) && leads(e.to);
+        if (!keep) {
+          res.support++;
+          continue;
+        }
+      }
+      if (isEffect(m, e)) seen.add(e.type + '>' + e.to + '<' + id);
       const r: TreeRow = { id: e.to, via: e, parent, depth, seen: seen.has(e.to), support: 0, reaches: [] };
       const sub: TreeRow[] = [r];
       res.rows.push(sub);
       if (r.seen) continue;
       seen.add(e.to);
       if (!n || n.external) continue;
+      if (!prune) {
+        r.more = hasOut(e.to);
+        continue;
+      }
       if (stops(n) || depth + 1 >= TREE_DEPTH) {
         r.more = hasOut(e.to);
         continue;
@@ -697,6 +754,7 @@ export function trace(m: Model, start: string): Trace {
     const n = m.node.get(id)?.row.node;
     if (!n || n.external) return [];
     const cov = coveredBelow(i);
+    if (i >= 0) for (const k of common) cov.add(k); // said once, on the root
     return beneath(id).filter((f) => !cov.has(key(f)));
   };
   for (let i = rows.length - 1; i >= 0; i--) {

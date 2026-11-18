@@ -128,7 +128,8 @@ describe('public rows and shared modules', () => {
   test('a path keeps its internal rows', () => {
     const m = buildModel(g, [], null);
     const S = selectionOf(m, ['go:shop/internal/orders.(*Service).Place'], [])!;
-    expect(S.path.has('go:shop/internal/orders.(CreateOrder).Total')).toBe(true);
+    expect(S.path.has('go:shop/internal/orders.(*Repo).Insert')).toBe(true);
+    expect(S.path.has('go:shop/internal/orders.(CreateOrder).Total')).toBe(false); // leads nowhere: folded
     expect(S.path.has('go:shop/internal/orders.writeJSON')).toBe(false);
     // selecting a module doesn't open up its internals
     expect(selectionOf(m, ['mod:go:shop/internal/orders'], [])!.path.size).toBe(0);
@@ -231,6 +232,7 @@ describe('traces on a big codebase', () => {
       { from: 'go:x/a.step3', to: 'go:x/a.step4', type: 'calls', file: 'a/a.go', line: 32 },
       { from: 'go:x/a.step4', to: 'go:x/a.step5', type: 'calls', file: 'a/a.go', line: 33 },
       { from: 'go:x/a.step5', to: 'table:t', type: 'writes', file: 'a/a.go', line: 34 },
+      { from: 'go:x/a.save', to: 'table:t', type: 'writes', file: 'a/a.go', line: 10 },
     ],
   };
   const m = buildModel(g, [], null);
@@ -250,7 +252,7 @@ describe('traces on a big codebase', () => {
     const S = selectionOf(m, [id('h')], [])!;
     expect(S.nodes.has(id('step5'))).toBe(false);
     expect(S.nodes.has('table:t')).toBe(true);
-    const e = S.extra.find((x) => x.to === 'table:t')!;
+    const e = S.extra.find((x) => x.to === 'table:t' && x.from === id('step4'))!;
     expect(e).toMatchObject({ from: id('step4'), type: 'writes', synth: 'reach' });
     expect(e.i).toBeGreaterThanOrEqual(SYNTH);
     expect(S.edges.has(e.i)).toBe(true);
@@ -259,11 +261,9 @@ describe('traces on a big codebase', () => {
   test('the call tree folds a wide call into one row and stops at depth', () => {
     const t = trace(m, id('h'));
     const rows = t.rows;
-    expect(t.support).toBe(1); // getEngine
+    expect(t.support).toBe(2); // getEngine, and the wide call: they lead nowhere
     expect(rows.find((r) => r.id === id('step4'))!.reaches).toEqual([{ to: 'table:t', type: 'writes' }]);
-    const wide = rows.filter((r) => r.targets);
-    expect(wide).toHaveLength(1);
-    expect(wide[0].targets).toHaveLength(6);
+    expect(rows.filter((r) => r.targets)).toHaveLength(0);
     expect(rows.find((r) => r.id === id('save'))!.more).toBe(true);
     expect(rows.some((r) => r.id === id('deep'))).toBe(false);
     expect(rows.find((r) => r.id === id('step4'))!.more).toBe(true);
