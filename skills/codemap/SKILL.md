@@ -30,7 +30,10 @@ Output conventions:
 - Tables, topics, services and tests carry a tag, such as `orders [table]`.
 - Edge details follow the name, such as `writes: UPDATE orders …` or `PaymentIntents.New`.
 - `(see above)` marks a node that's already expanded higher up the tree.
-- `show` and `callers` default to `--detail features`: short forwarding functions are skipped (A → C instead of A → B → C), and wiring, utility, generated and unreachable code is left out, counted on the parent line as `(+2 support)`. Use `--detail code` to see every call. A node's `role:` line says which kind of support code it is.
+- `show` and `callers` default to `--detail features`: short forwarding functions are skipped (A → C instead of A → B → C), and wiring, utility, generated and unreachable code is left out, counted on the parent line as `(+2 support)`. Utilities include widely used helpers such as a transaction wrapper or a logger. Use `--detail code` to see every call. A node's `role:` line says which kind of support code it is.
+- A widely used function that does something itself (writes data, calls a service) shows as a row ending in `...`: it's part of the path, but the tree doesn't go into it. `show` it on its own to see inside.
+- A call that may go to many functions (through an interface or a function value) is one row, such as `Error · 107 implementations`, and isn't followed.
+- `show` at `--detail features` goes 4 levels deep; rows with more below end in `...`. Use `--depth N` for more, or `--depth 0` for everything.
 - Traces stop at external systems.
 
 Useful before changing code: `show` an entry point to see everything a change could affect, `callers` to see who depends on a function, and `module` to see a package's boundaries.

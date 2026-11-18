@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { blockFor, escapeGlob, globMatch, pathMatch } from './blocks';
 import { classify, humanize } from './fields';
 import { GROUP_AT, buildGrouping, chain } from './groups';
-import { buildModel, selectionOf, testsReaching } from './model';
+import { buildModel, callTree, selectionOf, testsReaching } from './model';
 import type { Graph } from './types';
 
 describe('blocks (port of project.BlockFor)', () => {
@@ -198,5 +198,57 @@ describe('folder groups', () => {
     const G = group([...many('internal/reader', 20), ...many('internal/plugins', 20)], ['mod:internal/reader/p7'])!;
     expect(G.top).toContain('mod:internal/reader/p7');
     expect(G.groups.get('group:internal/reader')!.members).not.toContain('mod:internal/reader/p7');
+  });
+});
+
+describe('traces on a big codebase', () => {
+  // h calls six Error implementations from one site (a wide call), a shared
+  // function with effects (save) and a utility (getEngine); each of those
+  // calls on into deep code that isn't part of h's trace.
+  const fn = (id: string, fields?: Record<string, unknown>) => ({ id: 'go:x/a.' + id, kind: 'function', label: id, module: 'mod:go:x/a', fields });
+  const errs = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6'];
+  const g: Graph = {
+    version: 1,
+    modules: [{ id: 'mod:go:x/a', label: 'a', lang: 'go', path: 'a' }],
+    nodes: [
+      fn('h'), fn('save', { shared: true }), fn('getEngine', { role: 'utility' }), fn('deep'), fn('step1'), fn('step2'), fn('step3'), fn('step4'), fn('step5'),
+      ...errs.map((e) => fn(e)),
+    ],
+    edges: [
+      ...errs.map((e) => ({ from: 'go:x/a.h', to: 'go:x/a.' + e, type: 'calls', file: 'a/a.go', line: 3 })),
+      { from: 'go:x/a.h', to: 'go:x/a.save', type: 'calls', file: 'a/a.go', line: 4 },
+      { from: 'go:x/a.h', to: 'go:x/a.getEngine', type: 'calls', file: 'a/a.go', line: 5 },
+      { from: 'go:x/a.save', to: 'go:x/a.deep', type: 'calls', file: 'a/a.go', line: 9 },
+      { from: 'go:x/a.getEngine', to: 'go:x/a.deep', type: 'calls', file: 'a/a.go', line: 12 },
+      { from: 'go:x/a.E1', to: 'go:x/a.deep', type: 'calls', file: 'a/a.go', line: 20 },
+      { from: 'go:x/a.h', to: 'go:x/a.step1', type: 'calls', file: 'a/a.go', line: 6 },
+      { from: 'go:x/a.step1', to: 'go:x/a.step2', type: 'calls', file: 'a/a.go', line: 30 },
+      { from: 'go:x/a.step2', to: 'go:x/a.step3', type: 'calls', file: 'a/a.go', line: 31 },
+      { from: 'go:x/a.step3', to: 'go:x/a.step4', type: 'calls', file: 'a/a.go', line: 32 },
+      { from: 'go:x/a.step4', to: 'go:x/a.step5', type: 'calls', file: 'a/a.go', line: 33 },
+    ],
+  };
+  const m = buildModel(g, [], null);
+  const id = (s: string) => 'go:x/a.' + s;
+
+  test('a selection stops at wide calls, utilities and shared functions', () => {
+    const S = selectionOf(m, [id('h')], [])!;
+    expect(S.nodes.has(id('save'))).toBe(true);
+    expect(S.nodes.has(id('getEngine'))).toBe(true);
+    expect(S.nodes.has(id('E1'))).toBe(false);
+    expect(S.nodes.has(id('deep'))).toBe(false);
+    // and going up, a wide call isn't a caller of each implementation
+    expect(selectionOf(m, [id('E3')], [])!.nodes.has(id('h'))).toBe(false);
+  });
+
+  test('the call tree folds a wide call into one row and stops at depth', () => {
+    const rows = callTree(m, id('h'));
+    const wide = rows.filter((r) => r.targets);
+    expect(wide).toHaveLength(1);
+    expect(wide[0].targets).toHaveLength(6);
+    expect(rows.find((r) => r.id === id('save'))!.more).toBe(true);
+    expect(rows.some((r) => r.id === id('deep'))).toBe(false);
+    expect(rows.find((r) => r.id === id('step4'))!.more).toBe(true);
+    expect(rows.some((r) => r.id === id('step5'))).toBe(false);
   });
 });

@@ -161,7 +161,9 @@ func WriteTree(w io.Writer, ix *graph.Index, t *graph.TreeNode, opt TreeOptions)
 	var walk func(t *graph.TreeNode, depth int)
 	walk = func(t *graph.TreeNode, depth int) {
 		row := strings.Repeat("  ", depth) + Name(ix, t.ID)
-		if note := EdgeNote(ix, t.Via, t.ID); note != "" {
+		if t.Targets != nil {
+			row = strings.Repeat("  ", depth) + WideName(ix, t, opt.Up)
+		} else if note := EdgeNote(ix, t.Via, t.ID); note != "" {
 			row += "  " + note
 		}
 		if t.Support > 0 {
@@ -178,6 +180,35 @@ func WriteTree(w io.Writer, ix *graph.Index, t *graph.TreeNode, opt TreeOptions)
 		}
 	}
 	walk(t, 0)
+}
+
+// WideName labels a row standing for a wide call: "Error · 163 implementations",
+// or, in a tree of callers, "Error · called from 40 places".
+func WideName(ix *graph.Index, t *graph.TreeNode, up bool) string {
+	method := ""
+	ids := t.Targets
+	if up && t.Via != nil {
+		ids = []string{t.Via.To}
+	}
+	for _, id := range ids {
+		m := id
+		if n := ix.Node[id]; n != nil {
+			m = n.Label
+		}
+		if i := strings.LastIndex(m, "."); i >= 0 {
+			m = m[i+1:]
+		}
+		if method == "" {
+			method = m
+		} else if method != m {
+			method = "a function value"
+			break
+		}
+	}
+	if up {
+		return fmt.Sprintf("%s · called through it from %d places", method, len(t.Targets))
+	}
+	return fmt.Sprintf("%s · %d implementations", method, len(t.Targets))
 }
 
 func hasMore(ix *graph.Index, id string, up bool) bool {
@@ -199,18 +230,19 @@ func UpTree(ix *graph.Index, start string, maxDepth int) *graph.TreeNode {
 		if maxDepth > 0 && depth >= maxDepth {
 			return nil
 		}
-		var out []*graph.TreeNode
-		for _, e := range ix.In[id] {
-			t := &graph.TreeNode{ID: e.From, Via: e}
-			if seen[e.From] {
+		out := ix.TreeRowsUp(ix.In[id])
+		for _, t := range out {
+			if t.Targets != nil {
+				continue
+			}
+			if seen[t.ID] {
 				t.Seen = true
 			} else {
-				seen[e.From] = true
-				if n := ix.Node[e.From]; n == nil || !n.External {
-					t.Children = build(e.From, depth+1)
+				seen[t.ID] = true
+				if n := ix.Node[t.ID]; n == nil || !n.External {
+					t.Children = build(t.ID, depth+1)
 				}
 			}
-			out = append(out, t)
 		}
 		return out
 	}

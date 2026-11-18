@@ -35,9 +35,10 @@ func RoleOf(ix *graph.Index, id string) string {
 }
 
 // Features rewrites a tree for the features detail level: a passthrough row is
-// replaced by its own children (A → passthrough → C reads A → C), and rows
-// with any other role are left out and counted in their parent's Support.
-// The root always stays.
+// replaced by its own children (A → passthrough → C reads A → C), rows with
+// any other role are left out and counted in their parent's Support, and a
+// shared function (widely used, with effects of its own) is shown without what
+// it calls. The root always stays.
 func Features(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
 	out := *t
 	out.Children = nil
@@ -53,6 +54,10 @@ func Features(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
 				add(c.Children, depth+1)
 			case r != "":
 				out.Support++
+			case Shared(ix, c.ID):
+				leaf := *c // shown, not gone into
+				leaf.Children = nil
+				out.Children = append(out.Children, &leaf)
 			default:
 				out.Children = append(out.Children, Features(ix, c))
 			}
@@ -60,4 +65,66 @@ func Features(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
 	}
 	add(t.Children, 0)
 	return &out
+}
+
+// Shared reports whether a node is marked shared: widely used, with effects of
+// its own (see graph.AssignRoles).
+func Shared(ix *graph.Index, id string) bool {
+	if n := ix.Node[id]; n != nil {
+		b, _ := n.Fields["shared"].(bool)
+		return b
+	}
+	return false
+}
+
+// FeatureDepth is how many levels a features tree shows unless asked for more.
+const FeatureDepth = 4
+
+// Cut limits a tree to depth levels below its root; 0 means no limit. Rows
+// cut off print "..." (see WriteTree).
+func Cut(t *graph.TreeNode, depth int) *graph.TreeNode {
+	if depth <= 0 {
+		return t
+	}
+	out := *t
+	out.Children = nil
+	for _, c := range t.Children {
+		if depth == 1 {
+			leaf := *c
+			leaf.Children = nil
+			out.Children = append(out.Children, &leaf)
+		} else {
+			out.Children = append(out.Children, Cut(c, depth-1))
+		}
+	}
+	return &out
+}
+
+// Settle clears "see above" on rows whose expanded copy is no longer in the
+// tree (cut by a depth limit, or left out with support code), so no row
+// points at nothing. It changes t in place and returns it.
+func Settle(t *graph.TreeNode) *graph.TreeNode {
+	shown := map[string]bool{}
+	var mark func(t *graph.TreeNode)
+	mark = func(t *graph.TreeNode) {
+		if !t.Seen && t.ID != "" {
+			shown[t.ID] = true
+		}
+		for _, c := range t.Children {
+			mark(c)
+		}
+	}
+	mark(t)
+	var fix func(t *graph.TreeNode)
+	fix = func(t *graph.TreeNode) {
+		if t.Seen && !shown[t.ID] {
+			t.Seen = false
+			shown[t.ID] = true
+		}
+		for _, c := range t.Children {
+			fix(c)
+		}
+	}
+	fix(t)
+	return t
 }

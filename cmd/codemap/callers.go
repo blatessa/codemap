@@ -42,7 +42,7 @@ func runCallers(w io.Writer, args []string) error {
 	// Walks upstream and stops at external nodes, as Index.Up with StopAtExternalUp does.
 	tree := cli.UpTree(ix, id, *depth)
 	if level == cli.DetailFeatures {
-		tree = cli.Features(ix, tree)
+		tree = cli.Settle(cli.Features(ix, tree))
 	}
 	if c.JSON {
 		return cli.WriteJSON(w, map[string]any{"node": ix.Node[id], "tree": tree})

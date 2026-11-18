@@ -19,7 +19,7 @@ func runShow(w io.Writer, args []string) error {
 	var c cli.Common
 	fs := cli.NewFlagSet("show", showUsage)
 	c.Register(fs)
-	depth := fs.Int("depth", 0, "limit the tree to N levels (0 = no limit)")
+	depth := fs.Int("depth", -1, fmt.Sprintf("limit the tree to N levels (default %d at --detail features; 0 = no limit)", cli.FeatureDepth))
 	detail := cli.DetailFlag(fs)
 	pos, err := cli.Parse(fs, args)
 	if err != nil {
@@ -41,16 +41,25 @@ func runShow(w io.Writer, args []string) error {
 		return err
 	}
 	n := ix.Node[id]
-	tree := ix.Tree(id, *depth)
+	tree := ix.Tree(id, max(*depth, 0))
 
-	// Entry points show the tests along their whole path; other nodes show the
+	if level == cli.DetailFeatures {
+		tree = cli.Features(ix, tree)
+		if *depth < 0 {
+			tree = cli.Cut(tree, cli.FeatureDepth)
+		}
+		tree = cli.Settle(tree)
+	}
+
+	// Entry points show the tests along the path shown; other nodes show the
 	// tests that reach them (as the viewer's details panel does).
 	var reachedBy []string
 	var tests []graph.TestReach
 	if n.Entry {
 		var onPath []string
 		for _, t := range cli.TreeIDs(tree) {
-			if tn := ix.Node[t]; tn != nil && !tn.External {
+			// shared functions are on every path; their tests aren't this one's
+			if tn := ix.Node[t]; tn != nil && !tn.External && !cli.Shared(ix, t) {
 				onPath = append(onPath, t)
 			}
 		}
@@ -60,9 +69,6 @@ func runShow(w io.Writer, args []string) error {
 		tests = ix.TestsReaching(id)
 	}
 
-	if level == cli.DetailFeatures {
-		tree = cli.Features(ix, tree)
-	}
 	if c.JSON {
 		return cli.WriteJSON(w, map[string]any{
 			"node":      n,

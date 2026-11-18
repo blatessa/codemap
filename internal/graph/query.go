@@ -11,6 +11,24 @@ type Index struct {
 	Out     map[string][]*Edge
 	In      map[string][]*Edge
 	ByLabel map[string][]string // label -> node IDs
+	site    map[*Edge]int       // how many targets each calls edge's call site has
+}
+
+// WideCall is how many targets a call site may resolve to before it counts as
+// wide: a call through an interface or function value with many
+// implementations (err.Error(), a notifier list). Traces show a wide call as
+// one step and don't follow it; the edges stay in the graph.
+const WideCall = 4
+
+// Wide reports whether e is one of the targets of a wide call site.
+func (ix *Index) Wide(e *Edge) bool { return ix.site[e] > WideCall }
+
+// SiteTargets returns how many targets e's call site has (1 for an edge without a position).
+func (ix *Index) SiteTargets(e *Edge) int {
+	if n := ix.site[e]; n > 0 {
+		return n
+	}
+	return 1
 }
 
 // NewIndex builds an Index. The graph must not be modified afterwards.
@@ -18,6 +36,7 @@ func NewIndex(g *Graph) *Index {
 	ix := &Index{
 		G: g, Node: map[string]*Node{}, Module: map[string]*Module{},
 		Out: map[string][]*Edge{}, In: map[string][]*Edge{}, ByLabel: map[string][]string{},
+		site: map[*Edge]int{},
 	}
 	for i := range g.Modules {
 		ix.Module[g.Modules[i].ID] = &g.Modules[i]
@@ -27,10 +46,24 @@ func NewIndex(g *Graph) *Index {
 		ix.Node[n.ID] = n
 		ix.ByLabel[n.Label] = append(ix.ByLabel[n.Label], n.ID)
 	}
+	type siteKey struct {
+		from, file string
+		line       int
+	}
+	sites := map[siteKey][]*Edge{}
 	for i := range g.Edges {
 		e := &g.Edges[i]
 		ix.Out[e.From] = append(ix.Out[e.From], e)
 		ix.In[e.To] = append(ix.In[e.To], e)
+		if e.Type == Calls && e.File != "" && e.Line > 0 {
+			k := siteKey{e.From, e.File, e.Line}
+			sites[k] = append(sites[k], e)
+		}
+	}
+	for _, es := range sites {
+		for _, e := range es {
+			ix.site[e] = len(es)
+		}
 	}
 	return ix
 }
@@ -39,9 +72,12 @@ func NewIndex(g *Graph) *Index {
 type Skip func(e *Edge) bool
 
 // StopAtExternal is the default trace rule: paths don't continue through external
-// nodes, except out of the starting node itself.
+// nodes, except out of the starting node itself, and don't follow wide calls.
 func (ix *Index) StopAtExternal(start string) Skip {
 	return func(e *Edge) bool {
+		if ix.Wide(e) {
+			return true
+		}
 		if e.From == start {
 			return false
 		}
@@ -53,6 +89,9 @@ func (ix *Index) StopAtExternal(start string) Skip {
 // StopAtExternalUp is StopAtExternal for upstream walks.
 func (ix *Index) StopAtExternalUp(start string) Skip {
 	return func(e *Edge) bool {
+		if ix.Wide(e) {
+			return true
+		}
 		if e.To == start {
 			return false
 		}
@@ -106,10 +145,45 @@ type TreeNode struct {
 	// Support counts the support rows left out below this one at the
 	// features detail level (cli.Features).
 	Support int `json:"support,omitempty"`
+	// Targets is set on a row standing for a wide call (see WideCall): the
+	// call may go to any of these, and the row isn't expanded. ID is "".
+	Targets []string `json:"targets,omitempty"`
+}
+
+// treeRows turns the edges out of (or, up, into) a node into tree rows,
+// folding each wide call site into one row whose Targets are its ends.
+func (ix *Index) treeRows(edges []*Edge, up bool) []*TreeNode {
+	var out []*TreeNode
+	wide := map[[3]any]*TreeNode{}
+	for _, e := range edges {
+		end := e.To
+		if up {
+			end = e.From
+		}
+		if !ix.Wide(e) {
+			out = append(out, &TreeNode{ID: end, Via: e})
+			continue
+		}
+		// down, a wide row is one call site; up, one row for all the wide
+		// calls that may land here
+		k := [3]any{e.From, e.File, e.Line}
+		if up {
+			k = [3]any{"", "", 0}
+		}
+		if w := wide[k]; w != nil {
+			w.Targets = append(w.Targets, end)
+			continue
+		}
+		w := &TreeNode{Via: e, Targets: []string{end}}
+		wide[k] = w
+		out = append(out, w)
+	}
+	return out
 }
 
 // Tree builds the call tree below start, the way the viewer's details panel shows it:
-// each node is expanded once, and external nodes are leaves.
+// each node is expanded once, external nodes are leaves, and a wide call is
+// one row that isn't expanded.
 func (ix *Index) Tree(start string, maxDepth int) *TreeNode {
 	seen := map[string]bool{start: true}
 	var build func(id string, depth int) []*TreeNode
@@ -117,18 +191,19 @@ func (ix *Index) Tree(start string, maxDepth int) *TreeNode {
 		if maxDepth > 0 && depth >= maxDepth {
 			return nil
 		}
-		var out []*TreeNode
-		for _, e := range ix.Out[id] {
-			t := &TreeNode{ID: e.To, Via: e}
-			if seen[e.To] {
+		out := ix.treeRows(ix.Out[id], false)
+		for _, t := range out {
+			if t.Targets != nil {
+				continue
+			}
+			if seen[t.ID] {
 				t.Seen = true
 			} else {
-				seen[e.To] = true
-				if n := ix.Node[e.To]; n == nil || !n.External {
-					t.Children = build(e.To, depth+1)
+				seen[t.ID] = true
+				if n := ix.Node[t.ID]; n == nil || !n.External {
+					t.Children = build(t.ID, depth+1)
 				}
 			}
-			out = append(out, t)
 		}
 		return out
 	}
@@ -157,8 +232,9 @@ func (ix *Index) EntriesReaching(id string) []string {
 }
 
 // TestReach reports which tests reach a node. A test's reach follows calls and
-// renders edges only, and never crosses fetches edges or external nodes: a frontend
-// test mocks the API, and a backend test doesn't exercise a third-party service.
+// renders edges only, and never crosses fetches edges, external nodes or wide
+// calls: a frontend test mocks the API, a backend test doesn't exercise a
+// third-party service, and a call through err.Error() isn't a test of every error.
 type TestReach struct {
 	Test   string `json:"test"`
 	Direct bool   `json:"direct"`
@@ -171,7 +247,7 @@ func (ix *Index) TestsReaching(ids ...string) []TestReach {
 		want[id] = true
 	}
 	skip := func(e *Edge) bool {
-		if e.Type != Calls && e.Type != Renders {
+		if e.Type != Calls && e.Type != Renders || ix.Wide(e) {
 			return true
 		}
 		n := ix.Node[e.From]
@@ -212,3 +288,6 @@ func sortedKeys(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// TreeRowsUp is treeRows for a tree of callers.
+func (ix *Index) TreeRowsUp(edges []*Edge) []*TreeNode { return ix.treeRows(edges, true) }

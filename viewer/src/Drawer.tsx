@@ -116,6 +116,18 @@ function CallTree({ m, id }: { m: Model; id: string }) {
       <div className="tree">
         {rows.map((r, i) => {
           const x = m.node.get(r.id)!;
+          if (r.targets) {
+            const names = new Set(r.targets.map((t) => m.node.get(t)?.row.label.split('.').pop() ?? t));
+            const method = names.size === 1 ? [...names][0] : 'a function value';
+            return (
+              <div key={i} className="trow wide sup" style={{ paddingLeft: 6 + Math.min(r.depth, 12) * 14 }} title={r.targets.map((t) => qn(m, t)).join('\n')}>
+                <span className="l">
+                  └<span>{method}</span>
+                  <span className="seen">{r.targets.length} implementations</span>
+                </span>
+              </div>
+            );
+          }
           return (
             <button
               key={i}
@@ -132,6 +144,7 @@ function CallTree({ m, id }: { m: Model; id: string }) {
                 </span>
                 {x.row.tag && <span className={`k ${kindClass(m, r.id)}`}>{x.row.tag}</span>}
                 {r.seen && <span className="seen">see above</span>}
+                {r.more && <span className="seen">…</span>}
               </span>
               {r.via.detail && <span className="q">{r.via.detail}</span>}
             </button>

@@ -2,8 +2,10 @@ package graph
 
 import (
 	"bytes"
+	"math"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -32,6 +34,11 @@ const (
 	// ShortSpan is the longest endLine-line of a passthrough, or of a function
 	// that only forwards to utilities.
 	ShortSpan = 6
+	// UtilityShare is the share of a repo's functions, by utilityhood, that
+	// count as widely used (utilities, or shared when they have effects).
+	UtilityShare = 0.02
+	// WidelyUsedCallers is the fewest callers a widely used function has.
+	WidelyUsedCallers = 5
 )
 
 var (
@@ -329,6 +336,24 @@ func AssignRoles(g *Graph, read ReadFile) map[string]int {
 		}
 	}
 
+	// widely used: the functions with the highest utilityhood, a measure from
+	// trace summarisation (Hamou-Lhadj & Lethbridge, "Summarizing the Content
+	// of Large Traces to Facilitate the Understanding of the Behaviour of a
+	// Software System", ICPC 2006): many callers, few callees. Wide call sites
+	// don't count, so a registry or a much-implemented interface can't make
+	// its targets look widely used. One that does nothing itself (WithTx,
+	// GetEngine, a logger) is a utility; one with effects of its own is
+	// marked shared: traces show it, but don't go into it.
+	for _, id := range widelyUsed(ix, func(id string) bool {
+		return F[id] != nil && role[id] == "" && !entry[id]
+	}) {
+		if F[id].effect || F[id].delegates {
+			setField(ix.Node[id], "shared", true)
+			continue
+		}
+		role[id] = RoleUtility
+	}
+
 	// passthrough: short, no effects, exactly one repo callee
 	for id, f := range F {
 		if role[id] != "" || f.effect || f.byEntry || entry[id] || !f.hasSpan || f.span > ShortSpan || len(f.callees) != 1 {
@@ -345,6 +370,73 @@ func AssignRoles(g *Graph, read ReadFile) map[string]int {
 		}
 	}
 	return counts
+}
+
+// widelyUsed returns the eligible repo functions in the top UtilityShare by
+// utilityhood, U = fanIn/N · (1 − log(fanOut+1)/log N), where N is the number
+// of repo functions and fan-in and fan-out count distinct repo functions over
+// calls that aren't wide. Only functions with at least WidelyUsedCallers
+// callers qualify, so a small repo marks few or none.
+func widelyUsed(ix *Index, eligible func(id string) bool) []string {
+	repoFn := func(id string) bool {
+		n := ix.Node[id]
+		return n != nil && n.Kind == KindFunction && !n.External && !strings.HasPrefix(id, "new:")
+	}
+	var fns []string
+	for _, n := range ix.G.Nodes {
+		if repoFn(n.ID) {
+			fns = append(fns, n.ID)
+		}
+	}
+	N := float64(len(fns))
+	if N < 2 {
+		return nil
+	}
+	type score struct {
+		id string
+		u  float64
+	}
+	var scores []score
+	for _, id := range fns {
+		if !eligible(id) {
+			continue
+		}
+		in, out := map[string]bool{}, map[string]bool{}
+		for _, e := range ix.In[id] {
+			if e.Type == Calls && e.From != id && !ix.Wide(e) {
+				if c := ix.Node[e.From]; c != nil && c.Kind != KindTest {
+					in[e.From] = true
+				}
+			}
+		}
+		if len(in) < WidelyUsedCallers {
+			continue
+		}
+		for _, e := range ix.Out[id] {
+			if e.Type == Calls && e.To != id && !ix.Wide(e) && repoFn(e.To) {
+				out[e.To] = true
+			}
+		}
+		u := float64(len(in)) / N * (1 - math.Log(float64(len(out))+1)/math.Log(N))
+		if u > 0 {
+			scores = append(scores, score{id, u})
+		}
+	}
+	sort.Slice(scores, func(i, j int) bool {
+		if scores[i].u != scores[j].u {
+			return scores[i].u > scores[j].u
+		}
+		return scores[i].id < scores[j].id
+	})
+	k := int(UtilityShare * N)
+	if k > len(scores) {
+		k = len(scores)
+	}
+	out := make([]string, k)
+	for i := range out {
+		out[i] = scores[i].id
+	}
+	return out
 }
 
 // entryReach counts, per node, the distinct entry points that reach it

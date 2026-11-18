@@ -63,7 +63,13 @@ export interface MEdge {
   file?: string;
   line?: number;
   via?: string[]; // passthroughs collapsed into this edge (Features)
+  wide?: number; // targets of this call's site, when more than WIDE_CALL
 }
+
+// WIDE_CALL matches graph.WideCall: a call site with more targets than this (a
+// call through an interface or function value with many implementations) is
+// one step in traces, and isn't followed.
+export const WIDE_CALL = 4;
 
 export interface Model {
   boxes: Box[];
@@ -78,6 +84,22 @@ export interface Model {
 }
 
 export const roleOf = (n: GNode): string => (typeof n.fields?.role === 'string' ? (n.fields.role as string) : '');
+// sharedFn: widely used, with effects of its own (graph.AssignRoles): traces
+// show it but don't go into it
+export const sharedFn = (n: GNode): boolean => n.fields?.shared === true;
+// stops reports whether traces stop at a node: utilities and shared functions
+// are shown, but what they call isn't part of the trace
+export const stops = (n: GNode): boolean => roleOf(n) === 'utility' || sharedFn(n);
+
+function markWide(edges: MEdge[]) {
+  const sites = new Map<string, MEdge[]>();
+  for (const e of edges) {
+    if (e.type !== 'calls' || e.prop || !e.file || !e.line) continue;
+    const k = e.from + '\0' + e.file + '\0' + e.line;
+    (sites.get(k) ?? sites.set(k, []).get(k)!).push(e);
+  }
+  for (const es of sites.values()) if (es.length > WIDE_CALL) for (const e of es) e.wide = es.length;
+}
 
 const ENTRY_PREFIX: Record<string, string> = { subscriber: 'SUB', function: 'MAIN', component: 'COMP' };
 
@@ -242,6 +264,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
     }
     return { out: o, inn: n };
   };
+  markWide(edges);
   const all = { edges, ...index(edges) };
   const { out, inn } = all;
   // external rows get a colour from how they're used, never from their kind
@@ -369,9 +392,12 @@ function walk(m: Model, start: string, down: boolean): { nodes: Set<string>; edg
   while (q.length) {
     const n = q.shift()!;
     for (const e of adj.get(n) ?? []) {
-      // paths stop at external nodes unless the external node itself is selected
+      if (e.wide) continue; // one of many possible targets: not this path
+      // paths stop at external nodes unless the external node itself is
+      // selected, and going down, at utilities and shared functions
       const via = down ? e.from : e.to;
-      if (via !== start && m.node.get(via)?.row.node.external) continue;
+      const vn = m.node.get(via)?.row.node;
+      if (via !== start && vn && (vn.external || (down && stops(vn)))) continue;
       edges.add(e.i);
       const t = down ? e.to : e.from;
       if (!nodes.has(t)) {
@@ -468,22 +494,48 @@ export interface TreeRow {
   via: MEdge;
   depth: number;
   seen: boolean;
+  more?: boolean; // has calls not shown: cut by depth, or a utility or shared function
+  targets?: string[]; // a wide call: it may go to any of these
 }
 
+// TREE_DEPTH matches cli.FeatureDepth: the call tree shows this many levels;
+// selecting a row shows its own tree.
+export const TREE_DEPTH = 4;
+
 // callTree ports graph.Index.Tree: each node expands once, external nodes are
-// leaves. It walks every edge, passthroughs included; the panel dims support rows.
-export function callTree(m: Model, start: string, max = 400): TreeRow[] {
+// leaves, utilities and shared functions aren't gone into, and a wide call is
+// one row. The panel dims support rows.
+export function callTree(m: Model, start: string, max = 400, maxDepth = TREE_DEPTH): TreeRow[] {
   const seen = new Set([start]);
   const out: TreeRow[] = [];
   const rec = (id: string, depth: number) => {
+    const wide = new Map<string, TreeRow>();
     for (const e of m.all.out.get(id) ?? []) {
       if (out.length >= max) return;
-      const again = seen.has(e.to);
-      out.push({ id: e.to, via: e, depth, seen: again });
-      if (!again) {
-        seen.add(e.to);
-        if (!m.node.get(e.to)?.row.node.external) rec(e.to, depth + 1);
+      if (e.wide) {
+        const k = e.file + ':' + e.line;
+        const w = wide.get(k);
+        if (w) w.targets!.push(e.to);
+        else {
+          const r: TreeRow = { id: e.to, via: e, depth, seen: false, targets: [e.to] };
+          wide.set(k, r);
+          out.push(r);
+        }
+        continue;
       }
+      const again = seen.has(e.to);
+      const n = m.node.get(e.to)?.row.node;
+      const leaf = !n || n.external || stops(n);
+      const r: TreeRow = { id: e.to, via: e, depth, seen: again };
+      out.push(r);
+      if (again || leaf) {
+        if (!again && n && !n.external && (m.all.out.get(e.to)?.length ?? 0) > 0) r.more = true;
+        seen.add(e.to);
+        continue;
+      }
+      seen.add(e.to);
+      if (depth + 1 >= maxDepth) r.more = (m.all.out.get(e.to)?.length ?? 0) > 0;
+      else rec(e.to, depth + 1);
     }
   };
   rec(start, 0);
