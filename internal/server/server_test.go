@@ -30,6 +30,10 @@ func setup(t *testing.T) (*Server, *httptest.Server, string) {
 	if err := os.CopyFS(root, os.DirFS("../../testdata/shop")); err != nil {
 		t.Fatal(err)
 	}
+	// Viewer state from trying the fixture locally isn't part of it.
+	for _, f := range []string{"layout.json", "views.toml", "blocks.toml"} {
+		os.Remove(filepath.Join(root, ".codemap", f))
+	}
 	b, err := os.ReadFile("../../testdata/shop.expected.json")
 	if err != nil {
 		t.Fatal(err)
