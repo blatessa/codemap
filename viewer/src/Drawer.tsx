@@ -28,6 +28,7 @@ import {
   useStore,
 } from './store';
 import { useAreaRect } from './MapView';
+import { RequestButton, RequestForm } from './Requests';
 
 export const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <div>
@@ -69,30 +70,59 @@ function EdgeList({ m, edges, end, detail }: { m: Model; edges: MEdge[]; end: 'f
   return (
     <div className="links">
       {edges.map((e) => (
-        <NodeLink key={e.i} m={m} id={e[end]} edge={e} detail={detail} />
+        <span className="elink" key={e.i}>
+          <NodeLink m={m} id={e[end]} edge={e} detail={detail} />
+          <button className="eb" title="This call" aria-label="This call" data-edge-sel={`${e.from} -> ${e.to}`} onClick={() => select(`edge:${e.from} -> ${e.to}`)}>
+            ⇢
+          </button>
+        </span>
       ))}
     </div>
   );
 }
 
-function Tests({ m, ids }: { m: Model; ids: Iterable<string> }) {
+function Tests({ m, ids, target }: { m: Model; ids: Iterable<string>; target?: string }) {
   const list = testsReaching(m, ids);
-  if (!list.length) return <span className="chip">No tests</span>;
+  const add = target ? <RequestButton target={target} kind="test" label="Add a test for…" id="req-test" /> : null;
+  if (!list.length)
+    return (
+      <div className="btns">
+        <span className="chip">No tests</span>
+        {add}
+      </div>
+    );
   return (
     <>
       {list.map(({ test, direct, via }) => (
-        <TestRow key={test.id} file={test.file} line={test.line} endLine={test.endLine} name={test.label} via={direct ? '' : via} />
+        <TestRow key={test.id} id={test.id} file={test.file} line={test.line} endLine={test.endLine} name={test.label} via={direct ? '' : via} />
       ))}
+      {add && <div className="btns">{add}</div>}
     </>
   );
 }
 
-function TestRow({ name, file, line, endLine, via }: { name: string; file?: string; line?: number; endLine?: number; via: string }) {
+function TestRow({ id, name, file, line, endLine, via }: { id: string; name: string; file?: string; line?: number; endLine?: number; via: string }) {
   const [open, setOpen] = useState(false);
+  const ro = useStore((s) => s.readOnly);
   return (
     <details className="test" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>
       <summary>
         <span>{name}</span>
+        {!ro && (
+          <button
+            className="ib treq"
+            title="Remove or change this test"
+            aria-label="Request on this test"
+            data-test-req={id}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setState({ req: { kind: 'change', target: id } });
+            }}
+          >
+            ✎
+          </button>
+        )}
         <span className="m">
           {file}
           {line ? ':' + line : ''}
@@ -210,7 +240,7 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
         <CallTree m={m} id={id} />
         {n.file && n.line ? (
           <Section title="Source">
-            <Source file={n.file} from={n.line} to={n.endLine} />
+            <Source file={n.file} from={n.line} to={n.endLine} target={id} />
           </Section>
         ) : null}
         {!row.prop && S && (
@@ -246,12 +276,12 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
         </Section>
         {n.file && n.line ? (
           <Section title="Source">
-            <Source file={n.file} from={n.line} to={n.endLine} />
+            <Source file={n.file} from={n.line} to={n.endLine} target={id} />
           </Section>
         ) : null}
         {!row.prop && (
           <Section title="Tests">
-            <Tests m={m} ids={[id]} />
+            <Tests m={m} ids={[id]} target={id} />
           </Section>
         )}
       </>
@@ -263,15 +293,19 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
         <Where file={n.file} line={n.line} />
       </Head>
       {n.doc && <p className="doc">{n.doc}</p>}
-      {!propose && !row.prop && !row.ghost && !row.hidden && (
+      {!propose && (
         <div className="btns">
-          <button className="btn sm" id="hide" onClick={() => hide(id)}>
-            Hide
-          </button>
+          {!row.prop && !row.ghost && !row.hidden && (
+            <button className="btn sm" id="hide" onClick={() => hide(id)}>
+              Hide
+            </button>
+          )}
+          <RequestButton target={id} id="req" />
         </div>
       )}
       {propose && (
         <div className="btns">
+          <RequestButton target={id} id="req" />
           {!n.external && !row.ghost && (
             <button className="btn primary" onClick={() => setState({ connectFrom: id })}>
               Add a call
@@ -328,13 +362,14 @@ function BoxPanel({ m, id }: { m: Model; id: string }) {
         {src && <div className="where">split from {src.label}</div>}
       </Head>
       {b.doc && <p className="doc">{b.doc}</p>}
-      {b.module && !b.block && !b.prop && !b.ghost && b.shown > 0 && (
-        <div className="btns">
+      <div className="btns">
+        {b.module && !b.block && !b.prop && !b.ghost && b.shown > 0 && (
           <button className="btn sm" id="hide" onClick={() => hide(id)}>
             Hide
           </button>
-        </div>
-      )}
+        )}
+        <RequestButton target={id} id="req" />
+      </div>
       <div className="cols">
         <Section title="Used by">{mlist(use)}</Section>
         <Section title="Depends on">{mlist(dep)}</Section>
@@ -574,6 +609,40 @@ function MultiPanel({ m, ids }: { m: Model; ids: string[] }) {
   );
 }
 
+function EdgePanel({ m, id }: { m: Model; id: string }) {
+  const [from, to] = id.slice(5).split(' -> ');
+  const e = m.all.edges.find((x) => x.from === from && x.to === to);
+  if (!e) return null;
+  return (
+    <>
+      <Head eyebrow={e.prop ? 'Proposed call' : 'Call'} plan={e.prop} title={`${qn(m, from)} → ${qn(m, to)}`}>
+        <Where file={e.file} line={e.line} />
+      </Head>
+      {e.detail && <p className="doc">{e.detail}</p>}
+      <div className="btns">
+        <RequestButton target={`${from} -> ${to}`} id="req" />
+      </div>
+      <div className="cols">
+        <Section title="From">
+          <div className="links">
+            <NodeLink m={m} id={from} />
+          </div>
+        </Section>
+        <Section title="To">
+          <div className="links">
+            <NodeLink m={m} id={to} />
+          </div>
+        </Section>
+      </div>
+      {e.file && e.line ? (
+        <Section title="Source">
+          <Source file={e.file} from={e.line} to={e.line} target={`${from} -> ${to}`} />
+        </Section>
+      ) : null}
+    </>
+  );
+}
+
 const KINDS = ['function', 'route', 'page', 'job', 'subscriber', 'component', 'table', 'topic', 'service'];
 
 function FormPanel({ m }: { m: Model }) {
@@ -676,10 +745,13 @@ export function Drawer() {
   const pslug = useStore((s) => s.pslug);
   let content: ReactNode = null;
   let wide = false;
-  if (form) content = <FormPanel key={form.type + form.box} m={m} />;
+  const req = useStore((s) => s.req);
+  if (req) content = <RequestForm key={(req.id ?? '') + req.target + (req.lines ?? []).join('-')} m={m} />;
+  else if (form) content = <FormPanel key={form.type + form.box} m={m} />;
   else if (sel.length > 1) content = <MultiPanel m={m} ids={sel} />;
   else if (sel.length === 1 && sel[0].startsWith('group:')) content = <GroupPanel m={m} id={sel[0]} />;
   else if (sel.length === 1 && sel[0].startsWith('area:')) content = <AreaPanel m={m} name={sel[0].slice(5)} />;
+  else if (sel.length === 1 && sel[0].startsWith('edge:')) content = <EdgePanel m={m} id={sel[0]} />;
   else if (sel.length === 1 && m.node.has(sel[0])) content = <NodePanel m={m} id={sel[0]} />;
   else if (sel.length === 1 && m.box.has(sel[0])) content = <BoxPanel key={sel[0]} m={m} id={sel[0]} />;
   else if (mode === 'propose' && !pslug) content = <ProposalList />;

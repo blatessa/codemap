@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArchivedBase } from './Compare';
+import { Checklist } from './Requests';
 import { qn, type Model } from './model';
 import { currentProposal, newProposal, removeProposalEdge, removeProposalModule, removeProposalNode, setState, updateProposal, useStore } from './store';
 import type { Proposal } from './types';
@@ -63,6 +64,11 @@ export function ProposalList() {
                 <span className={`pill ${p.status}`}>{p.status}</span>
                 {p.pr && <span>{p.pr}</span>}
                 <span>{changes(p)} changes</span>
+                {(p.items?.length ?? 0) > 0 && (
+                  <span className="rcount">
+                    {(p.items ?? []).filter((x) => x.status !== 'done' && x.status !== 'wontfix').length}/{p.items!.length} requests
+                  </span>
+                )}
                 <span>{fmtDate(p.updated)}</span>
               </span>
               {p.body && <span className="px">{excerpt(p.body)}</span>}
@@ -155,6 +161,7 @@ export function ProposalView({ m }: { m: Model }) {
           <Markdown text={p.body} />
         )}
       </div>
+      <Checklist m={m} p={p} />
       <div>
         <p className="eyebrow">Changes · {items.length}</p>
         <div className="items">

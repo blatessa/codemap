@@ -94,7 +94,9 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	g, p, v := s.graphRaw, s.proj, s.versions
 	s.mu.RUnlock()
-	writeJSON(w, http.StatusOK, stateResponse{Graph: g, Project: projectJSON(p), Versions: v})
+	pj := projectJSON(p)
+	pj.Proposals = s.withAnchors(r, pj.Proposals)
+	writeJSON(w, http.StatusOK, stateResponse{Graph: g, Project: pj, Versions: v})
 }
 
 // kinds describes how each writable project file is decoded and encoded.
@@ -261,7 +263,7 @@ func (s *Server) handleListProposals(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	p := s.proj
 	s.mu.RUnlock()
-	writeJSON(w, http.StatusOK, projectJSON(p).Proposals)
+	writeJSON(w, http.StatusOK, s.withAnchors(r, projectJSON(p).Proposals))
 }
 
 var slugRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -319,6 +321,7 @@ func (s *Server) handlePutProposal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.Slug = slug
+	cleanItems(&p)
 	if cur == Missing && p.Base == "" {
 		p.Base = s.gitHead()
 	}

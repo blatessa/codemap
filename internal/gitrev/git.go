@@ -381,6 +381,7 @@ func ParseUnified(out []byte) []graph.FileChange {
 			if !ok {
 				continue
 			}
+			cur.Hunks = append(cur.Hunks, [4]int{o[0], o[1], n[0], n[1]})
 			if o[1] > 0 {
 				cur.OldHunks = append(cur.OldHunks, [2]int{o[0], o[0] + o[1] - 1})
 			}
