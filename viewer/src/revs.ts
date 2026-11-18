@@ -259,6 +259,7 @@ function changesOnly(g: Graph): Graph {
 }
 
 hooks.graph = decorate;
+hooks.head = () => get().revs?.head ?? '';
 // changed rows always show; with Changes only, so does their one hop of context
 shownRows.has = (id) => !!nodeStatus(id) || (!!idx && get().changesOnly);
 
