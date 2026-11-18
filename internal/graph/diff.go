@@ -11,6 +11,7 @@ type FileChange struct {
 	New      string   `json:"new,omitempty"`
 	OldHunks [][2]int `json:"-"` // [first, last] lines in the old file
 	NewHunks [][2]int `json:"-"` // [first, last] lines in the new file
+	Hunks    [][4]int `json:"-"` // every hunk as [oldStart, oldCount, newStart, newCount]
 }
 
 // GraphDiff is what changed between two graphs (PLAN.md §7).
