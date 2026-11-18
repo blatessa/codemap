@@ -41,6 +41,7 @@ export interface S {
   form: Form | null;
   splitting: string | null;
   pslug: string | null;
+  showAll: boolean; // every row and call on the map
   cslug: string | null; // the proposal comments go to: the last one opened
   editing: boolean;
   plist: { q: string; sort: 'updated' | 'name' | 'status'; status: 'all' | 'open' | 'archived' };
@@ -61,7 +62,7 @@ export const useStore = create<S>(() => ({
   blocks: [],
   views: [],
   hidden: [],
-  detail: 'features',
+  detail: 'code',
   proposals: [],
   versions: {},
   pos: {},
@@ -78,6 +79,7 @@ export const useStore = create<S>(() => ({
   form: null,
   splitting: null,
   pslug: null,
+  showAll: false,
   cslug: readCslug(),
   editing: false,
   plist: { q: '', sort: 'updated', status: 'all' },
@@ -523,34 +525,6 @@ export function mergeBlock(id: string) {
   persist('layout');
 }
 
-// ---- views ----
-
-export function saveView(name: string) {
-  const s = get();
-  const v: View = { name, selection: [...s.sel], focus: s.focus && s.sel.length > 0, collapsed: [...s.collapsed] };
-  if (s.expanded.size) v.expanded = [...s.expanded];
-  if (s.detail !== 'features') v.detail = s.detail;
-  set({ views: [...s.views.filter((x) => x.name !== name), v] });
-  persist('views');
-}
-
-export function applyView(v: View) {
-  set({
-    mode: 'explore',
-    sel: [...(v.selection ?? [])],
-    focus: !!v.focus,
-    collapsed: new Set(v.collapsed ?? []),
-    expanded: new Set(v.expanded ?? []),
-    detail: v.detail === 'code' ? 'code' : 'features',
-    form: null,
-    connectFrom: null,
-    hover: null,
-    splitting: null,
-    touchedView: false,
-    fitSeq: get().fitSeq + 1,
-  });
-}
-
 // ---- detail level and hidden things ----
 
 export function setDetail(detail: Detail) {
@@ -571,10 +545,6 @@ export function unhide(i: number) {
   persist('hidden');
 }
 
-export function deleteView(name: string) {
-  set({ views: get().views.filter((v) => v.name !== name) });
-  persist('views');
-}
 
 // ---- proposals ----
 

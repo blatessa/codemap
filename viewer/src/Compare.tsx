@@ -89,7 +89,8 @@ export function CompareControl() {
   return (
     <div className="cmp" ref={ref}>
       <button id="cmp" className={`cmpbtn${spec ? ' on' : ''}${!spec && !isWorktree(v) ? ' past' : ''}${busy ? ' busy' : ''}`} aria-expanded={open} title={error || (busy && phase) || undefined} onClick={() => setOpen(!open)}>
-        <span className="cl">{label}</span>
+        {revs?.current && <span className="br">⎇ {revs.current}</span>}
+        <span className="cl">{spec || !isWorktree(v) ? label : 'Compare…'}</span>
         {error ? <span className="cerr">!</span> : null}
         <span className="caret">▾</span>
       </button>

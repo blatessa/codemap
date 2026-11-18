@@ -59,6 +59,9 @@ func newGitServer(t *testing.T) (*Server, *httptest.Server, string) {
 }
 
 func TestRevEndpoints(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds real revisions; run without -short")
+	}
 	s, ts, root := newGitServer(t)
 	events := s.events.subscribe()
 	defer s.events.unsubscribe(events)

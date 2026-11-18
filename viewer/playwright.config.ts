@@ -8,6 +8,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: 'list',
+  timeout: 15_000,
+  expect: { timeout: 3_000 },
   use: { baseURL: `http://localhost:${port}`, viewport: { width: 1500, height: 950 } },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1500, height: 950 } } }],
   webServer: {

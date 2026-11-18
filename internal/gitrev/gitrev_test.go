@@ -141,6 +141,9 @@ func refIDs(rs []graph.Ref) []string {
 }
 
 func TestDiffAcrossCommits(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds real revisions; run without -short")
+	}
 	dir, c := shopRepo(t)
 	r := openRepo(t, dir)
 	ctx := context.Background()
@@ -240,6 +243,9 @@ func TestDiffAcrossCommits(t *testing.T) {
 }
 
 func TestBuildCacheAndPool(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds real revisions; run without -short")
+	}
 	dir, c := shopRepo(t)
 	r := openRepo(t, dir)
 	ctx := context.Background()
@@ -361,6 +367,9 @@ func TestRevsAndSource(t *testing.T) {
 }
 
 func TestRename(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds real revisions; run without -short")
+	}
 	dir, _ := shopRepo(t)
 	r := openRepo(t, dir)
 	ctx := context.Background()

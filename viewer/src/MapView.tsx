@@ -24,7 +24,7 @@ import {
   type RectOf,
 } from './store';
 import type { Area } from './types';
-import { boxCls, edgeCls, groupCls, rowCls } from './revs';
+import { boxCls, edgeCls, groupCls, nodeStatus, rowCls } from './revs';
 
 // Far-mode text: scaled by 1/k so it stays readable on screen, and cut to fit.
 interface FarText {
@@ -71,6 +71,8 @@ export interface Disp {
   groups: { g: Group; r: ARect; reveal: boolean; top: string }[]; // open folder groups
   shift: Map<string, [number, number]>; // how far open groups pushed each top-level box
   reveal: string; // groups opened for the selection, joined
+  all: boolean; // Show all: every row and every call
+  boxSel: boolean; // only modules are selected: their calls stay one line per pair
 }
 
 const GROUP_NEAR = HEAD + 16; // a closed group's drawn height, zoomed in
@@ -152,6 +154,7 @@ function buildDisp(
   dragBox: DragBox | null,
   G: Grouping | null,
   selIds: string[],
+  showAll = false,
 ): Disp {
   const boxes: DBox[] = [];
   const byId = new Map<string, DBox>();
@@ -161,21 +164,21 @@ function buildDisp(
   const fn = k ? farFont(k) : 0,
     fs = k ? farSub(k) : 0;
   const top = areaTop(k ? farArea(k) : null);
-  // hidden rows only draw on a selected path; support rows (Features) and
-  // internal rows wait behind one "+N" row
+  // How much a box shows follows what the user is doing (PLAN.md §7.1):
+  // - at rest, the rows that say what a module is for: entry points, external
+  //   systems, proposed and changed rows;
+  // - a selected module shows everything in it;
+  // - a selected function adds every row on its traced path;
+  // - Show all shows every row in every box.
+  // Rows left out are counted in a quiet "N more" line, which selects the module.
+  const openBoxes = new Set(selIds.filter((id) => m.box.has(id)));
   const visible = (b: Box): { rows: Row[]; more: number; moreWord: string; open: boolean } => {
     if (focusOn) return { rows: b.rows.filter((r) => S.nodes.has(r.id)), more: 0, moreWord: '', open: false };
     const all = b.shown === b.rows.length ? b.rows : b.rows.filter((r) => !r.hidden || S?.path.has(r.id));
-    const word = (rest: Row[]) => {
-      const sup = rest.filter((r) => r.support).length;
-      return sup === rest.length ? 'support' : sup ? 'more' : 'internal';
-    };
-    const behind = all.filter((r) => !r.pub);
-    if (!behind.length) return { rows: all, more: 0, moreWord: '', open: false };
-    if (expanded.has(b.id)) return { rows: all, more: behind.length, moreWord: word(behind), open: true };
-    const rows = all.filter((r) => r.pub || S?.path.has(r.id));
-    const rest = all.filter((r) => !r.pub && !S?.path.has(r.id));
-    return { rows, more: rest.length, moreWord: word(rest), open: false };
+    if (showAll || openBoxes.has(b.id)) return { rows: all, more: 0, moreWord: '', open: openBoxes.has(b.id) };
+    const keep = (r: Row) => r.node.entry || r.node.external || r.prop || r.ghost || !!r.moved || !!nodeStatus(r.id) || !!S?.path.has(r.id);
+    const rows = all.filter(keep);
+    return { rows, more: all.length - rows.length, moreWord: 'more', open: false };
   };
   // a box whose rows are all hidden doesn't draw, unless the selected path runs through it
   const gone = (b: Box) => b.rows.length > 0 && b.shown === 0 && !b.rows.some((r) => S?.path.has(r.id));
@@ -357,6 +360,8 @@ function buildDisp(
     byId.set(b.id, d);
     if (!d.col) v.rows.forEach((r, idx) => row.set(r.id, { d, idx }));
     else v.rows.forEach((r) => row.set(r.id, { d, idx: -1 }));
+    // rows left out still anchor their calls, at the box's header
+    if (!focusOn) for (const r of b.rows) if (!row.has(r.id)) row.set(r.id, { d, idx: -1 });
   }
   function addGroup(g: Group, p: [number, number], inG?: string) {
     const b = g.box;
@@ -384,6 +389,9 @@ function buildDisp(
     }
     add(b, p);
   }
+  // Show all: boxes grow to every row, and push the boxes below them down by as
+  // much, so nothing overlaps and the map keeps its shape.
+  if (showAll && !k) pushDown(boxes.filter((d) => !d.inG), (d) => (G ? layoutH(d.b) : d.b.defH));
   // edges into shared modules only draw when the selection uses them
   const edges = m.edges.filter((e) => {
     const a = row.get(e.from),
@@ -408,7 +416,19 @@ function buildDisp(
   if (k) declutter(boxes, edges, row, out, groupsOut, k);
   // expanded and dragged boxes draw above their neighbours
   boxes.sort((x, y) => Number(x.lift) - Number(y.lift));
-  return { boxes, byId, row, edges, areas: out, groups: groupsOut, shift, reveal: [...reveal].sort().join('\0') };
+  return { boxes, byId, row, edges, areas: out, groups: groupsOut, shift, reveal: [...reveal].sort().join('\0'), all: showAll, boxSel: !!selIds.length && selIds.every((id) => m.box.has(id)) };
+}
+
+function pushDown(ds: DBox[], base: (d: DBox) => number) {
+  const order = [...ds].sort((a, b) => a.y - b.y);
+  const orig = new Map(order.map((d) => [d, d.y]));
+  for (const a of order) {
+    const grow = a.h - base(a);
+    if (grow <= 0) continue;
+    const bottom = orig.get(a)! + base(a);
+    for (const b of order) if (b !== a && orig.get(b)! >= bottom - 1 && b.x < a.x + a.w && b.x + b.w > a.x) b.y += grow;
+  }
+  for (const d of ds) d.lift = false;
 }
 
 // uniqueNames lengthens far-mode names that read the same ("store", "store")
@@ -536,8 +556,15 @@ const Edges = memo(function Edges({ disp, S, shown }: { disp: Disp; S: Sel | nul
       b = disp.row.get(e.to)!.d,
       on = !!S && S.edges.has(e.i);
     if (shown && !shown.has(a.b.id) && !shown.has(b.b.id)) continue;
-    // calls between collapsed boxes, or into a folder group, merge into one line per pair
-    if (a !== b && ((a.col && b.col) || a.b.group || b.b.group)) {
+    const ia = disp.row.get(e.from)!.idx,
+      ib = disp.row.get(e.to)!.idx;
+    // Calls draw row to row when both rows show, and when Show all is on or the
+    // call is on the selection (or nothing is selected). The rest merge into one
+    // quiet line per pair of boxes, and calls inside a box between rows that
+    // aren't showing don't draw.
+    const real = !(a.col && b.col) && !a.b.group && !b.b.group && ia >= 0 && ib >= 0 && (disp.all || !S || (on && !disp.boxSel) || e.prop);
+    if (!real && a === b) continue;
+    if (!real) {
       const key = a.b.id + '>' + b.b.id;
       const g = agg.get(key) ?? { e, n: 0, on: false, prop: true, net: e.net };
       g.n++;
@@ -681,7 +708,7 @@ const BoxG = memo(function BoxG({ d, S, selKey, hover, connectFrom, canAdd }: Bo
           {d.rows.map((r, i) => {
             const ry = y + HEAD + i * ROW,
               cy = ry + ROW / 2 + 4;
-            const c = ['fn', S ? (S.nodes.has(r.id) ? 'on' : 'dim') : '', r.hidden && 'hid', (r.prop || r.moved) && 'prop', r.ghost && 'ghost', rowCls(r.id), sels.includes(r.id) && 'sel', connectFrom === r.id && 'from', hover === r.id && 'hov']
+            const c = ['fn', S ? (S.nodes.has(r.id) ? 'on' : 'dim') : '', r.hidden && 'hid', d.open && r.role && 'role', (r.prop || r.moved) && 'prop', r.ghost && 'ghost', rowCls(r.id), sels.includes(r.id) && 'sel', connectFrom === r.id && 'from', hover === r.id && 'hov']
               .filter(Boolean)
               .join(' ');
             return (
@@ -708,7 +735,7 @@ const BoxG = memo(function BoxG({ d, S, selKey, hover, connectFrom, canAdd }: Bo
             <g className="more" data-more={b.id}>
               <rect className="hit" x={x + 4} y={moreY + 1} width={w - 8} height={MORE - 2} rx={5} />
               <text x={x + 22} y={moreY + MORE / 2 + 4}>
-                {d.open ? `− ${d.more} ${d.moreWord}` : `+${d.more} ${d.moreWord}`}
+                {`${d.more} more`}
               </text>
             </g>
           )}
@@ -759,6 +786,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   const pos = useStore((s) => s.pos);
   const collapsed = useStore((s) => s.collapsed);
   const expanded = useStore((s) => s.expanded);
+  const showAll = useStore((s) => s.showAll);
   const focus = useStore((s) => s.focus);
   const areas = useStore((s) => s.areas);
   const view = useStore((s) => s.view);
@@ -793,8 +821,8 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   };
 
   const disp = useMemo(
-    () => buildDisp(m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel),
-    [m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel],
+    () => buildDisp(m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, showAll || !!connectFrom),
+    [m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, showAll, connectFrom],
   );
 
   // Big maps only draw what's near the viewport. The culling window moves in
@@ -907,6 +935,9 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     if (!fitPending.current && disp.boxes.length && fitSeq) {
       fitPending.current = true;
       fit();
+      // opened from a link with a selection: go to it
+      const sel = getState().sel;
+      if (sel.length) setState({ centerOn: sel[0] });
     }
   }, [disp.boxes.length, fitSeq, fit]);
   useEffect(() => {
@@ -918,6 +949,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     if (!centerOnId || !svgRef.current) return;
     const at = dispRef.current.row.get(centerOnId);
     const bd = at?.d ?? dispRef.current.byId.get(centerOnId);
+    if (!bd && !dispRef.current.boxes.length) return; // not laid out yet: wait for it
     if (bd) {
       const { r, W } = size();
       const k = Math.max(getState().view.k, 0.9);
@@ -1103,10 +1135,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       return;
     }
     const more = t.closest('[data-more]') as HTMLElement | null;
-    if (more) {
-      toggleExpanded(more.dataset.more!);
-      return;
-    }
+    if (more) return select(more.dataset.more!);
     const tg = t.closest('[data-toggle]') as HTMLElement | null;
     if (tg) {
       const id = tg.dataset.toggle!;

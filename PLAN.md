@@ -188,8 +188,9 @@ the source, SQL and ORM or key-value store calls, Go HTTP requests, file and pro
 API path literals (`"/api/…"`). With no route, page, job or subscriber entries (a library),
 exported functions act as entry points and get `fields.entry_reason = "exported"`.
 
-The viewer's **Features** level (the default) and `show`/`callers --detail features` leave
-rows with a role out and draw A → C through passthroughs. **Code** shows everything.
+`show`/`callers --detail features` (the default) leave rows with a role out and draw A → C
+through passthroughs; `--detail code` shows everything. In the viewer, roles only make helper
+rows quieter in an open module (§9.1).
 
 ---
 
@@ -206,7 +207,6 @@ array of tables under a singular key (`[[area]]`, `[[block]]`, `[[view]]`).
 | `areas.toml` | `[[area]]` / `name = "Commerce"` / `modules = ["mod:…", "block:…"]`. Any number of areas. |
 | `blocks.toml` | Splits of a module into named blocks, as **rules** so new code lands automatically (§4.1). |
 | `layout.json` | Positions written by the viewer: `{ "<module or block id>": [x, y], "area:<name>": [x, y] }`. Machine-written, sorted keys. |
-| `views.toml` | Saved views, one `[[view]]` each: `name`, `selection = [ids]`, `focus = bool`, `collapsed = [ids]`, `expanded = [ids]`, `detail = "features"\|"code"`. |
 | `hidden.toml` | Things taken off the map, one `[[hide]]` each: `id = "<node or module id>"`, or `match = "*.String"` (a glob on labels) with an optional `module`. Hidden nodes draw only on a selected path, dimmed. |
 | `external.toml` | Declared nodes and edges, plus extra fields merged into extracted nodes (§5.6). |
 | `proposals/<slug>.md` | One proposal per file (§6). |
@@ -506,17 +506,11 @@ and wording.
   - zooming out simplifies the map: below about 0.55× each module becomes one box, calls
     between modules merge into one line whose thickness shows the call count, and labels scale
     up
-  - collapse and expand
-  - drag modules
-  - search (`/`), covering labels, files and doc comments
-  - Focus, which shows only the selected path
+  - collapse and expand, drag modules
+  - Focus (`F`), which shows only the selected path
   - Shift-click multi-selection, offering "Split into a new block" and "New area from these"
-  - saved views
-  - detail level (top bar): **Features** puts rows with a `fields.role` behind each box's one
-    `+N` expander and collapses passthroughs in edges; **Code** shows everything. Rows on a
-    selected path always show; the call tree shows support rows dimmed
-  - Hide (details panel, for a node or a module) writes `hidden.toml`; the Views menu lists
-    hidden things to unhide
+  - Hide, from the right-click menu, writes `hidden.toml`; a "N hidden" chip by the map
+    controls lists them to show again
 - **Selection:**
   - Selecting a node lights up everything upstream and downstream of it. Traced paths stop at
     external nodes unless the external node itself is selected.
@@ -533,7 +527,8 @@ and wording.
     (`publishes`/`subscribes`), and Called by and Calls us (`calls` in, `declared` out).
     These sections depend on edge types, never on node kind.
 - **Source:** clicking a file and line in the panel calls `/api/open`.
-- **Propose mode:**
+- **Proposals:** a menu in the top bar, not a mode. Opening one draws it on the map and turns
+  on its editing actions.
   - The proposals list has search, sort (recently updated, name, status) and a
     status filter.
   - The proposal view has an editable title, the Markdown document (rendered, with Edit to
@@ -542,7 +537,16 @@ and wording.
     calls.
 - **Live updates:** a `graph-changed` event re-fetches the graph, keeps the selection, and
   animates nothing.
-- **Compare control:** in the top bar. It shows one rev (worktree by default, read-only otherwise) or compares two, with one-click presets (uncommitted changes, last commit, this branch vs the default branch, since a commit, open PRs) and a timeline of commits (click: compare with the parent; shift-click two: compare them). Comparing colours added nodes and edges green, removed ones as faded red outlines from the `from` graph, changed functions amber, and marks boxes and folder groups holding changes. "Changes only" trims the map to changes plus one hop. With nothing selected the drawer shows the summary; a changed node's source shows as a diff. The URL hash keeps the state (`#compare=HEAD~1..HEAD`, `#rev=main`).
+- **Compare control:** in the top bar, next to the branch name. On a branch other than the
+  default one, the map opens on "this branch vs <default>"; `#rev=worktree` opens the plain map. It shows one rev (worktree by default, read-only otherwise) or compares two, with one-click presets (uncommitted changes, last commit, this branch vs the default branch, since a commit, open PRs) and a timeline of commits (click: compare with the parent; shift-click two: compare them). Comparing colours added nodes and edges green, removed ones as faded red outlines from the `from` graph, changed functions amber, and marks boxes and folder groups holding changes. "Changes only" trims the map to changes plus one hop. With nothing selected the drawer shows the summary; a changed node's source shows as a diff. The URL hash keeps the state (`#compare=HEAD~1..HEAD`, `#rev=main`).
+- **Top bar and controls:** the compare control (left), one search box that also runs
+  commands (`/` or ⌘K/Ctrl K: functions, modules, and commands such as "show all", "new
+  area", "reset layout", compare presets), and Proposals (right). Zoom, Fit and Show all float
+  bottom-left. Right-click menus on functions (show only this path, comment, open in editor,
+  copy ID, hide), modules (show what's inside, comment, collapse, new area, hide) and the
+  canvas (show all, fit, collapse all, new area, reset layout). Keys: `A` show all, `0` fit,
+  `F` focus, `C` comment, Esc back out. The URL keeps the selection and the comparison
+  (`#compare=…&sel=…`), so a link or bookmark replaces saved views.
 - **Copy:** minimal text, no explanatory paragraphs, no per-row status badges. Both light and
   dark themes, following the prototype's tokens.
 
@@ -563,6 +567,20 @@ codemap proposal list | new <name> | archive <slug> --pr N
 
 All commands take `--json` and `--rev`. When a label is ambiguous, the command lists the
 matching IDs and exits with status 2. Output is plain and compact, because agents read it too.
+
+### 9.1 What the map shows
+
+Detail follows what the user is doing, and the map itself never moves on its own:
+- **At rest:** each box shows its entry points, external systems, and proposed and changed
+  rows. The rest is counted in a quiet "N more" line; clicking it selects the module. Calls
+  between boxes draw as one line per pair of modules.
+- **A module selected:** its box shows everything, helpers (rows with a role) quieter, drawn
+  above its neighbours rather than pushing them. Its calls to other modules stay one line per
+  pair.
+- **A function selected:** every row on its traced path shows, and the path's calls draw row
+  to row.
+- **Show all** (`A`): every row and every call. Boxes grow and push the ones below them down,
+  keeping the map's shape. Picking the target of "Add a call" in a proposal shows all too.
 
 ---
 
@@ -586,9 +604,11 @@ Tests:
 - **Real-repo check:** CI also runs `codemap build` on two or three pinned open-source repos
   (a chi-based Go API, and a React Router or Next app). It asserts no crash and checks a few
   basic counts (modules > 0, routes > 0), so nothing only works on the fixture.
-- **Viewer:** Playwright against `codemap serve testdata/shop`. Select an entry point, confirm
-  the traced path, split a block, create an area, edit a proposal and check that the file
-  changed.
+- **Viewer:** a handful of Playwright journeys against the mock API (`viewer/e2e/app.spec.ts`):
+  one per thing a programmer comes for (what the map shows, search and commands, areas,
+  proposals with comments and moves, comparing a branch, a big folded map). Details go in
+  vitest unit tests. Keep it fast: it runs in seconds.
+- **Fast Go loop:** `go test -short ./...` skips the tests that build real git revisions.
 
 ---
 

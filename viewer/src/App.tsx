@@ -1,30 +1,89 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { openInEditor } from './api';
 import { CompareControl, SummaryPanel } from './Compare';
 import { Drawer } from './Drawer';
-import { start as startRevs, useCompare } from './revs';
+import { compare, presets, start as startRevs, useCompare, view as viewRev } from './revs';
 import { MapView, useAreaRect, zoomCenter } from './MapView';
-import { qn } from './model';
+import { qn, type Model } from './model';
 import {
   addArea,
-  applyView,
   currentProposal,
-  deleteView,
   getState,
+  hide,
   load,
   resetLayout,
-  saveView,
   select,
   setMode,
-  setDetail,
   setState,
   subscribe,
   unhide,
   useModel,
   useStore,
+  type RectOf,
 } from './store';
+
+// ---- commands: what ⌘K and the right-click menus can do ----
+
+interface Cmd {
+  id: string;
+  label: string;
+  hint?: string;
+  run: () => void;
+  off?: boolean;
+}
+
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+const MOD = isMac ? '⌘' : 'Ctrl ';
+
+function newAreaAt(m: Model, rectOf: RectOf, mods: string[]) {
+  const s = getState();
+  let bottom = 0;
+  for (const b of m.boxes) {
+    const p = s.pos[b.id];
+    if (p) bottom = Math.max(bottom, p[1] + b.defH);
+  }
+  for (const a of s.areas) {
+    const r = rectOf(a);
+    if (r) bottom = Math.max(bottom, r.y + r.h);
+  }
+  addArea(mods, rectOf, [20, bottom + 40]);
+}
+
+const fit = () => setState({ fitSeq: getState().fitSeq + 1, touchedView: false });
+const toggleAll = () => setState({ showAll: !getState().showAll });
+const collapseAll = (m: Model) => {
+  const c = getState().collapsed;
+  setState({ collapsed: c.size ? new Set() : new Set(m.boxes.filter((b) => !b.hasEntry).map((b) => b.id)) });
+};
+
+function useMapCommands(): Cmd[] {
+  const m = useModel();
+  const rectOf = useAreaRect();
+  const ro = useStore((s) => s.readOnly);
+  const showAll = useStore((s) => s.showAll);
+  const collapsed = useStore((s) => s.collapsed.size > 0);
+  const layoutSaved = useStore((s) => s.layoutSaved);
+  const revs = useCompare((c) => c.revs);
+  const spec = useCompare((c) => c.spec);
+  const propose = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
+  return [
+    { id: 'addmod', label: 'Propose a new module', run: () => setState({ form: { type: 'mod' }, sel: [], connectFrom: null }), off: !propose || ro },
+    { id: 'all', label: showAll ? 'Show less' : 'Show all functions and calls', hint: 'A', run: toggleAll },
+    { id: 'fit', label: 'Fit map to screen', hint: '0', run: fit },
+    { id: 'collapse', label: collapsed ? 'Expand all modules' : 'Collapse all modules', run: () => collapseAll(m) },
+    { id: 'area', label: 'New area', run: () => newAreaAt(m, rectOf, []), off: ro },
+    { id: 'reset', label: 'Reset layout', run: resetLayout, off: ro || !layoutSaved },
+    { id: 'proposals', label: 'Proposals', run: () => setMode('propose') },
+    ...presets(revs).map((p) => ({ id: 'cmp-' + p.id, label: 'Compare: ' + p.label, run: () => void compare(p.from, p.to) })),
+    { id: 'cmp-off', label: 'Stop comparing', run: () => void viewRev('worktree'), off: !spec },
+  ].filter((c) => !c.off);
+}
+
+// ---- search, with commands: / or ⌘K ----
 
 function Search() {
   const m = useModel();
+  const cmds = useMapCommands();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [act, setAct] = useState(0);
@@ -32,18 +91,21 @@ function Search() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = document.activeElement?.tagName;
-      if (e.key === '/' && t !== 'INPUT' && t !== 'TEXTAREA' && t !== 'SELECT') {
+      const typing = t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT';
+      if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !typing)) {
         e.preventDefault();
         ref.current?.focus();
+        ref.current?.select();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  type Hit = { id: string; text: string; where: string; score: number; cmd?: Cmd };
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return [];
-    const out: { id: string; text: string; where: string; score: number }[] = [];
+    if (!s) return [] as Hit[];
+    const out: Hit[] = [];
     for (const [id, { row, box }] of m.node) {
       if (row.ghost) continue;
       const text = qn(m, id);
@@ -57,19 +119,30 @@ function Search() {
       }
       out.push({ id, text, where: box.label, score });
     }
-    return out.sort((a, b) => a.score - b.score || a.text.localeCompare(b.text)).slice(0, 8);
-  }, [q, m]);
+    for (const b of m.boxes) {
+      const lab = b.label.toLowerCase();
+      if (b.ghost || !lab.includes(s)) continue;
+      out.push({ id: b.id, text: b.label, where: 'module', score: lab === s ? 0 : lab.endsWith('/' + s) || lab.startsWith(s) ? 1 : 2 });
+    }
+    const words = s.split(/\s+/);
+    for (const c of cmds) {
+      const l = c.label.toLowerCase();
+      if (words.every((w) => l.includes(w))) out.push({ id: 'cmd:' + c.id, text: c.label, where: '', score: l.startsWith(s) ? 1.5 : 2.5, cmd: c });
+    }
+    return out.sort((a, b) => a.score - b.score || a.text.localeCompare(b.text)).slice(0, 9);
+  }, [q, m, cmds]);
   const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const go = (id: string) => {
-    const s = getState();
-    const box = m.node.get(id)?.box.id;
-    const c = new Set(s.collapsed);
-    if (box) c.delete(box);
+  const go = (h: Hit) => {
     setQ('');
     setOpen(false);
     ref.current?.blur();
-    select(id);
-    setState({ collapsed: c, centerOn: id, ...(s.view.k < 0.55 ? { view: { ...s.view, k: 0.9 } } : {}) });
+    if (h.cmd) return h.cmd.run();
+    const s = getState();
+    const box = m.node.get(h.id)?.box.id ?? h.id;
+    const c = new Set(s.collapsed);
+    c.delete(box);
+    select(h.id);
+    setState({ collapsed: c, centerOn: h.id, ...(s.view.k < 0.55 ? { view: { ...s.view, k: 0.9 } } : {}) });
   };
   return (
     <div className="search">
@@ -77,7 +150,7 @@ function Search() {
         id="q"
         ref={ref}
         type="search"
-        placeholder="Search"
+        placeholder="Search or run a command"
         autoComplete="off"
         aria-label="Search the map"
         value={q}
@@ -98,7 +171,7 @@ function Search() {
         onKeyDown={(e) => {
           if (e.key === 'Enter' && hits[act]) {
             e.preventDefault();
-            go(hits[act].id);
+            go(hits[act]);
           } else if (e.key === 'ArrowDown') {
             e.preventDefault();
             setAct((a) => Math.min(a + 1, hits.length - 1));
@@ -112,12 +185,13 @@ function Search() {
           }
         }}
       />
+      <kbd className="kbd">{MOD}K</kbd>
       <div className="results" id="results" hidden={!open || !q.trim()}>
         {hits.length ? (
           hits.map((h, i) => (
-            <button key={h.id} className={`res ${i === act ? 'act' : ''}`} data-go={h.id} onMouseDown={(e) => e.preventDefault()} onClick={() => go(h.id)}>
+            <button key={h.id} className={`res ${i === act ? 'act' : ''} ${h.cmd ? 'cmd' : ''}`} data-go={h.id} onMouseDown={(e) => e.preventDefault()} onClick={() => go(h)}>
               <span>{h.text}</span>
-              <span className="m">{h.where}</span>
+              <span className="m">{h.cmd ? 'command' : h.where}</span>
             </button>
           ))
         ) : (
@@ -130,142 +204,163 @@ function Search() {
   );
 }
 
-// hideName is how a hidden.toml entry reads in the list.
-function hideName(m: ReturnType<typeof useModel>, h: { id?: string; match?: string; module?: string }) {
+// ---- map controls, bottom right ----
+
+function hideName(m: Model, h: { id?: string; match?: string; module?: string }) {
   if (h.match) return h.module ? `${h.match} in ${m.box.get(h.module)?.label ?? h.module}` : h.match;
   const id = h.id ?? '';
   if (m.node.has(id)) return qn(m, id);
   return m.box.get(id)?.label ?? id;
 }
 
-function Views() {
-  const m = useModel();
-  const views = useStore((s) => s.views);
-  const hidden = useStore((s) => s.hidden);
-  const [showHidden, setShowHidden] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
+function useOutside<T extends HTMLElement>(open: boolean, close: () => void) {
+  const ref = useRef<T>(null);
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const onDoc = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && close();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('mousedown', onDoc);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
-  const save = () => {
-    if (!name.trim()) return;
-    saveView(name.trim());
-    setName('');
-  };
+  }, [open, close]);
+  return ref;
+}
+
+function Hidden() {
+  const m = useModel();
+  const hidden = useStore((s) => s.hidden);
+  const [open, setOpen] = useState(false);
+  const close = useMemo(() => () => setOpen(false), []);
+  const ref = useOutside<HTMLDivElement>(open, close);
+  if (!hidden.length) return null;
   return (
-    <div className="search" ref={ref}>
-      <button className="tool" id="viewsbtn" aria-expanded={open} onClick={() => setOpen(!open)}>
-        Views ▾
+    <div className="hidwrap" ref={ref}>
+      <button className="ctl chip" id="hiddenbtn" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {hidden.length} hidden
       </button>
-      <div className="pop" id="views" hidden={!open}>
-        {views.map((v) => (
-          <div className="vrow" key={v.name}>
-            <button
-              className="res"
-              data-view={v.name}
-              onClick={() => {
-                applyView(v);
-                setOpen(false);
-              }}
-            >
-              <span>{v.name}</span>
-            </button>
-            <button className="del" aria-label="Delete view" onClick={() => deleteView(v.name)}>
-              ×
-            </button>
-          </div>
-        ))}
-        {hidden.length > 0 && (
-          <>
-            <button className="res" id="hiddenbtn" aria-expanded={showHidden} onClick={() => setShowHidden(!showHidden)}>
-              <span>Hidden ({hidden.length})</span>
-            </button>
-            {showHidden &&
-              hidden.map((h, i) => (
-                <div className="vrow hrow" key={i} data-hidden={h.id ?? h.match}>
-                  <span className="hname">{hideName(m, h)}</span>
-                  <button className="del" aria-label="Unhide" onClick={() => unhide(i)}>
-                    Unhide
-                  </button>
-                </div>
-              ))}
-          </>
-        )}
-        <div className="vsave">
-          <input id="v-name" placeholder="Save current as…" autoComplete="off" aria-label="View name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} />
-          <button onClick={save}>Save</button>
+      {open && (
+        <div className="pop up" id="hidden">
+          {hidden.map((h, i) => (
+            <div className="vrow hrow" key={i} data-hidden={h.id ?? h.match}>
+              <span className="hname">{hideName(m, h)}</span>
+              <button className="del" onClick={() => unhide(i)}>
+                Show
+              </button>
+            </div>
+          ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+function MapControls() {
+  const showAll = useStore((s) => s.showAll);
+  return (
+    <div className="mapctl">
+      <Hidden />
+      <button className="ctl" id="showall" aria-pressed={showAll} title="Every function and call (A)" onClick={toggleAll}>
+        Show all
+      </button>
+      <div className="ctlgrp">
+        <button className="ctl" id="zout" aria-label="Zoom out" onClick={() => zoomCenter(1 / 1.2)}>
+          −
+        </button>
+        <button className="ctl" id="fit" title="Fit (0)" onClick={fit}>
+          Fit
+        </button>
+        <button className="ctl" id="zin" aria-label="Zoom in" onClick={() => zoomCenter(1.2)}>
+          +
+        </button>
       </div>
     </div>
   );
 }
 
-function Tools() {
+// ---- right-click menus ----
+
+interface Menu {
+  x: number;
+  y: number;
+  kind: 'node' | 'box' | 'canvas';
+  id: string;
+}
+
+function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
   const m = useModel();
-  const sel = useStore((s) => s.sel);
-  const focus = useStore((s) => s.focus);
-  const collapsed = useStore((s) => s.collapsed);
-  const layoutSaved = useStore((s) => s.layoutSaved);
-  const propose = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
-  const pos = useStore((s) => s.pos);
-  const areas = useStore((s) => s.areas);
   const rectOf = useAreaRect();
-  const newArea = () => {
-    const sm = sel.length === 1 && m.box.has(sel[0]) && !m.box.get(sel[0])!.prop && !m.box.get(sel[0])!.ghost ? sel[0] : null;
-    let bottom = 0;
-    for (const b of m.boxes) {
-      const p = pos[b.id];
-      if (p) bottom = Math.max(bottom, p[1] + b.defH);
-    }
-    for (const a of areas) {
-      const r = rectOf(a);
-      if (r) bottom = Math.max(bottom, r.y + r.h);
-    }
-    addArea(sm ? [sm] : [], rectOf, [20, bottom + 40]);
-  };
+  const ro = useStore((s) => s.readOnly);
+  const collapsed = useStore((s) => s.collapsed);
+  const map = useMapCommands();
+  const ref = useOutside<HTMLDivElement>(true, close);
+  let items: (Cmd | null)[] = [];
+  if (menu.kind === 'node') {
+    const x = m.node.get(menu.id)!;
+    const n = x.row.node;
+    items = [
+      { id: 'trace', label: 'Show only this path', hint: 'F', run: () => (select(menu.id), setState({ focus: true })) },
+      { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('c-text')?.focus(), 50)), off: ro },
+      { id: 'editor', label: 'Open in editor', run: () => void openInEditor(n.file!, n.line ?? 1), off: !n.file },
+      { id: 'copy', label: 'Copy ID', run: () => void navigator.clipboard?.writeText(menu.id) },
+      null,
+      { id: 'hide', label: 'Hide from map', run: () => hide(menu.id), off: ro || x.row.prop || x.row.ghost },
+    ];
+  } else if (menu.kind === 'box') {
+    const b = m.box.get(menu.id)!;
+    const real = !b.prop && !b.ghost && !b.group;
+    items = [
+      { id: 'open', label: 'Show what’s inside', run: () => select(menu.id) },
+      { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('c-text')?.focus(), 50)), off: ro },
+      { id: 'collapse', label: collapsed.has(menu.id) ? 'Expand' : 'Collapse', run: () => {
+        const c = new Set(getState().collapsed);
+        if (c.has(menu.id)) c.delete(menu.id);
+        else c.add(menu.id);
+        setState({ collapsed: c });
+      } },
+      { id: 'area', label: 'New area with this module', run: () => newAreaAt(m, rectOf, [menu.id]), off: ro || !real },
+      null,
+      { id: 'hide', label: 'Hide from map', run: () => hide(menu.id), off: ro || !real },
+    ];
+  } else items = map.filter((c) => !c.id.startsWith('cmp-') && c.id !== 'proposals');
+  const shown = items.filter((c) => c === null || !c.off);
+  // no separator at the ends
+  while (shown.length && shown[shown.length - 1] === null) shown.pop();
   return (
-    <div className="tools">
-      <Search />
-      <Views />
-      <button className="tool" id="zin" aria-label="Zoom in" onClick={() => zoomCenter(1.2)}>
-        +
-      </button>
-      <button className="tool" id="zout" aria-label="Zoom out" onClick={() => zoomCenter(1 / 1.2)}>
-        −
-      </button>
-      <button className="tool" id="fit" onClick={() => setState({ fitSeq: getState().fitSeq + 1, touchedView: false })}>
-        Fit
-      </button>
-      <button className="tool" id="focus" aria-pressed={focus && sel.length > 0} disabled={!sel.length} onClick={() => setState({ focus: !focus })}>
-        Focus
-      </button>
-      <button
-        className="tool"
-        id="collapse"
-        onClick={() => setState({ collapsed: collapsed.size ? new Set() : new Set(m.boxes.filter((b) => !b.hasEntry).map((b) => b.id)) })}
-      >
-        {collapsed.size ? 'Expand all' : 'Collapse all'}
-      </button>
-      <button className="tool" id="reset" hidden={!layoutSaved} onClick={resetLayout}>
-        Reset layout
-      </button>
-      <button className="tool" id="addarea" onClick={newArea}>
-        + Area
-      </button>
-      <button className="tool plan" id="addmod" hidden={!propose} onClick={() => setState({ form: { type: 'mod' }, sel: [], connectFrom: null })}>
-        + Module
-      </button>
+    <div className="ctxmenu" id="ctxmenu" ref={ref} style={{ left: menu.x, top: menu.y }} role="menu" onContextMenu={(e) => e.preventDefault()}>
+      {shown.map((c, i) =>
+        c ? (
+          <button
+            key={c.id}
+            role="menuitem"
+            data-cmd={c.id}
+            onClick={() => {
+              close();
+              c.run();
+            }}
+          >
+            <span>{c.label}</span>
+            {c.hint && <kbd>{c.hint}</kbd>}
+          </button>
+        ) : (
+          <hr key={'s' + i} />
+        ),
+      )}
     </div>
+  );
+}
+
+// ---- top bar ----
+
+function ProposalsButton() {
+  const mode = useStore((s) => s.mode);
+  const n = useStore((s) => s.proposals.filter((p) => p.status !== 'archived').length);
+  return (
+    <button className={`topbtn plan`} id="m-propose" aria-pressed={mode === 'propose'} onClick={() => setMode(mode === 'propose' ? 'explore' : 'propose')}>
+      Proposals{n ? <span className="count">{n}</span> : null}
+    </button>
   );
 }
 
@@ -280,65 +375,64 @@ function Banner() {
   );
 }
 
-
-
-function DetailPick() {
-  const detail = useStore((s) => s.detail);
-  return (
-    <div className="seg" id="detail" role="group" aria-label="Detail">
-      <button id="d-features" aria-pressed={detail === 'features'} onClick={() => setDetail('features')}>
-        Features
-      </button>
-      <button id="d-code" aria-pressed={detail === 'code'} onClick={() => setDetail('code')}>
-        Code
-      </button>
-    </div>
-  );
-}
-
 export function App() {
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
-  const mode = useStore((s) => s.mode);
   const comparing = useCompare((c) => !!c.spec);
   const summary = useStore((s) => comparing && !s.sel.length && !s.form && s.mode === 'explore');
   const drawerOpen = useStore((s) => s.sel.length > 0 || !!s.form || s.mode === 'propose') || summary;
+  const [menu, setMenu] = useState<Menu | null>(null);
+  const m = useModel();
   useEffect(() => {
     if (!startRevs()) void load();
     subscribe();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
       const t = e.target as HTMLElement;
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName);
+      if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const s = getState();
+        if (e.key === 'a' || e.key === 'A') return toggleAll();
+        if (e.key === '0') return fit();
+        if ((e.key === 'f' || e.key === 'F') && s.sel.length) return setState({ focus: !s.focus });
+      }
+      if (e.key !== 'Escape') return;
       if (t.id === 'q') return;
       const s = getState();
       if (s.connectFrom) return setState({ connectFrom: null });
       if (t.id === 'p-body' || t.id === 'pl-q') return;
       if (!s.sel.length && !s.form && s.mode === 'propose' && s.pslug) return setState({ pslug: null, editing: false });
+      if (!s.sel.length && !s.form && s.mode === 'propose') return setMode('explore');
       setState({ sel: [], form: null, hover: null, focus: false, splitting: null });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  const onContext = (e: React.MouseEvent) => {
+    const t = e.target as Element;
+    if (!t.closest('#map')) return;
+    e.preventDefault();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const at = { x: Math.min(e.clientX - r.left, r.width - 240), y: Math.min(e.clientY - r.top, r.height - 260) };
+    const n = (t.closest('[data-node]') as HTMLElement | null)?.dataset.node;
+    const b = (t.closest('[data-box]') as HTMLElement | null)?.dataset.box;
+    if (n && m.node.has(n)) setMenu({ ...at, kind: 'node', id: n });
+    else if (b && m.box.has(b)) setMenu({ ...at, kind: 'box', id: b });
+    else setMenu({ ...at, kind: 'canvas', id: '' });
+  };
   return (
     <>
       <header className="top">
         <h1>codemap</h1>
         <CompareControl />
-        <DetailPick />
-        <div className="seg mode" role="group" aria-label="Mode">
-          <button id="m-explore" aria-pressed={mode === 'explore'} onClick={() => setMode('explore')}>
-            Explore
-          </button>
-          <button id="m-propose" className="plan" aria-pressed={mode === 'propose'} onClick={() => setMode('propose')}>
-            Propose
-          </button>
-        </div>
+        <Search />
+        <ProposalsButton />
       </header>
       <div className="stage">
-        <div className="canvas">
+        <div className={`canvas${drawerOpen ? ' dopen' : ''}`} onContextMenu={onContext}>
           {status === 'ready' ? <MapView drawerOpen={drawerOpen} /> : <div className="loading">{status === 'error' ? error : 'Loading…'}</div>}
-          <Tools />
+          {status === 'ready' && <MapControls />}
           <Banner />
+          {menu && <ContextMenu menu={menu} close={() => setMenu(null)} />}
         </div>
         {status === 'ready' && (summary ? <SummaryPanel /> : <Drawer />)}
       </div>
