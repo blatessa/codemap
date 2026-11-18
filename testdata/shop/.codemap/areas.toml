@@ -1,0 +1,19 @@
+[[area]]
+name = 'Web app'
+modules = ['mod:ts:web/src/pages', 'mod:ts:web/src/components', 'mod:ts:web/src/api', 'mod:ts:web/src/state']
+
+[[area]]
+name = 'API'
+modules = ['mod:go:shop/cmd/server', 'mod:go:shop/internal/auth']
+
+[[area]]
+name = 'Commerce'
+modules = ['mod:go:shop/internal/orders', 'mod:go:shop/internal/inventory', 'mod:go:shop/internal/payments']
+
+[[area]]
+name = 'Messaging'
+modules = ['mod:go:shop/internal/notify', 'mod:go:shop/internal/events', 'mod:go:shop/internal/sched']
+
+[[area]]
+name = 'External'
+modules = ['mod:sql:database', 'mod:ext:services', 'mod:queue:topics']

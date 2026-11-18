@@ -60,7 +60,7 @@ test('focus shows only the selected path', async ({ page }) => {
   await expect(page.locator('[data-node="go:shop/internal/payments.(*Handler).HandleWebhook"]')).toHaveCount(0);
 });
 
-test('splitting a module into a block writes blocks.yaml, and merge back removes it', async ({ page }) => {
+test('splitting a module into a block writes blocks.toml, and merge back removes it', async ({ page }) => {
   await mod(page, 'mod:go:shop/internal/orders').click();
   const drawer = page.locator('#drawer');
   await drawer.getByRole('button', { name: 'Split…' }).click();

@@ -1,6 +1,7 @@
 package project
 
 import (
+	"reflect"
 	"testing"
 	"testing/fstest"
 
@@ -9,20 +10,24 @@ import (
 
 func TestLoadFSAndProposals(t *testing.T) {
 	fsys := fstest.MapFS{
-		"areas.yaml":  {Data: []byte("- name: Commerce\n  modules: [mod:go:shop/internal/orders]\n")},
+		"areas.toml":  {Data: []byte("[[area]]\nname = \"Commerce\"\nmodules = [\"mod:go:shop/internal/orders\"]\n")},
 		"layout.json": {Data: []byte(`{"mod:go:shop/internal/orders":[1200,80]}`)},
-		"external.yaml": {Data: []byte(`nodes:
-  - id: ext:stripe
-    owner: Payments team
-    links:
-      - {label: Dashboard, url: https://dashboard.stripe.com}
-  - id: ext:s3-uploads
-    kind: bucket
-    region: us-east-1
-edges:
-  - {from: ext:stripe, to: "route:POST /webhooks/stripe", detail: sends events}
+		"external.toml": {Data: []byte(`[[node]]
+id = "ext:stripe"
+owner = "Payments team"
+links = [{label = "Dashboard", url = "https://dashboard.stripe.com"}]
+
+[[node]]
+id = "ext:s3-uploads"
+kind = "bucket"
+region = "us-east-1"
+
+[[edge]]
+from = "ext:stripe"
+to = "route:POST /webhooks/stripe"
+detail = "sends events"
 `)},
-		"proposals/refunds.md": {Data: []byte("---\nname: Refunds\nstatus: open\nnodes:\n  - {id: new:x, kind: function, label: X}\n---\n## Why\nBecause.\n")},
+		"proposals/refunds.md": {Data: []byte("+++\nname = \"Refunds\"\nstatus = \"open\"\n\n[[node]]\nid = \"new:x\"\nkind = \"function\"\nlabel = \"X\"\n+++\n## Why\nBecause.\n")},
 		"proposals/loose.md":   {Data: []byte("# Loose idea\n\nNo frontmatter.\n")},
 	}
 	p, err := LoadFS(fsys)
@@ -50,8 +55,11 @@ edges:
 		t.Fatal(err)
 	}
 	again, err := ParseProposal(out)
-	if err != nil || again.Name != "Refunds" || again.Body != ref.Body {
+	if err != nil || again.Name != "Refunds" || again.Body != ref.Body || !reflect.DeepEqual(again.Nodes, ref.Nodes) {
 		t.Errorf("round trip: %v %+v", err, again)
+	}
+	if out2, _ := again.Marshal(); string(out2) != string(out) {
+		t.Errorf("round trip is not stable:\n%s\n---\n%s", out, out2)
 	}
 
 	decl := p.External.ToGraph()
@@ -118,5 +126,56 @@ func TestLoadFixture(t *testing.T) {
 	}
 	if p.Proposals[0].Slug != "order-search" || p.Proposals[0].Status != "archived" || p.Proposals[1].Name != "Refunds" {
 		t.Errorf("proposals: %+v %+v", p.Proposals[0], p.Proposals[1])
+	}
+}
+
+func TestMarshalRoundTrip(t *testing.T) {
+	ext := External{
+		Nodes: []map[string]any{{
+			"owner": "Payments", "id": "ext:stripe", "rate": 100.0, "ratio": 0.5, "zzz": nil,
+			"links": []any{map[string]any{"url": "https://x", "label": "Docs"}},
+			"meta":  map[string]any{"b": "2", "a": true},
+		}},
+		Edges: []ExternalEdge{{From: "ext:stripe", To: "x"}},
+	}
+	b, err := MarshalTOML(ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `[[node]]
+id = 'ext:stripe'
+links = [{label = 'Docs', url = 'https://x'}]
+meta = {a = true, b = '2'}
+owner = 'Payments'
+rate = 100
+ratio = 0.5
+
+[[edge]]
+from = 'ext:stripe'
+to = 'x'
+`
+	if string(b) != want {
+		t.Errorf("got\n%s", b)
+	}
+	var back External
+	if err := UnmarshalTOML(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	b2, _ := MarshalTOML(back)
+	if string(b2) != string(b) {
+		t.Errorf("not stable:\n%s", b2)
+	}
+
+	areas := []Area{{Name: "A", Modules: []string{"mod:a"}}}
+	b, _ = MarshalList(AreaKey, areas)
+	var got []Area
+	if want := "[[area]]\nname = 'A'\nmodules = ['mod:a']\n"; string(b) != want {
+		t.Errorf("areas file:\n%s", b)
+	}
+	if err := UnmarshalList(AreaKey, b, &got); err != nil || !reflect.DeepEqual(got, areas) {
+		t.Errorf("areas: %v %+v\n%s", err, got, b)
+	}
+	if err := UnmarshalList(AreaKey, []byte("[[areas]]\nname = 'x'\n"), &got); err == nil {
+		t.Error("want an error for the wrong table key")
 	}
 }

@@ -3,7 +3,6 @@
 package project
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,8 +12,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 
 	"codemap/internal/graph"
 )
@@ -35,17 +32,17 @@ type Project struct {
 
 // Area is a user-defined group of modules and blocks.
 type Area struct {
-	Name    string   `yaml:"name" json:"name"`
-	Modules []string `yaml:"modules" json:"modules"`
+	Name    string   `toml:"name" json:"name"`
+	Modules []string `toml:"modules" json:"modules"`
 }
 
 // Block splits nodes out of a module by rules, so new code lands automatically (§4.1).
 type Block struct {
-	ID    string   `yaml:"id" json:"id"`
-	Name  string   `yaml:"name" json:"name"`
-	From  string   `yaml:"from" json:"from"`
-	Match []string `yaml:"match,omitempty" json:"match,omitempty"` // globs on node label
-	Files []string `yaml:"files,omitempty" json:"files,omitempty"` // globs on node file
+	ID    string   `toml:"id" json:"id"`
+	Name  string   `toml:"name" json:"name"`
+	From  string   `toml:"from" json:"from"`
+	Match []string `toml:"match,omitempty" json:"match,omitempty"` // globs on node label
+	Files []string `toml:"files,omitempty" json:"files,omitempty"` // globs on node file
 }
 
 // Layout maps module, block and "area:<name>" IDs to [x, y] positions.
@@ -53,25 +50,25 @@ type Layout map[string][2]float64
 
 // View is a saved selection.
 type View struct {
-	Name      string   `yaml:"name" json:"name"`
-	Selection []string `yaml:"selection,omitempty" json:"selection,omitempty"`
-	Focus     bool     `yaml:"focus,omitempty" json:"focus,omitempty"`
-	Collapsed []string `yaml:"collapsed,omitempty" json:"collapsed,omitempty"`
-	Expanded  []string `yaml:"expanded,omitempty" json:"expanded,omitempty"`
+	Name      string   `toml:"name" json:"name"`
+	Selection []string `toml:"selection,omitempty" json:"selection,omitempty"`
+	Focus     bool     `toml:"focus,omitempty" json:"focus,omitempty"`
+	Collapsed []string `toml:"collapsed,omitempty" json:"collapsed,omitempty"`
+	Expanded  []string `toml:"expanded,omitempty" json:"expanded,omitempty"`
 }
 
-// External is .codemap/external.yaml: declared nodes and edges (§5.6).
+// External is .codemap/external.toml: declared nodes and edges (§5.6).
 // Node entries are free-form maps; see ToGraph.
 type External struct {
-	Nodes []map[string]any `yaml:"nodes,omitempty" json:"nodes,omitempty"`
-	Edges []ExternalEdge   `yaml:"edges,omitempty" json:"edges,omitempty"`
+	Nodes []map[string]any `toml:"node,omitempty" json:"nodes,omitempty"`
+	Edges []ExternalEdge   `toml:"edge,omitempty" json:"edges,omitempty"`
 }
 
 // ExternalEdge is a declared edge.
 type ExternalEdge struct {
-	From   string `yaml:"from" json:"from"`
-	To     string `yaml:"to" json:"to"`
-	Detail string `yaml:"detail,omitempty" json:"detail,omitempty"`
+	From   string `toml:"from" json:"from"`
+	To     string `toml:"to" json:"to"`
+	Detail string `toml:"detail,omitempty" json:"detail,omitempty"`
 }
 
 // Load reads <root>/.codemap. A missing directory yields an empty Project.
@@ -80,20 +77,20 @@ func Load(root string) (*Project, error) { return LoadFS(os.DirFS(filepath.Join(
 // LoadFS reads a .codemap directory from any fs.FS (for example a git revision).
 func LoadFS(fsys fs.FS) (*Project, error) {
 	p := &Project{Layout: Layout{}}
-	if err := readYAML(fsys, "config.yaml", &p.Config); err != nil {
-		return nil, err
+	files := []struct {
+		name  string
+		parse func([]byte) error
+	}{
+		{"config.toml", func(b []byte) error { return UnmarshalTOML(b, &p.Config) }},
+		{"areas.toml", func(b []byte) error { return UnmarshalList(AreaKey, b, &p.Areas) }},
+		{"blocks.toml", func(b []byte) error { return UnmarshalList(BlockKey, b, &p.Blocks) }},
+		{"views.toml", func(b []byte) error { return UnmarshalList(ViewKey, b, &p.Views) }},
+		{"external.toml", func(b []byte) error { return UnmarshalTOML(b, &p.External) }},
 	}
-	if err := readYAML(fsys, "areas.yaml", &p.Areas); err != nil {
-		return nil, err
-	}
-	if err := readYAML(fsys, "blocks.yaml", &p.Blocks); err != nil {
-		return nil, err
-	}
-	if err := readYAML(fsys, "views.yaml", &p.Views); err != nil {
-		return nil, err
-	}
-	if err := readYAML(fsys, "external.yaml", &p.External); err != nil {
-		return nil, err
+	for _, f := range files {
+		if err := readFile(fsys, f.name, f.parse); err != nil {
+			return nil, err
+		}
 	}
 	if b, err := fs.ReadFile(fsys, "layout.json"); err == nil {
 		if err := json.Unmarshal(b, &p.Layout); err != nil {
@@ -125,7 +122,7 @@ func LoadFS(fsys fs.FS) (*Project, error) {
 	return p, nil
 }
 
-func readYAML(fsys fs.FS, name string, v any) error {
+func readFile(fsys fs.FS, name string, parse func([]byte) error) error {
 	b, err := fs.ReadFile(fsys, name)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -133,7 +130,7 @@ func readYAML(fsys fs.FS, name string, v any) error {
 	if err != nil {
 		return err
 	}
-	if err := yaml.Unmarshal(b, v); err != nil {
+	if err := parse(b); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 	return nil
@@ -159,17 +156,6 @@ func WriteFile(root, name string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), full)
-}
-
-// MarshalYAML encodes v with two-space indentation.
-func MarshalYAML(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), enc.Close()
 }
 
 // MarshalLayout encodes a layout as JSON with sorted keys, one entry per line.
@@ -230,7 +216,7 @@ func globMatch(pattern, s string) bool {
 	return false
 }
 
-// reserved keys in external.yaml node entries; everything else becomes a field.
+// reserved keys in external.toml node entries; everything else becomes a field.
 var reserved = map[string]bool{"id": true, "kind": true, "label": true, "module": true, "external": true, "entry": true}
 
 // ToGraph converts declared nodes and edges into a partial graph for graph.Merge.

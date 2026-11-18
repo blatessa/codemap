@@ -185,11 +185,11 @@ func (s *Server) reloadProject() error {
 
 // projectFiles maps the writable project keys to their file names.
 var projectFiles = map[string]string{
-	"areas":    "areas.yaml",
-	"blocks":   "blocks.yaml",
+	"areas":    "areas.toml",
+	"blocks":   "blocks.toml",
 	"layout":   "layout.json",
-	"views":    "views.yaml",
-	"external": "external.yaml",
+	"views":    "views.toml",
+	"external": "external.toml",
 }
 
 // readProject reads .codemap/ once, so the versions match exactly the bytes that
@@ -209,7 +209,7 @@ func readProject(root string) (*project.Project, map[string]string, error) {
 		mfs[name] = &fstest.MapFile{Data: b}
 		return b, true, nil
 	}
-	if _, _, err := read("config.yaml"); err != nil {
+	if _, _, err := read("config.toml"); err != nil {
 		return nil, nil, err
 	}
 	for key, name := range projectFiles {

@@ -45,7 +45,7 @@ func goSide(id string) bool {
 }
 
 // codeFields are the node fields the Go extractor produces. Others in the
-// expected graph (owner, links, …) come from .codemap/external.yaml.
+// expected graph (owner, links, …) come from .codemap/external.toml.
 var codeFields = []string{"method", "columns", "source", "message", "import", "every"}
 
 func jsonEq(a, b any) bool {
@@ -159,7 +159,7 @@ func TestShopExpected(t *testing.T) {
 	}
 }
 
-// TestShopMerged merges the extracted graph with .codemap/external.yaml as
+// TestShopMerged merges the extracted graph with .codemap/external.toml as
 // build.Load does, and checks the traces the viewer relies on.
 func TestShopMerged(t *testing.T) {
 	g := extractShop(t)

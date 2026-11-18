@@ -109,7 +109,7 @@ Built-in kinds are `function`, `route`, `page`, `job`, `subscriber`, `component`
 
 **Edge types** are `calls`, `renders`, `fetches` (frontend to route), `reads`, `writes`,
 `publishes`, `subscribes` and `declared`. The viewer styles them by type with a default
-fallback. `declared: true` marks edges that came from `.codemap/external.yaml`.
+fallback. `declared: true` marks edges that came from `.codemap/external.toml`.
 
 **Tests** are nodes with `kind: "test"`, and they're hidden from the map. "Tests that reach
 this" means reverse reachability from test nodes over `calls`/`renders` edges. That walk
@@ -173,26 +173,29 @@ The extractors use this same mechanism. For example, table columns are just
 ## 4. `.codemap/` files
 
 All of these are committed, human-editable, and writable by agents. The GUI edits them
-through the server (§8), and edits always round-trip through the file.
+through the server (§8), and edits always round-trip through the file. Files are TOML,
+except the machine-written layout. TOML has no top-level arrays, so a list file holds an
+array of tables under a singular key (`[[area]]`, `[[block]]`, `[[view]]`).
 
 | File | Contents |
 |---|---|
-| `config.yaml` | Extractor settings (§5.7). Optional; everything has defaults. |
-| `areas.yaml` | `- name: Commerce` / `  modules: [mod:…, block:…]`. Any number of areas. |
-| `blocks.yaml` | Splits of a module into named blocks, as **rules** so new code lands automatically (§4.1). |
+| `config.toml` | Extractor settings (§5.7). Optional; everything has defaults. |
+| `areas.toml` | `[[area]]` / `name = "Commerce"` / `modules = ["mod:…", "block:…"]`. Any number of areas. |
+| `blocks.toml` | Splits of a module into named blocks, as **rules** so new code lands automatically (§4.1). |
 | `layout.json` | Positions written by the viewer: `{ "<module or block id>": [x, y], "area:<name>": [x, y] }`. Machine-written, sorted keys. |
-| `views.yaml` | Saved views: `name`, `selection: [ids]`, `focus: bool`, `collapsed: [ids]`. |
-| `external.yaml` | Declared nodes and edges, plus extra fields merged into extracted nodes (§5.6). |
+| `views.toml` | Saved views, one `[[view]]` each: `name`, `selection = [ids]`, `focus = bool`, `collapsed = [ids]`, `expanded = [ids]`. |
+| `external.toml` | Declared nodes and edges, plus extra fields merged into extracted nodes (§5.6). |
 | `proposals/<slug>.md` | One proposal per file (§6). |
 
-### 4.1 blocks.yaml
+### 4.1 blocks.toml
 
-```yaml
-- id: block:pages-checkout          # stable, generated from name on create
-  name: pages · checkout
-  from: mod:ts:web/src/pages
-  match: ["/checkout*", "/orders/*"]   # globs on node label
-  files: ["web/src/pages/checkout/**"] # globs on node file (either or both)
+```toml
+[[block]]
+id = "block:pages-checkout"              # stable, generated from name on create
+name = "pages · checkout"
+from = "mod:ts:web/src/pages"
+match = ["/checkout*", "/orders/*"]      # globs on node label
+files = ["web/src/pages/checkout/**"]    # globs on node file (either or both)
 ```
 
 A node goes into the first block whose rules match it. Anything unmatched stays in the
@@ -205,7 +208,7 @@ broaden later. Merging a block back deletes its entry.
 
 Each extractor returns a partial graph (modules, nodes, edges). `internal/graph` merges them
 (union by ID, fields shallow-merged, edges deduplicated by `from+to+type`). Extractors never
-read `.codemap/` except `config.yaml`.
+read `.codemap/` except `config.toml`.
 
 ### 5.1 Go (`internal/extract/goext`)
 
@@ -285,74 +288,103 @@ Configured publish and subscribe patterns (§5.7) produce `topic:<name>` nodes
 - `http.NewRequest`/`http.Get` with a constant URL becomes `ext:<host>`, with method and path
   in `detail`.
 
-### 5.6 Declared (`.codemap/external.yaml`)
+### 5.6 Declared (`.codemap/external.toml`)
 
-```yaml
-nodes:
-  - id: ext:stripe            # existing id: fields are merged in
-    owner: Payments team
-    setup: Live and test accounts; key in STRIPE_SECRET_KEY
-    links:
-      - {label: Dashboard, url: https://dashboard.stripe.com}
-  - id: ext:s3-uploads        # new id: a new node
-    kind: bucket
-    label: s3://shop-uploads
-    region: us-east-1
-edges:
-  - {from: ext:stripe, to: "route:POST /webhooks/stripe", detail: sends payment_intent.succeeded}
+```toml
+[[node]]
+id = "ext:stripe"             # existing id: fields are merged in
+owner = "Payments team"
+setup = "Live and test accounts; key in STRIPE_SECRET_KEY"
+links = [{label = "Dashboard", url = "https://dashboard.stripe.com"}]
+
+[[node]]
+id = "ext:s3-uploads"         # new id: a new node
+kind = "bucket"
+label = "s3://shop-uploads"
+region = "us-east-1"
+
+[[edge]]
+from = "ext:stripe"
+to = "route:POST /webhooks/stripe"
+detail = "sends payment_intent.succeeded"
 ```
 
 Any key other than `id`, `kind`, `label` and `module` becomes a field. Declared nodes
 default to `external: true`. Declared edges have `type: declared` and `declared: true`.
 
-### 5.7 config.yaml (all optional)
+### 5.7 config.toml (all optional)
 
-```yaml
-exclude: ["vendor/**", "**/*_gen.go"]
-go:
-  jobs:        [{call: "(*sched.Scheduler).Every", name_arg: 1, handler_arg: 2}]
-  subscribers: [{call: "(*events.Bus).Subscribe", topic_arg: 0, handler_arg: 1}]
-  publishers:  [{call: "(*events.Bus).Publish", topic_arg: 1, value_arg: 2}]
-  db_methods:  ["Query", "QueryRow", "Exec"]   # added to defaults
-ts:
-  roots: ["web"]
-  module_depth: 3
-  http_clients: ["http.get", "http.post", "api.request"]
-  base_url_prefixes: ["/api"]
-migrations: ["db/migrations/*.sql"]
-external:
-  imports: {"github.com/acme/billing-sdk": "ext:billing"}
-editor: "code -g {file}:{line}"    # default: $VISUAL/$EDITOR with +{line}
+```toml
+exclude = ["vendor/**", "**/*_gen.go"]
+migrations = ["db/migrations/*.sql"]
+editor = "code -g {file}:{line}"    # default: $VISUAL/$EDITOR with +{line}
+
+[go]
+jobs = [{call = "(*sched.Scheduler).Every", name_arg = 1, handler_arg = 2}]
+subscribers = [{call = "(*events.Bus).Subscribe", topic_arg = 0, handler_arg = 1}]
+publishers = [{call = "(*events.Bus).Publish", topic_arg = 1, value_arg = 2}]
+db_methods = ["Query", "QueryRow", "Exec"]   # added to defaults
+
+[ts]
+roots = ["web"]
+module_depth = 3
+http_clients = ["http.get", "http.post", "api.request"]
+base_url_prefixes = ["/api"]
+
+[external.imports]
+"github.com/acme/billing-sdk" = "ext:billing"
 ```
+
+Top-level keys (`exclude`, `migrations`, `editor`) must come before the first `[table]`.
 
 ---
 
 ## 6. Proposals
 
-One Markdown file per proposal. The frontmatter holds the sketch, and the body is the
-document. Agents write these files directly, and the GUI edits the same file.
+One Markdown file per proposal. The TOML frontmatter between `+++` lines (Hugo's
+convention) holds the sketch, and the body is the document. A file with no frontmatter is an
+open proposal named after its first heading. Agents write these files directly, and the GUI edits the same file.
 
 ```markdown
----
-name: Refunds
-status: open                 # open | archived
-base: 3f2c9e1                # commit it was drawn against (set on create)
-pr: "#91"                    # set when archived
-updated: 2026-11-16
-modules:
-  - {id: new:mod:refunds, label: internal/refunds, area: Commerce}
-nodes:
-  - {id: new:RefundButton.onClick, kind: function, label: RefundButton.onClick, module: mod:ts:web/src/components}
-  - {id: "new:route:POST /orders/:id/refund", kind: route, label: /orders/:id/refund, module: mod:go:shop/cmd/server, entry: true, method: POST}
-edges:
-  - {from: new:RefundButton.onClick, to: "new:route:POST /orders/:id/refund"}
-  - {from: new:orders.Service.Refund, to: go:shop/internal/orders.(*Repo).UpdateStatus}
----
++++
+name = "Refunds"
+status = "open"              # open | archived
+base = "3f2c9e1"             # commit it was drawn against (set on create)
+pr = "#91"                   # set when archived
+updated = "2026-11-16"
+
+[[module]]
+id = "new:mod:refunds"
+label = "internal/refunds"
+area = "Commerce"
+
+[[node]]
+id = "new:RefundButton.onClick"
+kind = "function"
+label = "RefundButton.onClick"
+module = "mod:ts:web/src/components"
+
+[[node]]
+id = "new:route:POST /orders/:id/refund"
+kind = "route"
+label = "/orders/:id/refund"
+module = "mod:go:shop/cmd/server"
+entry = true
+method = "POST"
+
+[[edge]]
+from = "new:RefundButton.onClick"
+to = "new:route:POST /orders/:id/refund"
+
+[[edge]]
+from = "new:orders.Service.Refund"
+to = "go:shop/internal/orders.(*Repo).UpdateStatus"
++++
 ## Why
 Support refunds orders by hand in the Stripe dashboard…
 ```
 
-- A proposed module may carry `pos: [x, y]` for where the viewer draws it.
+- A proposed module may carry `pos = [x, y]` for where the viewer draws it.
 - Edges and nodes can refer to real IDs or `new:` IDs. Proposal nodes accept any fields
   (duck typing).
 - **Open** proposals draw over the current graph. A real ID that no longer exists shows as a
@@ -391,7 +423,7 @@ The server and viewer share this JSON contract. All bodies are JSON. Go types ar
 | Endpoint | Request | Response |
 |---|---|---|
 | `GET /api/state?rev=` | | `{graph: Graph, project: {config, areas, blocks, layout, views, external, proposals}, versions: {areas, blocks, layout, views, external: "<hash>", "proposals/<slug>": "<hash>"}}`. The default rev is the worktree. |
-| `PUT /api/project/{areas\|blocks\|layout\|views\|external}` | the value (array or object), header `If-Match: <version>` | `{version}`. Returns `409 {version, value}` if the file changed on disk. The server writes YAML (JSON for layout) atomically. |
+| `PUT /api/project/{areas\|blocks\|layout\|views\|external}` | the value (array or object), header `If-Match: <version>` | `{version}`. Returns `409 {version, value}` if the file changed on disk. The server writes TOML (JSON for layout) atomically. |
 | `GET /api/proposals` | | `[Proposal]`, with the body included |
 | `PUT /api/proposals/{slug}` | `Proposal`, `If-Match` (optional for a new proposal) | `{version}` or `409`. A new proposal gets `base` set to `HEAD`. |
 | `DELETE /api/proposals/{slug}` | | `204` |
@@ -491,7 +523,7 @@ sample. It should build and its tests should pass:
 - `internal/{auth,orders,inventory,payments,notify,events}`
 - `db/migrations/*.sql`
 - `web/src/{pages,components,api}` (React Router) with one vitest test
-- `.codemap/` with areas, external.yaml and two proposals
+- `.codemap/` with config, areas, external.toml and two proposals
 
 The fixture uses pgx, stripe-go, a fake NATS-like bus, and a postmark client stub.
 

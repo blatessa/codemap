@@ -17,8 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"codemap/internal/project"
 )
 
@@ -113,11 +111,25 @@ type fileKind struct {
 	fix     func(v any) // normalise nil slices and fill defaults
 }
 
-func yamlKind[T any](empty T, fix func(*T)) fileKind {
+// listKind is a TOML file holding a list as [[key]] tables.
+func listKind[T any](key string, fix func(*[]T)) fileKind {
+	return fileKind{
+		zero:    func() any { v := []T{}; return &v },
+		marshal: func(v any) ([]byte, error) { return project.MarshalList(key, *v.(*[]T)) },
+		parse:   func(b []byte, v any) error { return project.UnmarshalList(key, b, v.(*[]T)) },
+		fix: func(v any) {
+			if fix != nil {
+				fix(v.(*[]T))
+			}
+		},
+	}
+}
+
+func tomlKind[T any](empty T, fix func(*T)) fileKind {
 	return fileKind{
 		zero:    func() any { v := empty; return &v },
-		marshal: func(v any) ([]byte, error) { return project.MarshalYAML(*v.(*T)) },
-		parse:   func(b []byte, v any) error { return yaml.Unmarshal(b, v) },
+		marshal: func(v any) ([]byte, error) { return project.MarshalTOML(*v.(*T)) },
+		parse:   func(b []byte, v any) error { return project.UnmarshalTOML(b, v) },
 		fix: func(v any) {
 			if fix != nil {
 				fix(v.(*T))
@@ -127,12 +139,12 @@ func yamlKind[T any](empty T, fix func(*T)) fileKind {
 }
 
 var kinds = map[string]fileKind{
-	"areas": yamlKind([]project.Area{}, func(v *[]project.Area) {
+	"areas": listKind(project.AreaKey, func(v *[]project.Area) {
 		if *v == nil {
 			*v = []project.Area{}
 		}
 	}),
-	"blocks": yamlKind([]project.Block{}, func(v *[]project.Block) {
+	"blocks": listKind(project.BlockKey, func(v *[]project.Block) {
 		if *v == nil {
 			*v = []project.Block{}
 		}
@@ -142,12 +154,12 @@ var kinds = map[string]fileKind{
 			}
 		}
 	}),
-	"views": yamlKind([]project.View{}, func(v *[]project.View) {
+	"views": listKind(project.ViewKey, func(v *[]project.View) {
 		if *v == nil {
 			*v = []project.View{}
 		}
 	}),
-	"external": yamlKind(project.External{}, nil),
+	"external": tomlKind(project.External{}, nil),
 	"layout": {
 		zero:    func() any { return &project.Layout{} },
 		marshal: func(v any) ([]byte, error) { return project.MarshalLayout(*v.(*project.Layout)) },
@@ -456,13 +468,13 @@ func editorArgs(tmpl, file string, line int) ([]string, error) {
 		}
 		args := strings.Fields(ed)
 		if len(args) == 0 {
-			return nil, errors.New("no editor: set editor in .codemap/config.yaml, or $VISUAL or $EDITOR")
+			return nil, errors.New("no editor: set editor in .codemap/config.toml, or $VISUAL or $EDITOR")
 		}
 		return defaultEditorArgs(args, file, line, lookTerminal)
 	}
 	args := strings.Fields(tmpl)
 	if len(args) == 0 {
-		return nil, errors.New("editor in .codemap/config.yaml is empty")
+		return nil, errors.New("editor in .codemap/config.toml is empty")
 	}
 	hasFile := false
 	for i, a := range args {
@@ -494,7 +506,7 @@ var (
 // defaultEditorArgs turns $VISUAL/$EDITOR into a command. Known GUI editors run
 // directly; known terminal editors run in a terminal. Anything else (a wrapper
 // script, say) runs in a terminal with just the file, since its line syntax is
-// unknown; set editor in .codemap/config.yaml for full control.
+// unknown; set editor in .codemap/config.toml for full control.
 func defaultEditorArgs(ed []string, file string, line int, term func() []string) ([]string, error) {
 	name := filepath.Base(ed[0])
 	expand := func(syntax string) []string {
@@ -513,7 +525,7 @@ func defaultEditorArgs(ed []string, file string, line int, term func() []string)
 	}
 	t := term()
 	if t == nil {
-		return nil, errors.New("no terminal found to run " + name + " in: set $TERMINAL, or editor in .codemap/config.yaml")
+		return nil, errors.New("no terminal found to run " + name + " in: set $TERMINAL, or editor in .codemap/config.toml")
 	}
 	return append(t, cmd...), nil
 }

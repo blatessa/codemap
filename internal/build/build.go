@@ -1,5 +1,5 @@
 // Package build produces the merged graph for a repo: it runs the extractors,
-// merges their partial graphs with the declared nodes from .codemap/external.yaml,
+// merges their partial graphs with the declared nodes from .codemap/external.toml,
 // and loads the rest of .codemap/.
 package build
 
@@ -43,7 +43,7 @@ func Load(root string, opt Options) (*graph.Graph, *project.Project, error) {
 }
 
 // Graph builds the merged graph using an already-loaded project (its config and
-// external.yaml). Callers that keep the last good project, like the server, use
+// external.toml). Callers that keep the last good project, like the server, use
 // this so a broken .codemap file doesn't block graph rebuilds.
 func Graph(root string, proj *project.Project, opt Options) (*graph.Graph, error) {
 	if proj == nil {
