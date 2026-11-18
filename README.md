@@ -23,7 +23,7 @@ go test ./...                                         # codemap
 
 ## Agent skill
 
-`skills/codemap/SKILL.md` teaches a coding agent to query the map and write proposals.
+`skills/codemap/SKILL.md` teaches a coding agent to query the map and write proposals, and to work through the change requests attached to one (`codemap proposal show`, `codemap proposal item`).
 The repo is a Claude Code plugin and its own marketplace, so in Claude Code:
 
 ```
