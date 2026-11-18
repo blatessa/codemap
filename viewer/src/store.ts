@@ -607,6 +607,31 @@ export function proposeEdge(from: string, to: string) {
   updateProposal(p.slug, { edges: [...(p.edges ?? []), { from, to }] });
 }
 
+// moveNode records that the proposal moves an existing node to another module, as
+// a [[node]] with the node's id and the new module. Moving it back home removes it.
+export function moveNode(id: string, to: string) {
+  const s = get();
+  const p = currentProposal(s);
+  const g = s.graph?.nodes?.find((n) => n.id === id);
+  if (!p) return;
+  const nodes = p.nodes ?? [];
+  if (!g) {
+    // a proposed node: just change its module
+    updateProposal(p.slug, { nodes: nodes.map((n) => (n.id === id ? { ...n, module: to } : n)) });
+    return;
+  }
+  const rest = nodes.filter((n) => n.id !== id);
+  updateProposal(p.slug, { nodes: g.module === to ? rest : [...rest, { id, module: to }] });
+}
+
+// comment appends a note to the open proposal's body, headed by what it is about.
+export function comment(about: string, text: string) {
+  const p = currentProposal(get());
+  if (!p || !text.trim()) return;
+  const body = p.body.replace(/\s+$/, '');
+  updateProposal(p.slug, { body: (body ? body + '\n\n' : '') + about.trim() + '\n\n' + text.trim() + '\n' });
+}
+
 export function removeProposalNode(id: string) {
   const p = currentProposal(get());
   if (!p) return;

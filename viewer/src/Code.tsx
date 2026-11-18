@@ -26,10 +26,10 @@ export function highlight(code: string): ReactNode[] {
   return out;
 }
 
-export const CodeBlock = memo(function CodeBlock({ code, start }: { code: string; start: number }) {
+export const CodeBlock = memo(function CodeBlock({ code, start, file }: { code: string; start: number; file?: string }) {
   const n = code.split('\n').length;
   return (
-    <div className="code">
+    <div className="code" data-file={file} data-start={start}>
       <pre className="g">{Array.from({ length: n }, (_, i) => start + i).join('\n')}</pre>
       <pre className="c">{highlight(code)}</pre>
     </div>
@@ -84,7 +84,7 @@ function PlainSource({ file, from, to, rev: at }: { file: string; from: number; 
   }, [rev, file, from, end, graph]);
   if (code === null) return <div className="code" style={{ minHeight: 40 }} />;
   if (!code) return <p>—</p>;
-  return <CodeBlock code={code} start={from} />;
+  return <CodeBlock code={code} start={from} file={file} />;
 }
 
 export function Where({ file, line }: { file?: string; line?: number }) {

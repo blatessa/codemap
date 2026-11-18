@@ -27,6 +27,7 @@ import {
   useSel,
   useStore,
 } from './store';
+import { Comment } from './Comment';
 import { useAreaRect } from './MapView';
 
 export const Section = ({ title, children }: { title: string; children: ReactNode }) => (
@@ -262,6 +263,7 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
       <Head eyebrow={eyebrow} plan={row.prop} title={method && !row.label.startsWith(method) ? `${method} ${row.label}` : row.label}>
         <Where file={n.file} line={n.line} />
       </Head>
+      {row.moved && <p className="where plan">Moved here from {row.moved} by the proposal. Drag it back to undo.</p>}
       {n.doc && <p className="doc">{n.doc}</p>}
       {!propose && !row.prop && !row.ghost && !row.hidden && (
         <div className="btns">
@@ -700,6 +702,7 @@ export function Drawer() {
       onMouseLeave={() => getState().hover && setState({ hover: null })}
     >
       {content}
+      {pslug && !form && sel.length > 0 && content && <Comment key={sel.join('\0')} m={m} ids={sel} />}
     </aside>
   );
 }

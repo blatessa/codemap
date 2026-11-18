@@ -27,6 +27,7 @@ export interface Row {
   role: string; // fields.role: wiring, utility, passthrough, … ('' is core)
   support: boolean; // has a role and the level is Features: behind the box's expander
   hidden: boolean; // in .codemap/hidden.toml: drawn only on a selected path, dimmed
+  moved?: string; // the proposal moves this existing node here from that module (its label)
 }
 
 export interface Box {
@@ -227,8 +228,19 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null,
     }
     for (const raw of proposal.nodes ?? []) {
       const n = proposalNode(raw);
-      if (!n || node.has(n.id)) continue;
-      place(n, true, false);
+      if (!n) continue;
+      const cur = node.get(n.id);
+      if (!cur) {
+        place(n, true, false);
+        continue;
+      }
+      // an existing node listed with another module: the proposal moves it
+      const to = n.module ? box.get(n.module) : undefined;
+      if (!to || to === cur.box) continue;
+      cur.box.rows = cur.box.rows.filter((r) => r !== cur.row);
+      cur.row.moved = cur.box.label;
+      to.rows.push(cur.row);
+      node.set(n.id, { row: cur.row, box: to });
     }
     const ghostBox = () => box.get('missing:') ?? mkBox('missing:', 'missing', { ghost: true });
     for (const raw of proposal.edges ?? []) {

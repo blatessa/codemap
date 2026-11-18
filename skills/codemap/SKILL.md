@@ -109,6 +109,8 @@ detail = "POST /v1/refunds"
 - Each `[[module]]`, `[[node]]` and `[[edge]]` table is one entry. Keep the top-level keys (`name`, `status`, …) above the first table.
 - Nodes accept any extra fields, including arrays and inline tables such as `links = [{label = "Docs", url = "https://…"}]`. The viewer displays whatever you add.
 - Leave `base` and `updated` alone. codemap sets them.
+- To move an existing function to another module, list it with its real ID and the new module: `[[node]]` with `id = "go:shop/internal/orders.(*Service).MarkPaid"` and `module = "mod:go:shop/internal/payments"`.
+- The user comments on a proposal from the viewer. Each comment is appended to the body under a `###` heading naming what it's about (a function, a module, or `file:lines` with the highlighted code quoted below). When asked to work through a proposal, read its body and treat those comments as the things to address.
 
 ## Other .codemap files
 

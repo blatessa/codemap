@@ -417,6 +417,22 @@ Support refunds orders by hand in the Stripe dashboard…
   code instead.
 - `codemap proposal archive <slug> --pr 91` sets the status and PR. Archiving automatically
   when a PR merges (via `gh`) is a later addition.
+- A `[[node]]` with a real ID and a different `module` moves that node there. The viewer
+  does this when a function is dragged onto another module in a proposal.
+- **Comments.** With a proposal open, select something (a node, module or several), optionally
+  highlight lines in its source, and write a comment. It's appended to the body:
+
+  ````markdown
+  ### `orders.Service.Place` · internal/orders/service.go:52-55
+
+  ```go
+  if err := s.inv.Reserve(ctx, o.Items); err != nil {
+  ```
+
+  Reserve after payment is authorised.
+  ````
+
+  There is no separate request or item concept; it's all the document.
 - Nothing ever validates a proposal against the code.
 
 ---

@@ -33,3 +33,6 @@ body{margin:0}
 .farlabels{pointer-events:none}
 .farlabels.halo text{paint-order:stroke;stroke:var(--surface);stroke-linejoin:round}
 .hovname{paint-order:stroke;stroke:var(--bg);stroke-linejoin:round;pointer-events:none}
+.rowdrop{fill:none;stroke:var(--plan);stroke-width:2;stroke-dasharray:5 4;pointer-events:none}
+.comment textarea{width:100%;min-height:64px;resize:vertical;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:inherit}
+.comment .about{font-size:12px;color:var(--muted);margin:0 0 6px}

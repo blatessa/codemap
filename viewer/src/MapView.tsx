@@ -8,6 +8,7 @@ import {
   dropBox,
   getState,
   groupingOf,
+  moveNode,
   movePos,
   moveProposalModule,
   proposeEdge,
@@ -476,6 +477,12 @@ function declutter(boxes: DBox[], edges: MEdge[], row: Disp['row'], areas: Disp[
   }
 }
 
+// boxAt is the module box under the point.
+function boxAt(disp: Disp, x: number, y: number): DBox | null {
+  for (const d of disp.boxes) if (x >= d.x && x <= d.x + d.w && y >= d.y && y <= d.y + d.h) return d;
+  return null;
+}
+
 // dropTarget is the smallest area rectangle containing the point.
 function dropTarget(disp: Disp, x: number, y: number): string | null {
   let best: { name: string; s: number } | null = null;
@@ -674,7 +681,7 @@ const BoxG = memo(function BoxG({ d, S, selKey, hover, connectFrom, canAdd }: Bo
           {d.rows.map((r, i) => {
             const ry = y + HEAD + i * ROW,
               cy = ry + ROW / 2 + 4;
-            const c = ['fn', S ? (S.nodes.has(r.id) ? 'on' : 'dim') : '', r.hidden && 'hid', r.prop && 'prop', r.ghost && 'ghost', rowCls(r.id), sels.includes(r.id) && 'sel', connectFrom === r.id && 'from', hover === r.id && 'hov']
+            const c = ['fn', S ? (S.nodes.has(r.id) ? 'on' : 'dim') : '', r.hidden && 'hid', (r.prop || r.moved) && 'prop', r.ghost && 'ghost', rowCls(r.id), sels.includes(r.id) && 'sel', connectFrom === r.id && 'from', hover === r.id && 'hov']
               .filter(Boolean)
               .join(' ');
             return (
@@ -742,6 +749,7 @@ const mk = (id: string) => (
 type Drag =
   | { kind: 'pan'; x: number; y: number; vx: number; vy: number; moved: boolean }
   | { kind: 'box'; id: string; prop: boolean; grp: boolean; x: number; y: number; bx: number; by: number; moved: boolean; px: number; py: number }
+  | { kind: 'row'; id: string; x: number; y: number; moved: boolean; px: number; py: number }
   | { kind: 'area'; name: string; x: number; y: number; start: { id: string; x: number; y: number }[]; ax: number; ay: number; moved: boolean };
 
 export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
@@ -776,6 +784,9 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   const [dragBox, setDragBoxState] = useState<DragBox | null>(null);
   const [drop, setDropState] = useState<string | null>(null);
   const dropRef = useRef<string | null>(null);
+  const [rowDrop, setRowDrop] = useState<string | null>(null);
+  const modelRef = useRef(m);
+  modelRef.current = m;
   const setDrop = (t: string | null) => {
     dropRef.current = t;
     setDropState(t);
@@ -953,7 +964,13 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       g.moved = true;
       const v = getState().view,
         k = v.k;
-      if (g.kind === 'pan') setState({ view: { ...v, x: g.vx + dx, y: g.vy + dy }, touchedView: true });
+      if (g.kind === 'row') {
+        const r = svgRef.current!.getBoundingClientRect();
+        g.px = (e.clientX - r.left - v.x) / k;
+        g.py = (e.clientY - r.top - v.y) / k;
+        const d = boxAt(dispRef.current, g.px, g.py);
+        setRowDrop(d && d.b.id !== modelRef.current.node.get(g.id)?.box.id ? d.b.id : null);
+      } else if (g.kind === 'pan') setState({ view: { ...v, x: g.vx + dx, y: g.vy + dy }, touchedView: true });
       else if (g.kind === 'box') {
         setOver({ [g.id]: [Math.round(g.bx + dx / k), Math.round(g.by + dy / k)] });
         const r = svgRef.current!.getBoundingClientRect();
@@ -991,6 +1008,12 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   }, []);
 
   function commitDrag(g: Drag, o: Record<string, [number, number]>) {
+    if (g.kind === 'row') {
+      const d = boxAt(dispRef.current, g.px, g.py);
+      setRowDrop(null);
+      if (d && !d.b.external && !d.b.ghost && !d.b.group) moveNode(g.id, d.b.block ? d.b.from! : d.b.id);
+      return;
+    }
     if (g.kind === 'box') {
       const p = o[g.id];
       if (!p) return;
@@ -1035,6 +1058,15 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
           .filter((d): d is DBox => !!d)
           .map((d) => ({ id: d.b.id, x: d.x - (disp.shift.get(d.b.id)?.[0] ?? 0), y: d.y - (disp.shift.get(d.b.id)?.[1] ?? 0) }));
         drag.current = { kind: 'area', name, x: e.clientX, y: e.clientY, start, ax: r.x, ay: r.y, moved: false };
+        return;
+      }
+    }
+    // in a proposal, a function dragged onto another module is proposed to move there
+    const rn = t.closest('[data-node]') as HTMLElement | null;
+    if (rn && !s.readOnly && !s.connectFrom && s.mode === 'propose' && currentProposal(s)) {
+      const x = m.node.get(rn.dataset.node!);
+      if (x && !x.row.ghost && !x.row.node.external && !x.box.external) {
+        drag.current = { kind: 'row', id: x.row.id, x: e.clientX, y: e.clientY, moved: false, px: 0, py: 0 };
         return;
       }
     }
@@ -1163,6 +1195,11 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
             {hd.far.hid}
           </text>
         )}
+        {rowDrop &&
+          (() => {
+            const d = disp.byId.get(rowDrop);
+            return d ? <rect className="rowdrop" x={d.x - 3} y={d.y - 3} width={d.w + 6} height={d.h + 6} rx={10} /> : null;
+          })()}
       </g>
     </svg>
   );
