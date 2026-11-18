@@ -60,7 +60,7 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 	if err != nil {
 		return nil, err
 	}
-	x := &extractor{root: root, cfg: cfg, b: newBuilder(), ext: newExtTable(cfg)}
+	x := &extractor{root: root, cfg: cfg, b: newBuilder(), ext: newExtTable(cfg), migTables: map[string]bool{}}
 
 	mig, err := sqlext.Migrations(root, cfg)
 	if err != nil {
@@ -71,6 +71,7 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 	}
 	for _, n := range mig.Nodes {
 		x.b.addNode(n)
+		x.migTables[n.ID] = true
 	}
 
 	mods, err := findModules(root, cfg)
@@ -95,6 +96,7 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 			Logf("%v", err)
 		}
 	}
+	x.addModelColumns()
 	return x.b.graph(), nil
 }
 
@@ -103,7 +105,10 @@ type extractor struct {
 	cfg         project.Config
 	b           *builder
 	ext         *extTable
-	modulePaths []string // module paths of the repo's go.mod files
+	modulePaths []string        // module paths of the repo's go.mod files
+	migTables   map[string]bool // table node IDs defined by migrations
+	ddl         *sqlext.Schema  // tables created by DDL in Go strings (ddl.go)
+	models      []modelTable    // ORM models' columns, applied once all tables are known
 }
 
 // findModules returns the directories under root holding a go.mod, skipping
@@ -156,7 +161,8 @@ type load struct {
 	ormIfaces  map[*types.Interface]*ormPreset
 	ormTypes   map[*types.Named]*ormPreset // concrete types of the ORM packages imported
 	tableNames map[*types.TypeName]string
-	ormHelpers map[*types.Func]ormModel // session-building helpers → the model they return
+	models     map[*types.TypeName]*ormPreset // types used as ORM models → their ORM
+	ormHelpers map[*types.Func]ormModel       // session-building helpers → the model they return
 	ormLocals  []ormLocal
 	decls      map[*types.Func]declRef
 }
@@ -188,6 +194,7 @@ func (x *extractor) extractModule(dir string) (err error) {
 		ormParams:   map[*types.Func][]ormWrap{},
 		ormIfaces:   map[*types.Interface]*ormPreset{},
 		tableNames:  map[*types.TypeName]string{},
+		models:      map[*types.TypeName]*ormPreset{},
 		ormHelpers:  map[*types.Func]ormModel{},
 	}
 	var initial []*packages.Package
@@ -247,7 +254,9 @@ func (x *extractor) extractModule(dir string) (err error) {
 	l.addModulesAndFunctions()
 	l.addCallEdges()
 	l.addTests()
+	l.addGoDDL()
 	l.scanCalls()
+	l.collectModels()
 	l.addRoutes()
 	l.addCommands()
 	return nil

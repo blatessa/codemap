@@ -5,6 +5,9 @@ import (
 	"go/constant"
 	"go/types"
 	"reflect"
+	"regexp"
+	"slices"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -515,6 +518,7 @@ func (l *load) tableName(n *types.Named, orm *ormPreset) string {
 		}
 	}
 	l.tableNames[n.Obj()] = s
+	l.models[n.Obj()] = orm
 	return s
 }
 
@@ -711,4 +715,364 @@ func calleeIdent(call *ast.CallExpr) *ast.Ident {
 		return f.Sel
 	}
 	return nil
+}
+
+// Model columns: a table no migration or DDL describes gets its columns from
+// the struct types used as its ORM models. Each exported field is a column
+// (embedded structs are flattened), named by its ORM tag or the ORM's naming
+// convention. Relationships come from naming: RepoID points at the table of
+// the model a Repo field holds when the struct has one (Repo *Repository,
+// usually tagged "-"), else at a table named repo or repos, else at the table
+// other models' Repo fields point at (repo → repository); a field holding
+// another model (gorm and bun relations) points at that model's table. Which
+// tables exist is only known once every module is scanned, so the candidates
+// are kept and resolved in addModelColumns.
+
+// modelCol is a column of a model, with the tables it may refer to.
+type modelCol struct {
+	goName, name, typ, note string
+	prefix                  string   // XxxID: Xxx
+	paired                  []string // XxxID: table candidates of the model an Xxx field holds
+	refs                    []string // XxxID: tables named after Xxx, the ORM's default first
+	rel                     []string // a field holding another model: that model's table candidates
+}
+
+type modelTable struct {
+	table, file string
+	cols        []modelCol
+}
+
+// collectModels records the columns of the types this module used as ORM models.
+func (l *load) collectModels() {
+	objs := make([]*types.TypeName, 0, len(l.models))
+	for o := range l.models {
+		objs = append(objs, o)
+	}
+	sort.Slice(objs, func(i, j int) bool {
+		if objs[i].Pkg().Path() != objs[j].Pkg().Path() {
+			return objs[i].Pkg().Path() < objs[j].Pkg().Path()
+		}
+		return objs[i].Name() < objs[j].Name()
+	})
+	for _, o := range objs {
+		file, _ := l.pos(o.Pos())
+		cols := l.modelColumns(o.Type().(*types.Named), l.models[o])
+		l.x.models = append(l.x.models, modelTable{l.tableNames[o], file, cols})
+	}
+}
+
+// modelColumns lists a model struct's columns.
+func (l *load) modelColumns(n *types.Named, orm *ormPreset) []modelCol {
+	pkg := n.Obj().Pkg()
+	qual := func(p *types.Package) string {
+		if p == pkg {
+			return ""
+		}
+		return p.Name()
+	}
+	var cols []modelCol
+	seen := map[string]bool{}
+	ints := map[string]bool{}     // Go names of integer fields
+	held := map[string][]string{} // Go field name → table candidates of the model it holds
+	var walk func(st *types.Struct, depth int)
+	walk = func(st *types.Struct, depth int) {
+		for i := range st.NumFields() {
+			f := st.Field(i)
+			tag := reflect.StructTag(st.Tag(i))
+			// Recorded before the tag check: Repo *Repository `xorm:"-"` is
+			// what names RepoID's table.
+			rel := l.modelTables(f.Type(), orm)
+			if rel != nil {
+				held[f.Name()] = rel
+			}
+			if ormSkipped(tag) {
+				continue
+			}
+			if f.Embedded() || slices.Contains(strings.Fields(tag.Get("xorm")), "extends") {
+				if isBunBaseModel(f.Type()) {
+					continue
+				}
+				if inner := structOf(f.Type()); inner != nil && depth < 4 {
+					walk(inner, depth+1)
+					continue
+				}
+			}
+			if !f.Exported() {
+				continue
+			}
+			switch f.Type().Underlying().(type) {
+			case *types.Signature, *types.Chan:
+				continue
+			}
+			c := modelCol{goName: f.Name(), name: ormColumnName(tag, f.Name()), typ: types.TypeString(f.Type(), qual), rel: rel}
+			if seen[c.name] {
+				continue
+			}
+			seen[c.name] = true
+			if b, ok := f.Type().Underlying().(*types.Basic); ok && b.Info()&types.IsInteger != 0 {
+				ints[f.Name()] = true
+			}
+			if ormPK(tag) {
+				c.note = "pk"
+			}
+			cols = append(cols, c)
+		}
+	}
+	walk(n.Underlying().(*types.Struct), 0)
+
+	hasPK := slices.ContainsFunc(cols, func(c modelCol) bool { return c.note == "pk" })
+	for i := range cols {
+		c := &cols[i]
+		if c.goName == "ID" && !hasPK {
+			c.note = "pk"
+		}
+		prefix, ok := strings.CutSuffix(c.goName, "ID")
+		if !ok || prefix == "" || !ints[c.goName] {
+			continue
+		}
+		c.prefix, c.paired = prefix, held[prefix]
+		snake := snakeCase(prefix)
+		if orm.plural {
+			c.refs = append(c.refs, plural(snake), snake)
+		} else {
+			c.refs = append(c.refs, snake, plural(snake))
+		}
+	}
+	return cols
+}
+
+// modelTables are the table candidates of the repo model a field holds
+// (directly, by pointer or in a slice), or nil if it holds none.
+func (l *load) modelTables(t types.Type, orm *ormPreset) []string {
+	for range 4 {
+		switch u := types.Unalias(t).(type) {
+		case *types.Pointer:
+			t = u.Elem()
+			continue
+		case *types.Slice:
+			t = u.Elem()
+			continue
+		case *types.Array:
+			t = u.Elem()
+			continue
+		case *types.Named:
+			obj := u.Origin().Obj()
+			if _, ok := u.Underlying().(*types.Struct); !ok || obj.Pkg() == nil ||
+				!l.isRepoPkg(obj.Pkg().Path()) || obj.Parent() != obj.Pkg().Scope() {
+				return nil
+			}
+			if s, ok := l.tableNames[obj]; ok {
+				return []string{s}
+			}
+			if s := l.declaredTable(u.Origin()); s != "" {
+				return []string{s}
+			}
+			return tableCandidates(u.Origin(), orm)
+		}
+		return nil
+	}
+	return nil
+}
+
+func structOf(t types.Type) *types.Struct {
+	if p, ok := t.Underlying().(*types.Pointer); ok {
+		t = p.Elem()
+	}
+	s, _ := t.Underlying().(*types.Struct)
+	return s
+}
+
+func isBunBaseModel(t types.Type) bool {
+	n, ok := types.Unalias(t).(*types.Named)
+	return ok && n.Obj().Name() == "BaseModel" && n.Obj().Pkg() != nil && ormFor(n.Obj().Pkg().Path()) != nil
+}
+
+// ormSkipped reports whether a field's tag keeps it out of the table.
+func ormSkipped(tag reflect.StructTag) bool {
+	for _, k := range []string{"xorm", "bun", "pg", "sql"} {
+		if tag.Get(k) == "-" {
+			return true
+		}
+	}
+	g := tag.Get("gorm")
+	return g == "-" || strings.HasPrefix(g, "-:")
+}
+
+// ormColumnName is a field's column: from its tag (xorm "'name' …", gorm
+// "column:name", bun and go-pg "name,…"), else the snake-cased field name.
+func ormColumnName(tag reflect.StructTag, field string) string {
+	for _, w := range strings.Fields(tag.Get("xorm")) {
+		if len(w) > 2 && w[0] == '\'' && w[len(w)-1] == '\'' {
+			return w[1 : len(w)-1]
+		}
+	}
+	for _, part := range strings.Split(tag.Get("gorm"), ";") {
+		if k, v, ok := strings.Cut(part, ":"); ok && strings.EqualFold(strings.TrimSpace(k), "column") && v != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	for _, k := range []string{"bun", "pg"} {
+		if name, _, _ := strings.Cut(tag.Get(k), ","); name != "" && !strings.Contains(name, ":") {
+			return name
+		}
+	}
+	return snakeCase(field)
+}
+
+// ormPK reports whether a field's tag marks the primary key.
+func ormPK(tag reflect.StructTag) bool {
+	for _, w := range strings.Fields(tag.Get("xorm")) {
+		if strings.EqualFold(w, "pk") {
+			return true
+		}
+	}
+	for _, part := range strings.Split(tag.Get("gorm"), ";") {
+		if p := strings.TrimSpace(part); strings.EqualFold(p, "primaryKey") || strings.EqualFold(p, "primary_key") {
+			return true
+		}
+	}
+	for _, k := range []string{"bun", "pg"} {
+		if _, opts, ok := strings.Cut(tag.Get(k), ","); ok && slices.Contains(strings.Split(opts, ","), "pk") {
+			return true
+		}
+	}
+	return false
+}
+
+// migrationFile matches files in migration code: models/migrations/v1_20/…,
+// modelmigration/…, db/migrate/….
+var migrationFile = regexp.MustCompile(`(?i)(^|/)[^/]*migrat[^/]*/`)
+
+// addModelColumns gives the tables that have no columns yet (from migrations
+// or DDL, which describe the database itself and so win) the columns of their
+// models. Models sharing a table add the columns the earlier ones lack.
+// Models declared in migration code are snapshots of a table at some past
+// version (xorm migrations declare their own copies), so they count only for
+// tables no other model describes.
+func (x *extractor) addModelColumns() {
+	current := map[string]bool{}
+	for _, m := range x.models {
+		if !migrationFile.MatchString(m.file) {
+			current[m.table] = true
+		}
+	}
+	var order []string
+	byTable := map[string][]modelCol{}
+	src := map[string][]any{}
+	for _, m := range x.models {
+		if current[m.table] && migrationFile.MatchString(m.file) {
+			continue
+		}
+		id := sqlext.TableID(m.table)
+		n := x.b.nodes[id]
+		if n == nil {
+			continue
+		}
+		if _, ok := n.Fields["columns"]; ok && byTable[id] == nil {
+			continue
+		}
+		if byTable[id] == nil {
+			order = append(order, id)
+		}
+		for _, c := range m.cols {
+			if !slices.ContainsFunc(byTable[id], func(o modelCol) bool { return o.name == c.name }) {
+				byTable[id] = append(byTable[id], c)
+			}
+		}
+		if src[id] == nil {
+			src[id] = []any{}
+		}
+		if m.file != "" && !slices.Contains(src[id], any(m.file)) {
+			src[id] = append(src[id], m.file)
+		}
+	}
+	// A table's key column, for "→ table.key"; "id" when its columns don't say.
+	key := func(id string) string {
+		var cols []any
+		if n := x.b.nodes[id]; n != nil {
+			cols, _ = n.Fields["columns"].([]any)
+		}
+		pk := ""
+		for _, c := range cols {
+			if r, ok := c.([]any); ok && len(r) == 3 && r[2] == "pk" {
+				if pk != "" {
+					return "id"
+				}
+				pk, _ = r[0].(string)
+			}
+		}
+		for _, c := range byTable[id] {
+			if pk == "" && c.note == "pk" {
+				pk = c.name
+			}
+		}
+		if pk == "" {
+			return "id"
+		}
+		return pk
+	}
+	table := func(cands []string) (string, string) {
+		for _, t := range cands {
+			id := sqlext.TableID(t)
+			if n := x.b.nodes[id]; n != nil && n.Kind == graph.KindTable {
+				return id, n.Label
+			}
+		}
+		return "", ""
+	}
+	// What the repo's own pairings say an Xxx prefix means (Repo *Repository
+	// next to RepoID), for XxxID columns in models without the Xxx field. The
+	// table most pairings give wins; ties go to the first name.
+	votes := map[string]map[string]int{}
+	for _, id := range order {
+		for _, c := range byTable[id] {
+			if _, t := table(c.paired); t != "" {
+				if votes[c.prefix] == nil {
+					votes[c.prefix] = map[string]int{}
+				}
+				votes[c.prefix][t]++
+			}
+		}
+	}
+	alias := map[string]string{}
+	for p, ts := range votes {
+		for t, n := range ts {
+			if b := alias[p]; b == "" || n > ts[b] || n == ts[b] && t < b {
+				alias[p] = t
+			}
+		}
+	}
+	notes := map[string][]string{}
+	for _, id := range order {
+		for _, c := range byTable[id] {
+			note := c.note
+			if note == "" && c.prefix != "" {
+				cands := slices.Concat(c.paired, c.refs)
+				if a := alias[c.prefix]; a != "" {
+					cands = append(cands, a)
+				}
+				if tid, t := table(cands); t != "" {
+					note = "→ " + t + "." + key(tid)
+				}
+			}
+			if note == "" {
+				if _, t := table(c.rel); t != "" {
+					note = "→ " + t
+				}
+			}
+			notes[id] = append(notes[id], note)
+		}
+	}
+	for _, id := range order {
+		n := x.b.nodes[id]
+		cols := make([]any, 0, len(byTable[id]))
+		for i, c := range byTable[id] {
+			cols = append(cols, []any{c.name, c.typ, notes[id][i]})
+		}
+		if n.Fields == nil {
+			n.Fields = map[string]any{}
+		}
+		n.Fields["columns"] = cols
+		n.Fields["source"] = src[id]
+	}
 }

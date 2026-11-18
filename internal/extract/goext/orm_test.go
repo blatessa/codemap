@@ -39,6 +39,7 @@ func TestORM(t *testing.T) {
 		"DeleteLabel writes label",   // bean parameter wrapper
 		"FindComments reads comment", // type parameter wrapper
 		"GetIssueByID reads issue",
+		"GetRepo reads repository",
 		"GetSource reads login_source", // TableName method
 		"GetUser reads users",
 		"LabelIDs reads label", // table name passed as a string

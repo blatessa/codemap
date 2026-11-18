@@ -143,21 +143,27 @@ func Migrations(root string, cfg project.Config) (*graph.Graph, error) {
 	}
 	g.Modules = append(g.Modules, DatabaseModuleFor(files))
 	for _, t := range s.Tables() {
-		cols := make([]any, 0, len(t.Columns))
-		for _, c := range t.Columns {
-			cols = append(cols, []any{c.Name, c.Type, c.Note})
-		}
-		src := make([]any, 0, len(t.Sources))
-		for _, f := range t.Sources {
-			src = append(src, f)
-		}
 		g.Nodes = append(g.Nodes, graph.Node{
 			ID: TableID(t.Name), Kind: graph.KindTable, Label: t.Name, Module: DatabaseModule,
 			External: true,
-			Fields:   map[string]any{"columns": cols, "source": src},
+			Fields:   t.Fields(),
 		})
 	}
 	return g, nil
+}
+
+// Fields are a table node's fields: columns ([name, type, note] rows) and
+// source (the files that defined it, in apply order).
+func (t *Table) Fields() map[string]any {
+	cols := make([]any, 0, len(t.Columns))
+	for _, c := range t.Columns {
+		cols = append(cols, []any{c.Name, c.Type, c.Note})
+	}
+	src := make([]any, 0, len(t.Sources))
+	for _, f := range t.Sources {
+		src = append(src, f)
+	}
+	return map[string]any{"columns": cols, "source": src}
 }
 
 // DatabaseModuleFor returns the database module, with its path set to the

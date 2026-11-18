@@ -8,14 +8,53 @@ import (
 	"xorm.io/xorm"
 
 	"orm/app/db"
+	"orm/app/timeutil"
 )
 
 // xorm
 
-type Issue struct{ ID int64 }
-type Comment struct{ ID int64 }
+type Issue struct {
+	ID          int64
+	RepoID      int64       `xorm:"INDEX UNIQUE(s)"`
+	Repo        *Repository `xorm:"-"` // names RepoID's table
+	Index       int64       `xorm:"UNIQUE(s) 'idx'"`
+	Title       string      `xorm:"name"`
+	LabelID     int64       // label: a table by name
+	MilestoneID int64       // no milestone table
+	Created     timeutil.TimeStamp
+	Pinned      bool `xorm:"-"`
+	Stamps
+	cache string
+}
+
+// Stamps is embedded: its fields are the model's.
+type Stamps struct {
+	UpdatedUnix timeutil.TimeStamp
+}
+
+type Comment struct {
+	ID      int64 `xorm:"pk autoincr 'cid'"`
+	IssueID int64
+	Issue   *Issue `xorm:"-"`
+	RepoID  int64  // no Repo field: Issue's says repo means repository
+}
+
+// Label's columns come from the DDL in labelSchema, not the struct.
 type Label struct{ ID int64 }
+
+const labelSchema = `CREATE TABLE label (
+	id   INTEGER PRIMARY KEY,
+	name TEXT NOT NULL UNIQUE
+)`
+
 type IssueList []*Issue
+
+type Repository struct{ ID int64 }
+
+func GetRepo(id int64) (*Repository, error) { return db.GetByID[Repository](id) }
+
+// Unused is never a model: no table, no columns.
+type Unused struct{ ID int64 }
 
 type Source struct{ ID int64 }
 
@@ -60,8 +99,19 @@ func UpdateIssueTitle(i *Issue) error {
 
 // gorm
 
-type User struct{ ID int64 }
-type Category struct{ ID int64 }
+type User struct {
+	gorm.Model
+	Name       string `gorm:"column:full_name;not null"`
+	CategoryID uint   // plural convention: categories
+	Category   *Category
+	Secret     string `gorm:"-"`
+	Ignored    string `gorm:"-:all"`
+}
+
+type Category struct {
+	Code string `gorm:"primaryKey"`
+	ID   int64
+}
 
 func GetUser(g *gorm.DB, id int64) (*User, error) {
 	var u User
@@ -84,7 +134,11 @@ func Totals(g *gorm.DB) {
 
 type Book struct {
 	bun.BaseModel `bun:"table:library_books,alias:b"`
-	ID            int64
+	ID            int64  `bun:",pk,autoincrement"`
+	Title         string `bun:"book_title,notnull"`
+	AuthorID      int64
+	Author        *User `bun:"rel:belongs-to,join:author_id=id"`
+	Draft         bool  `bun:"-"`
 }
 
 func ListBooks(ctx context.Context, b *bun.DB) ([]Book, error) {

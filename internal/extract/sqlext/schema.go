@@ -241,10 +241,14 @@ func (s *Schema) tableElement(t *Table, def []token, alterAdd bool) {
 		}
 		return
 	case "KEY", "INDEX", "FULLTEXT", "SPATIAL":
-		for _, c := range parenNames(def, i) {
-			setNote(s.col(t, c), "index")
+		// MySQL's KEY name (cols); without a column list it's a column
+		// named key: "key TEXT PRIMARY KEY", "key varchar(64)".
+		if cols := parenNames(def, i); len(cols) > 0 {
+			for _, c := range cols {
+				setNote(s.col(t, c), "index")
+			}
+			return
 		}
-		return
 	case "CHECK", "EXCLUDE", "LIKE", "PERIOD":
 		return
 	}

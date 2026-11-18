@@ -113,6 +113,7 @@ CREATE INDEX ON audit_log (at);
 `)
 	s.Apply("3.sql", `-- +goose Up
 CREATE TABLE things (id int);
+CREATE TABLE kv (key TEXT PRIMARY KEY, index varchar(64));
 -- +goose Down
 DROP TABLE users;
 `)
@@ -122,6 +123,7 @@ DROP TABLE users;
 		"orders":    `[{"Name":"id","Type":"bigserial","Note":"pk"},{"Name":"user_id","Type":"uuid","Note":"→ users.id"},{"Name":"Note","Type":"text","Note":""},{"Name":"charge_id","Type":"text","Note":"unique"}]`,
 		"audit_log": `[{"Name":"at","Type":"timestamptz","Note":"index"},{"Name":"actor","Type":"uuid","Note":"→ users.id"}]`,
 		"things":    `[{"Name":"id","Type":"int","Note":""}]`,
+		"kv":        `[{"Name":"key","Type":"text","Note":"pk"},{"Name":"index","Type":"varchar(64)","Note":""}]`, // columns named like MySQL index keywords
 		"legacy":    "<missing>",
 		"audit":     "<missing>",
 	}
