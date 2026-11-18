@@ -977,6 +977,15 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       if (far.k > k) v = far;
       else break;
     }
+    // A focused path is read, not overviewed: never zoom out past where rows
+    // show, and start where the story starts, at its entry point on the left.
+    const st = getState();
+    if (st.focus && st.sel.length && v.k < FAR) {
+      const k = FAR * 1.05;
+      const x0 = Math.min(...d.boxes.map((b) => b.x)),
+        y0 = Math.min(...d.boxes.map((b) => b.y));
+      v = { k, x: pad - (x0 - 20) * k, y: top - (y0 - 20) * k };
+    }
     setState({ view: v });
   }, [drawerOpen]);
 

@@ -324,15 +324,12 @@ export function persistProposal(slug: string, ms = 400) {
 
 // ---- selection ----
 
-// BIG_MAP is how many boxes a map has before selecting a function or entry
-// point focuses on its path: past that, the path is lost among the rest.
-export const BIG_MAP = 40;
-
+// Selecting a function or entry point focuses on its path, on every map: the
+// story of one feature, laid out on its own.
 export function select(id: string | null) {
-  const s = get();
-  const m = modelOf(s);
-  const big = !!id && m.node.has(id) && m.boxes.length > BIG_MAP;
-  set({ sel: id ? [id] : [], hover: null, form: null, splitting: null, ...(id ? (big ? { focus: true } : {}) : { focus: false }) });
+  const m = modelOf(get());
+  const node = !!id && m.node.has(id) && get().mode !== 'propose'; // sketching needs the whole map
+  set({ sel: id ? [id] : [], hover: null, form: null, splitting: null, ...(id ? (node ? { focus: true } : {}) : { focus: false }) });
 }
 
 export function toggleMulti(id: string) {
