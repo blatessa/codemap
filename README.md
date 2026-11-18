@@ -24,5 +24,11 @@ go test ./...                                         # codemap
 ## Agent skill
 
 `skills/codemap/SKILL.md` teaches a coding agent to query the map and write proposals.
-For Claude Code, copy the folder to `~/.claude/skills/codemap/` (every project) or
-`<project>/.claude/skills/codemap/` (one project). The codemap binary must be on PATH.
+The repo is a Claude Code plugin and its own marketplace, so in Claude Code:
+
+```
+/plugin install codemap --marketplace blatessa/codemap
+```
+
+On versions before 2.1.275, run `/plugin marketplace add blatessa/codemap`, then
+`/plugin install codemap@codemap`. The `codemap` binary must be on PATH.

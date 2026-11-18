@@ -1,0 +1,12 @@
+{
+  "name": "codemap",
+  "owner": { "name": "blatessa" },
+  "description": "The codemap plugin",
+  "plugins": [
+    {
+      "name": "codemap",
+      "source": ".",
+      "description": "Query a codebase's architecture map and write proposals for the codemap viewer"
+    }
+  ]
+}

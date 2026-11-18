@@ -1,0 +1,5 @@
+{
+  "name": "codemap",
+  "description": "Query a codebase's architecture map and write proposals for the codemap viewer",
+  "author": { "name": "blatessa" }
+}
