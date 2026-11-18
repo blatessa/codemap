@@ -161,13 +161,15 @@ type TreeNode struct {
 }
 
 // Effect is an edge into the outside world: reads or writes a table,
-// publishes to a topic, calls an external service, fetches a route.
+// publishes to a topic, calls an external service, fetches a route, renders a
+// server-side screen.
 type Effect struct {
 	To   string `json:"to"`
 	Type string `json:"type"`
 }
 
-// IsEffect reports whether e is an effect edge.
+// IsEffect reports whether e is an effect edge. Rendering a screen is one;
+// rendering a component isn't.
 func (ix *Index) IsEffect(e *Edge) bool {
 	switch e.Type {
 	case Reads, Writes, Publishes, Fetches:
@@ -175,9 +177,19 @@ func (ix *Index) IsEffect(e *Edge) bool {
 	case Calls:
 		n := ix.Node[e.To]
 		return n != nil && n.External
+	case Renders:
+		n := ix.Node[e.To]
+		return n != nil && n.Kind == KindScreen
 	}
 	return false
 }
+
+// StopEffect reports whether e, an edge out of a node traces stop at (see
+// Stop), is an effect of the code calling that node. A shared function's
+// queries and calls are; a screen it renders (an error page, or a sign-in page
+// from auth middleware) isn't: a feature's screens are the ones its own code
+// names, or nearly every feature would list them.
+func (ix *Index) StopEffect(e *Edge) bool { return ix.IsEffect(e) && e.Type != Renders }
 
 // EffectsBeneath returns the effects reachable from id over calls and renders
 // edges that aren't wide, and through the routes it fetches, not going into support code or shared functions
@@ -213,7 +225,7 @@ func (ix *Index) EffectsBeneath(id string) []Effect {
 			seen[e.To] = true
 			if ix.Stop(e.To) {
 				for _, f := range ix.Out[e.To] {
-					if ix.IsEffect(f) {
+					if ix.StopEffect(f) {
 						if g := (Effect{f.To, f.Type}); !got[g] {
 							got[g] = true
 							out = append(out, g)

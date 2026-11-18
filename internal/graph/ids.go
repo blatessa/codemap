@@ -51,6 +51,10 @@ func TopicID(name string) string { return "topic:" + name }
 // ExternalID returns the ID of an external service.
 func ExternalID(name string) string { return "ext:" + name }
 
+// ScreenID returns the ID of a server-rendered screen (a template), by its
+// name below the templates directory, e.g. "repo/issue/list".
+func ScreenID(name string) string { return "screen:" + name }
+
 // TestID returns the ID of a test.
 func TestID(lang, id string) string { return "test:" + lang + ":" + id }
 

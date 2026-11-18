@@ -579,7 +579,7 @@ func ownEffects(ix *graph.Index, id string, common map[string]bool) []graph.Effe
 			seen[e.To] = true
 			if ix.Stop(e.To) {
 				for _, f := range ix.Out[e.To] {
-					if ix.IsEffect(f) {
+					if ix.StopEffect(f) {
 						add(f)
 					}
 				}

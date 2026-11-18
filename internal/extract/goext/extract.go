@@ -89,6 +89,7 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 			}
 		}
 	}
+	x.tmpl = findTemplates(root, cfg.Exclude)
 	for _, dir := range mods {
 		// One broken module (missing dependencies, a go.mod the go command
 		// rejects) shouldn't hide the rest of the repo.
@@ -97,6 +98,7 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 		}
 	}
 	x.addModelColumns()
+	x.addScreens()
 	return x.b.graph(), nil
 }
 
@@ -109,6 +111,7 @@ type extractor struct {
 	migTables   map[string]bool // table node IDs defined by migrations
 	ddl         *sqlext.Schema  // tables created by DDL in Go strings (ddl.go)
 	models      []modelTable    // ORM models' columns, applied once all tables are known
+	tmpl        *templates      // template files and their names (screens.go)
 }
 
 // findModules returns the directories under root holding a go.mod, skipping
@@ -257,6 +260,7 @@ func (x *extractor) extractModule(dir string) (err error) {
 	l.addGoDDL()
 	l.scanCalls()
 	l.collectModels()
+	l.scanRenders()
 	l.addRoutes()
 	l.addCommands()
 	return nil

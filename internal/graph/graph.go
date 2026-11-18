@@ -84,6 +84,7 @@ const (
 	KindTopic      = "topic"
 	KindService    = "service"
 	KindTest       = "test"
+	KindScreen     = "screen" // a server-rendered template
 )
 
 func (e Edge) key() string { return e.From + "\x00" + e.To + "\x00" + e.Type }

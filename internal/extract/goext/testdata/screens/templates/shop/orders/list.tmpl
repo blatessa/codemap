@@ -1,0 +1,3 @@
+{{template "partials/header" .}}
+<ul>{{range .Orders}}<li>{{template "order_row" .}}</li>{{end}}</ul>
+{{define "content"}}orders{{end}}
