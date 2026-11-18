@@ -133,7 +133,7 @@ func (a *routeAnalyzer) wrapperEval(call *ast.CallExpr, callee *types.Func, sc *
 		return nil
 	}
 	if firstParamString(sig) && verbOf(callee.Name()) == "" && len(call.Args) > 0 {
-		p, ok := sc.stringValue(call.Args[0])
+		p, ok := a.str(call.Args[0], sc)
 		if !ok {
 			return nil
 		}
@@ -171,7 +171,7 @@ func (a *routeAnalyzer) wrapperCall(call *ast.CallExpr, callee *types.Func, sc *
 	path := firstParamString(sig)
 	str := func(i int) (string, bool) {
 		if i < len(args) {
-			return sc.stringValue(args[i]) // a constant, or a local assigned once from one
+			return a.str(args[i], sc) // a constant, or a string expression over constants and bindings
 		}
 		return "", false
 	}

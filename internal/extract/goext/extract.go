@@ -640,8 +640,10 @@ func (l *load) addCallEdges() {
 }
 
 // closureCallees returns the repo functions a function literal (and the
-// literals nested in it) calls.
-func (l *load) closureCallees(lit *ast.FuncLit, p *packages.Package) []string {
+// literals nested in it) calls. Calls through captured variables declared at
+// the positions in skip are left out: the caller resolves those itself (a
+// route helper's handler parameter, bound to what its call site passes).
+func (l *load) closureCallees(lit *ast.FuncLit, p *packages.Package, skip map[token.Pos]bool) []string {
 	fn := l.ssaFor(lit, p)
 	if fn == nil {
 		return nil
@@ -652,6 +654,9 @@ func (l *load) closureCallees(lit *ast.FuncLit, p *packages.Package) []string {
 	visit = func(f *ssa.Function) {
 		if n := l.cg.Nodes[f]; n != nil {
 			for _, e := range n.Out {
+				if len(skip) > 0 && e.Site != nil && skip[capturedPos(e.Site.Common().Value)] {
+					continue
+				}
 				for _, t := range l.resolve(e.Callee.Func, 0) {
 					if id := l.idOf(t); id != "" && l.x.b.has(id) && !l.isTestCode(t) && !seen[id] {
 						seen[id] = true
@@ -666,6 +671,18 @@ func (l *load) closureCallees(lit *ast.FuncLit, p *packages.Package) []string {
 	}
 	visit(fn)
 	return out
+}
+
+// capturedPos returns the declaration position of the captured variable a
+// dynamic call goes through, or token.NoPos.
+func capturedPos(v ssa.Value) token.Pos {
+	if u, ok := v.(*ssa.UnOp); ok && u.Op == token.MUL {
+		v = u.X // a captured variable that's assigned to is a cell
+	}
+	if fv, ok := v.(*ssa.FreeVar); ok {
+		return fv.Pos()
+	}
+	return token.NoPos
 }
 
 // addTests adds a test node per TestXxx with direct calls edges to the

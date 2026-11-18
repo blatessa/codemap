@@ -2,6 +2,7 @@ package goext
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 )
 
@@ -62,6 +63,12 @@ func (h handlerSet) all() []string {
 // Method values on interface types and handlers stored in struct fields are not
 // resolved.
 func (l *load) resolveHandler(c *fnCtx, e ast.Expr, depth int) handlerSet {
+	return l.resolveHandlerSkip(c, e, depth, nil)
+}
+
+// resolveHandlerSkip is resolveHandler leaving out what function literals call
+// through the captured variables declared at the positions in skip.
+func (l *load) resolveHandlerSkip(c *fnCtx, e ast.Expr, depth int, skip map[token.Pos]bool) handlerSet {
 	var hs handlerSet
 	if e == nil || depth > 6 {
 		return hs
@@ -80,14 +87,14 @@ func (l *load) resolveHandler(c *fnCtx, e ast.Expr, depth int) handlerSet {
 	}
 	switch v := ast.Unparen(e).(type) {
 	case *ast.FuncLit:
-		hs.callees = l.closureCallees(v, c.p)
+		hs.callees = l.closureCallees(v, c.p, skip)
 	case *ast.Ident:
 		switch obj := info.Uses[v].(type) {
 		case *types.Func:
 			addFunc(obj)
 		case *types.Var:
 			if x, ok := c.exprs[obj]; ok && x != e && handlerish(obj.Type()) {
-				hs.merge(l.resolveHandler(c, x, depth+1))
+				hs.merge(l.resolveHandlerSkip(c, x, depth+1, skip))
 			}
 		}
 	case *ast.SelectorExpr:
@@ -103,18 +110,18 @@ func (l *load) resolveHandler(c *fnCtx, e ast.Expr, depth int) handlerSet {
 	case *ast.CallExpr:
 		if tv, ok := info.Types[v.Fun]; ok && tv.IsType() {
 			if len(v.Args) == 1 {
-				hs.merge(l.resolveHandler(c, v.Args[0], depth+1))
+				hs.merge(l.resolveHandlerSkip(c, v.Args[0], depth+1, skip))
 			}
 			return hs
 		}
 		if inner, ok := ast.Unparen(v.Fun).(*ast.CallExpr); ok {
-			hs.merge(l.resolveHandler(c, inner, depth+1)) // mw(cfg)(next)
+			hs.merge(l.resolveHandlerSkip(c, inner, depth+1, skip)) // mw(cfg)(next)
 		} else if f := staticCallee(info, v); f != nil {
 			addFunc(f)
 		}
 		for _, a := range v.Args {
 			if t := info.TypeOf(a); t != nil && handlerish(t) {
-				hs.merge(l.resolveHandler(c, a, depth+1))
+				hs.merge(l.resolveHandlerSkip(c, a, depth+1, skip))
 			}
 		}
 	}
