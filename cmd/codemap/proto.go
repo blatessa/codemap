@@ -68,7 +68,16 @@ type protoOut struct {
 	Common    []protoCommon   `json:"common"` // code most features pass through
 	Changes   *protoChanges   `json:"changes,omitempty"`
 	Modules   []protoModule   `json:"modules"`
+	Screens   []protoScreen   `json:"screens"`
 	Stats     map[string]any  `json:"stats"`
+}
+
+// protoScreen is a template the server renders, with the partials it includes.
+type protoScreen struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	File     string   `json:"file,omitempty"`
+	Partials []string `json:"partials"`
 }
 
 // protoModule is a package of the repo's own code and the modules it calls.
@@ -167,6 +176,14 @@ func buildProto(ix *graph.Index) protoOut {
 				}
 			}
 			out.Tables = append(out.Tables, t)
+		case graph.KindScreen:
+			sc := protoScreen{ID: n.ID, Name: n.Label, File: n.File, Partials: []string{}}
+			for _, e := range ix.Out[n.ID] {
+				if e.Type == graph.Renders {
+					sc.Partials = append(sc.Partials, e.To)
+				}
+			}
+			out.Screens = append(out.Screens, sc)
 		case graph.KindService, graph.KindTopic:
 			out.Externals = append(out.Externals, protoExternal{ID: n.ID, Kind: n.Kind, Label: n.Label})
 		}
