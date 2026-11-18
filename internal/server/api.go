@@ -40,16 +40,6 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// readRev accepts only the worktree for reads until the git layer lands.
-func readRev(w http.ResponseWriter, r *http.Request) bool {
-	rev := r.URL.Query().Get("rev")
-	if rev == "" || rev == "worktree" {
-		return true
-	}
-	writeError(w, http.StatusNotImplemented, fmt.Sprintf("rev %q: only the worktree is supported until the git layer lands", rev))
-	return false
-}
-
 // writeRev rejects writes for any rev other than the worktree.
 func writeRev(w http.ResponseWriter, r *http.Request) bool {
 	rev := r.URL.Query().Get("rev")
@@ -94,7 +84,8 @@ type stateResponse struct {
 }
 
 func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
-	if !readRev(w, r) {
+	if !isWorktree(r) {
+		s.handleRevState(w, r)
 		return
 	}
 	s.mu.RLock()
@@ -255,7 +246,8 @@ func (s *Server) afterWrite(graphToo bool) {
 }
 
 func (s *Server) handleListProposals(w http.ResponseWriter, r *http.Request) {
-	if !readRev(w, r) {
+	if !isWorktree(r) {
+		s.handleRevProposals(w, r)
 		return
 	}
 	s.mu.RLock()
@@ -410,9 +402,6 @@ func (s *Server) openInRoot(rel string) (*os.File, int, error) {
 }
 
 func (s *Server) handleSource(w http.ResponseWriter, r *http.Request) {
-	if !readRev(w, r) {
-		return
-	}
 	q := r.URL.Query()
 	rel, err := s.relPath(q.Get("file"))
 	if err != nil {
@@ -431,6 +420,10 @@ func (s *Server) handleSource(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "to must be a line number ≥ from")
 			return
 		}
+	}
+	if !isWorktree(r) {
+		s.handleRevSource(w, r, rel, from, to)
+		return
 	}
 	f, status, err := s.openInRoot(rel)
 	if err != nil {

@@ -30,6 +30,9 @@ func hexSum(h hash.Hash, n int) string { return hex.EncodeToString(h.Sum(nil)[:n
 
 func jsonUnmarshal(b []byte, v any) error { return json.Unmarshal(b, v) }
 
+// CacheRoot, if set, replaces $XDG_CACHE_HOME as the cache's base (for tests).
+var CacheRoot string
+
 // MaxBuilds is how many revisions build at the same time.
 const MaxBuilds = 2
 
@@ -41,7 +44,8 @@ type Progress func(sha, phase string)
 
 // Repo is a git repository codemap builds revisions of.
 type Repo struct {
-	Root     string // the worktree's top-level directory
+	Root     string // the directory codemap maps (may be below the top level)
+	Prefix   string // Root relative to the top level: "" or ending in "/"
 	CacheDir string // $XDG_CACHE_HOME/codemap/<repo-id>
 
 	// Extract runs the extractors. Nil uses build.Graph.
@@ -79,7 +83,10 @@ func Open(dir string) (*Repo, error) {
 	if err != nil {
 		return nil, ErrNotGit
 	}
-	base := os.Getenv("XDG_CACHE_HOME")
+	base := CacheRoot
+	if base == "" {
+		base = os.Getenv("XDG_CACHE_HOME")
+	}
 	if base == "" {
 		if base, err = os.UserCacheDir(); err != nil {
 			base = filepath.Join(os.TempDir(), "codemap-cache")
@@ -87,7 +94,8 @@ func Open(dir string) (*Repo, error) {
 	}
 	sum := sha256.Sum256([]byte(common))
 	id := filepath.Base(top) + "-" + hex.EncodeToString(sum[:6])
-	r := &Repo{Root: top, CacheDir: filepath.Join(base, "codemap", id), sem: make(chan struct{}, MaxBuilds), inflight: map[string]*call{}}
+	prefix, _ := gitLine(ctx, abs, "rev-parse", "--show-prefix")
+	r := &Repo{Root: abs, Prefix: prefix, CacheDir: filepath.Join(base, "codemap", id), sem: make(chan struct{}, MaxBuilds), inflight: map[string]*call{}}
 	if err := os.MkdirAll(r.CacheDir, 0o755); err != nil {
 		return nil, err
 	}
@@ -240,6 +248,7 @@ func (r *Repo) run(sha string, proj *project.Project, path string) (*graph.Graph
 		return nil, err
 	}
 	defer r.release(dir)
+	dir = filepath.Join(dir, filepath.FromSlash(r.Prefix))
 	r.linkNodeModules(dir, proj)
 	r.progress(sha, "extract")
 	extract := r.Extract

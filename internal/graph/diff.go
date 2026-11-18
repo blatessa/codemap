@@ -58,6 +58,7 @@ type Ref struct {
 	Kind   string `json:"kind"`
 	Label  string `json:"label"`
 	Module string `json:"module"`
+	Method string `json:"method,omitempty"` // fields.method, for routes
 }
 
 // DataRef is a node that gained or lost a reads or writes edge type.
@@ -233,7 +234,10 @@ func Diff(a, b *Graph, files []FileChange) *GraphDiff {
 	return d
 }
 
-func ref(n *Node) Ref { return Ref{ID: n.ID, Kind: n.Kind, Label: n.Label, Module: n.Module} }
+func ref(n *Node) Ref {
+	m, _ := n.Fields["method"].(string)
+	return Ref{ID: n.ID, Kind: n.Kind, Label: n.Label, Module: n.Module, Method: m}
+}
 
 func summarize(a, b *Graph, an, bn map[string]*Node, am, bm map[string]*Module, d *GraphDiff, mapID func(string) string) Summary {
 	var s Summary

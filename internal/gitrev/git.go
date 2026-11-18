@@ -90,7 +90,7 @@ func (r *Repo) MergeBase(ctx context.Context, a, b string) (string, error) {
 
 // Show returns a file's contents at a commit.
 func (r *Repo) Show(ctx context.Context, sha, file string) ([]byte, error) {
-	return git(ctx, r.Root, "show", sha+":"+filepath.ToSlash(file))
+	return git(ctx, r.Root, "show", sha+":./"+filepath.ToSlash(file))
 }
 
 // Project loads .codemap/ as it is at a commit, and returns a hash of the files
@@ -308,7 +308,7 @@ func (r *Repo) hasCommit(ctx context.Context, sha string) bool {
 // Changes returns the files that differ between commit a and b (b may be the
 // worktree), with -U0 hunk ranges and git's rename detection.
 func (r *Repo) Changes(ctx context.Context, a, b string) ([]graph.FileChange, error) {
-	args := []string{"diff", "-U0", "-M", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", a}
+	args := []string{"diff", "--relative", "-U0", "-M", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", a}
 	if !IsWorktree(b) {
 		args = append(args, b)
 	}
@@ -322,7 +322,7 @@ func (r *Repo) Changes(ctx context.Context, a, b string) ([]graph.FileChange, er
 // FileDiff returns the unified diff of one file between a and b (b may be the
 // worktree). Renames are followed when the file was renamed.
 func (r *Repo) FileDiff(ctx context.Context, a, b, file string, context int) ([]byte, error) {
-	args := []string{"diff", "-M", "--no-color", "--no-ext-diff", fmt.Sprintf("-U%d", context), a}
+	args := []string{"diff", "--relative", "-M", "--no-color", "--no-ext-diff", fmt.Sprintf("-U%d", context), a}
 	if !IsWorktree(b) {
 		args = append(args, b)
 	}

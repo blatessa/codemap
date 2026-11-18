@@ -18,6 +18,7 @@ commands:
   callers   print what calls a node
   module    print a module's contents and connections
   search    search labels, files and doc comments
+  diff      summarise what changed between two revisions (default HEAD..worktree)
   proposal  list, create or archive proposals
 `
 

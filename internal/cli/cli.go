@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -12,6 +13,7 @@ import (
 	"os"
 
 	"codemap/internal/build"
+	"codemap/internal/gitrev"
 	"codemap/internal/graph"
 	"codemap/internal/project"
 )
@@ -106,22 +108,34 @@ type Common struct {
 func (c *Common) Register(fs *flag.FlagSet) {
 	fs.StringVar(&c.Root, "root", ".", "repository root")
 	fs.StringVar(&c.Graph, "graph", "", "read this graph.json instead of running extractors")
-	fs.StringVar(&c.Rev, "rev", "worktree", "revision to query (only worktree for now)")
+	fs.StringVar(&c.Rev, "rev", "worktree", "revision to query: worktree, or a commit, branch or tag")
 	fs.BoolVar(&c.JSON, "json", false, "machine-readable output")
 }
 
-// CheckRev rejects revisions other than the worktree, which is all that is supported so far.
+// CheckRev rejects revisions other than the worktree, for commands that write.
 func (c *Common) CheckRev() error {
-	if c.Rev != "worktree" {
-		return fmt.Errorf("--rev %q: only \"worktree\" is supported for now", c.Rev)
+	if !gitrev.IsWorktree(c.Rev) {
+		return fmt.Errorf("--rev %q: this command only works on the worktree", c.Rev)
 	}
 	return nil
 }
 
-// Load builds the graph for the repo and indexes it.
+// Load builds the graph for the repo (at --rev) and indexes it.
 func (c *Common) Load() (*graph.Index, *project.Project, error) {
-	if err := c.CheckRev(); err != nil {
-		return nil, nil, err
+	if !gitrev.IsWorktree(c.Rev) {
+		if c.Graph != "" {
+			return nil, nil, errors.New("--graph and --rev can't be combined")
+		}
+		repo, err := gitrev.Open(c.Root)
+		if err != nil {
+			return nil, nil, fmt.Errorf("--rev %s: %w", c.Rev, err)
+		}
+		defer repo.Close()
+		g, p, err := repo.Build(context.Background(), c.Rev)
+		if err != nil {
+			return nil, nil, err
+		}
+		return graph.NewIndex(g), p, nil
 	}
 	g, p, err := build.Load(c.Root, build.Options{GraphFile: c.Graph})
 	if errors.Is(err, build.ErrNoExtractors) {
