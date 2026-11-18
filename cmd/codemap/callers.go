@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"codemap/internal/cli"
+	"github.com/blatessa/codemap/internal/cli"
 )
 
 func init() {

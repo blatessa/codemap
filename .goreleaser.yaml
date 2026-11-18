@@ -1,0 +1,25 @@
+version: 2
+
+# Release binaries for `install.sh` and the GitHub releases page. The viewer
+# (internal/web/dist) and the TypeScript extractor bundle are committed, so a
+# plain Go build includes them.
+builds:
+  - main: ./cmd/codemap
+    binary: codemap
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: [-s -w -X main.version={{.Version}}]
+
+archives:
+  - formats: [tar.gz]
+    name_template: "codemap_{{ .Os }}_{{ .Arch }}"
+    files: [README.md, LICENSE*]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc

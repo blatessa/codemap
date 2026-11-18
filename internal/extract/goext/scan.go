@@ -12,9 +12,9 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"codemap/internal/extract/sqlext"
-	"codemap/internal/graph"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/extract/sqlext"
+	"github.com/blatessa/codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // DefaultDBMethods are the method names whose first constant string argument

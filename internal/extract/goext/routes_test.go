@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"codemap/internal/graph"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 func TestRouters(t *testing.T) {

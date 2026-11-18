@@ -12,8 +12,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"codemap/internal/cli"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/cli"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 func init() {

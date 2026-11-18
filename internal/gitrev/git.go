@@ -18,8 +18,8 @@ import (
 	"testing/fstest"
 	"time"
 
-	"codemap/internal/graph"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // Worktree is the rev name for the working directory, uncommitted changes included.

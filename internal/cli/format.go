@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 // Name is how a node is shown in trees and lists:

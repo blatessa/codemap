@@ -26,6 +26,7 @@ import (
 	"go/types"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -38,9 +39,9 @@ import (
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
 
-	"codemap/internal/extract/sqlext"
-	"codemap/internal/graph"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/extract/sqlext"
+	"github.com/blatessa/codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // Logf reports problems that don't stop extraction (packages with type errors,
@@ -75,6 +76,10 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 	mods, err := findModules(root, cfg)
 	if err != nil {
 		return nil, err
+	}
+	if _, err := exec.LookPath("go"); err != nil && len(mods) > 0 {
+		Logf("Go is not installed, so Go code is not mapped; install Go to include it")
+		mods = nil
 	}
 	for _, dir := range mods {
 		if data, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil {

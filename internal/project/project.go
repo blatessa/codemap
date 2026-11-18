@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 // Dir is the name of the per-repo state directory.

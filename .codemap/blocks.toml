@@ -27,5 +27,5 @@ files = ['viewer/src/revs.ts', 'viewer/src/Compare.tsx']
 [[block]]
 id = 'block:goext-routes'
 name = 'goext · routes'
-from = 'mod:go:codemap/internal/extract/goext'
+from = 'mod:go:github.com/blatessa/codemap/internal/extract/goext'
 files = ['internal/extract/goext/routes.go', 'internal/extract/goext/handlers.go']

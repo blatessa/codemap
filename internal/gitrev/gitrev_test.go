@@ -10,9 +10,9 @@ import (
 	"sync"
 	"testing"
 
-	"codemap/internal/build"
-	"codemap/internal/extract/goext"
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/build"
+	"github.com/blatessa/codemap/internal/extract/goext"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 func TestMain(m *testing.M) {

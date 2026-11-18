@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"codemap/internal/graph"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // TestRealRepos runs the extractor on repos listed in CODEMAP_REAL_REPOS

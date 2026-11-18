@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"codemap/internal/cli"
+	"github.com/blatessa/codemap/internal/cli"
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files in testdata/golden")

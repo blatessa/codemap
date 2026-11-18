@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"syscall"
 
-	"codemap/internal/build"
-	"codemap/internal/server"
-	"codemap/internal/web"
+	"github.com/blatessa/codemap/internal/build"
+	"github.com/blatessa/codemap/internal/server"
+	"github.com/blatessa/codemap/internal/web"
 )
 
 func init() { commands["serve"] = runServe }

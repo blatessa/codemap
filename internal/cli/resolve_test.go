@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"codemap/internal/build"
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/build"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 func shopIndex(t *testing.T) *graph.Index {

@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"time"
 
-	"codemap/internal/gitrev"
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/gitrev"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 // BuildTimeout is how long a request waits for a revision to build before

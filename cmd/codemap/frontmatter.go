@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // setFrontmatter sets top-level string keys in a proposal file's TOML

@@ -13,7 +13,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // Event is one server-sent event.

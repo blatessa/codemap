@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
-	"codemap/internal/build"
-	"codemap/internal/cli"
-	"codemap/internal/gitrev"
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/build"
+	"github.com/blatessa/codemap/internal/cli"
+	"github.com/blatessa/codemap/internal/gitrev"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 func init() {

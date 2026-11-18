@@ -3,7 +3,7 @@ package goext
 import (
 	"strings"
 
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 // builder accumulates a partial graph: modules and nodes by ID (first one wins),

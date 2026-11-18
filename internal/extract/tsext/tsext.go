@@ -24,9 +24,9 @@ import (
 	"strings"
 	"sync"
 
-	"codemap/internal/extract/sqlext"
-	"codemap/internal/graph"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/extract/sqlext"
+	"github.com/blatessa/codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 //go:embed extractor.js.gz

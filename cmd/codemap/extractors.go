@@ -1,9 +1,9 @@
 package main
 
 import (
-	"codemap/internal/build"
-	"codemap/internal/extract/goext"
-	"codemap/internal/extract/tsext"
+	"github.com/blatessa/codemap/internal/build"
+	"github.com/blatessa/codemap/internal/extract/goext"
+	"github.com/blatessa/codemap/internal/extract/tsext"
 )
 
 func init() {

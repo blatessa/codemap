@@ -1,22 +1,22 @@
 [[area]]
 name = 'Command line'
-modules = ['mod:go:codemap/cmd/codemap', 'mod:go:codemap/internal/cli']
+modules = ['mod:go:github.com/blatessa/codemap/cmd/codemap', 'mod:go:github.com/blatessa/codemap/internal/cli']
 
 [[area]]
 name = 'Extraction'
-modules = ['mod:go:codemap/internal/build', 'mod:go:codemap/internal/extract/goext', 'block:goext-routes', 'mod:go:codemap/internal/extract/sqlext', 'mod:go:codemap/internal/extract/tsext', 'mod:ts:extractor-ts/src']
+modules = ['mod:go:github.com/blatessa/codemap/internal/build', 'mod:go:github.com/blatessa/codemap/internal/extract/goext', 'block:goext-routes', 'mod:go:github.com/blatessa/codemap/internal/extract/sqlext', 'mod:go:github.com/blatessa/codemap/internal/extract/tsext', 'mod:ts:extractor-ts/src']
 
 [[area]]
 name = 'Map data'
-modules = ['mod:go:codemap/internal/graph', 'mod:go:codemap/internal/project']
+modules = ['mod:go:github.com/blatessa/codemap/internal/graph', 'mod:go:github.com/blatessa/codemap/internal/project']
 
 [[area]]
 name = 'Git history'
-modules = ['mod:go:codemap/internal/gitrev']
+modules = ['mod:go:github.com/blatessa/codemap/internal/gitrev']
 
 [[area]]
 name = 'Viewer'
-modules = ['mod:go:codemap/internal/server', 'block:viewer-map', 'block:viewer-panels', 'block:viewer-state', 'block:viewer-compare']
+modules = ['mod:go:github.com/blatessa/codemap/internal/server', 'block:viewer-map', 'block:viewer-panels', 'block:viewer-state', 'block:viewer-compare']
 
 [[area]]
 name = 'Viewer dev'

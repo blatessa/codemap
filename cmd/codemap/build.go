@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"codemap/internal/build"
+	"github.com/blatessa/codemap/internal/build"
 )
 
 func init() { commands["build"] = runBuild }

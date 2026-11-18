@@ -8,8 +8,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"codemap/internal/cli"
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/cli"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 func init() {

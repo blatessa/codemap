@@ -3,7 +3,7 @@ package sqlext
 import (
 	"strings"
 
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 // Access is one table a query touches.

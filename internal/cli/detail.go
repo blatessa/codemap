@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 // Detail levels for trees, as in the viewer: features shows a feature's spine,

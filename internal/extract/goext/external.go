@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // extService maps an import path prefix to an external service node.

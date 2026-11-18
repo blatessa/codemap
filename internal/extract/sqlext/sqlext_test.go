@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 func accesses(q string) string {

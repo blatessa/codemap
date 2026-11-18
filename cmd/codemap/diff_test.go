@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"codemap/internal/gitrev"
+	"github.com/blatessa/codemap/internal/gitrev"
 )
 
 func TestDiffCommand(t *testing.T) {

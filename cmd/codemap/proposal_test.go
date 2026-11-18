@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"codemap/internal/cli"
+	"github.com/blatessa/codemap/internal/cli"
 )
 
 // TestProposalGolden runs proposal list, new and archive on a temp copy of the

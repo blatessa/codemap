@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 var httpMethods = map[string]bool{

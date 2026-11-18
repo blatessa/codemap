@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"codemap/internal/graph"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // DatabaseModule is the module every table node belongs to.

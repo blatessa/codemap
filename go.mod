@@ -1,4 +1,4 @@
-module codemap
+module github.com/blatessa/codemap
 
 go 1.27.3
 

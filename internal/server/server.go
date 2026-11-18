@@ -22,10 +22,10 @@ import (
 	"testing/fstest"
 	"time"
 
-	"codemap/internal/build"
-	"codemap/internal/gitrev"
-	"codemap/internal/graph"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/build"
+	"github.com/blatessa/codemap/internal/gitrev"
+	"github.com/blatessa/codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // Options configures a Server.

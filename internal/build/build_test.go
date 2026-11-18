@@ -3,7 +3,7 @@ package build
 import (
 	"testing"
 
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 func TestLoadFromGraphFile(t *testing.T) {

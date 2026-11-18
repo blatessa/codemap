@@ -5,7 +5,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 func TestLoadFSAndProposals(t *testing.T) {

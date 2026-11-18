@@ -19,9 +19,9 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
-	"codemap/internal/build"
-	"codemap/internal/graph"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/build"
+	"github.com/blatessa/codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 func newHash() hash.Hash { return sha256.New() }

@@ -9,8 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"codemap/internal/graph"
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // Version is part of the cache key for revision graphs (internal/gitrev). Bump

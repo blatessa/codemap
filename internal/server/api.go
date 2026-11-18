@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 const maxBody = 10 << 20

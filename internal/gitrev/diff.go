@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"codemap/internal/graph"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 // Range is a resolved comparison: From is a commit sha, To is a sha or "worktree".

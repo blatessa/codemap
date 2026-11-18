@@ -18,7 +18,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"codemap/internal/project"
+	"github.com/blatessa/codemap/internal/project"
 )
 
 // setup copies testdata/shop and shop.expected.json into a temp dir and
