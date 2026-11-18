@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { bigGraph } from './synth';
 
 const node = (page: Page, id: string) => page.locator(`[data-node="${id}"]`).first();
 const mod = (page: Page, id: string) => page.locator(`#map [data-mod="${id}"]`);
@@ -324,4 +325,65 @@ test('a module shows its public functions, and +N internal expands it', async ({
   await expect(more).toHaveText('− 3 internal');
   await more.click();
   await expect(page.locator(`#map [data-node="${writeJSON}"]`)).toHaveCount(0);
+});
+
+// ---- folder groups, on a synthetic map too big to show whole ----
+
+async function openBig(page: Page) {
+  await page.request.put('/__mock/load', { data: bigGraph() });
+  await page.goto('/');
+  await expect(page.locator('#map [data-box]').first()).toBeVisible();
+}
+const box = (page: Page, id: string) => page.locator(`#map [data-box="${id}"]`);
+
+test('a big map folds folders into groups that open and close in place', async ({ page }) => {
+  await openBig(page);
+  const plugins = 'group:internal/plugins';
+  await expect(box(page, plugins)).toBeVisible();
+  await expect(box(page, 'group:internal/reader')).toBeVisible();
+  await expect(box(page, 'mod:go:big/internal/api')).toBeVisible();
+  await expect(box(page, 'mod:go:big/internal/plugins/p5')).toHaveCount(0);
+  const before = await box(page, 'mod:go:big/internal/api').boundingBox();
+
+  await page.locator(`#map [data-mod="${plugins}"]`).dblclick();
+  await expect(page.locator(`#map [data-group-box="${plugins}"]`)).toBeVisible();
+  await expect(box(page, 'mod:go:big/internal/plugins/p5')).toBeVisible();
+  await expect(box(page, plugins)).toHaveCount(0);
+  // open groups are view state: saved views keep them
+  await page.locator('#viewsbtn').click();
+  await page.locator('#v-name').fill('plugins open');
+  await page.locator('#v-name').press('Enter');
+  await expect
+    .poll(async () => (await state(page)).project.views.find((v: { name: string }) => v.name === 'plugins open')?.expanded)
+    .toEqual([plugins]);
+  await page.keyboard.press('Escape');
+
+  await page.locator(`#map [data-group-box="${plugins}"] [data-gtoggle]`).click();
+  await expect(box(page, plugins)).toBeVisible();
+  await expect(box(page, 'mod:go:big/internal/plugins/p5')).toHaveCount(0);
+  // closing puts the map back where it was
+  expect(await box(page, 'mod:go:big/internal/api').boundingBox()).toEqual(before);
+});
+
+test('a traced path opens the groups it runs through', async ({ page }) => {
+  await openBig(page);
+  await search(page, '/feed');
+  await expect(node(page, 'route:GET /feed')).toHaveClass(/\bsel\b/);
+  // the path runs api -> reader/r0 -> plugins/p3: both groups open, showing only what's on it
+  await expect(page.locator('#map [data-group-box="group:internal/reader"]')).toBeVisible();
+  await expect(page.locator('#map [data-group-box="group:internal/plugins"]')).toHaveClass(/\breveal\b/);
+  await expect(box(page, 'mod:go:big/internal/plugins/p3')).toBeVisible();
+  await expect(box(page, 'mod:go:big/internal/plugins/p5')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(box(page, 'group:internal/plugins')).toBeVisible();
+  await expect(box(page, 'mod:go:big/internal/plugins/p3')).toHaveCount(0);
+});
+
+test('search opens the group holding the hit', async ({ page }) => {
+  await openBig(page);
+  await expect(box(page, 'group:internal/reader')).toBeVisible();
+  await search(page, 'r7.Parse');
+  await expect(node(page, 'go:big/internal/reader/r7.Parse')).toHaveClass(/\bsel\b/);
+  await expect(node(page, 'go:big/internal/reader/r7.Parse')).toBeVisible();
+  await expect(page.locator('#map [data-group-box="group:internal/reader"]')).toBeVisible();
 });

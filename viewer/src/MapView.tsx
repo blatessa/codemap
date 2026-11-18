@@ -201,7 +201,13 @@ function buildDisp(
         return { id: c, w: sc.w, h: sc.h, entry: cg!.box.hasEntry };
       }
       const b = cg ? cg.box : m.box.get(c)!;
-      return { id: c, w: b.w, h: layoutH(b), entry: b.hasEntry };
+      // zoomed in, an open group makes room for the rows its boxes show
+      let h = layoutH(b);
+      if (!k && !cg) {
+        const v = visible(b);
+        h = collapsed.has(b.id) ? HEAD : heightOf(v.rows.length, v.more > 0);
+      }
+      return { id: c, w: b.w, h, entry: b.hasEntry };
     });
     const kidOf = new Map<string, string>();
     for (const c of kids) for (const b of isGroup(c) ? G!.groups.get(c)!.members : [c]) kidOf.set(b, c);

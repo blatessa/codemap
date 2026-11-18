@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { blockFor, escapeGlob, globMatch, pathMatch } from './blocks';
 import { classify, humanize } from './fields';
+import { GROUP_AT, buildGrouping, chain } from './groups';
 import { buildModel, selectionOf, testsReaching } from './model';
 import type { Graph } from './types';
 
@@ -155,5 +156,47 @@ describe('public rows and shared modules', () => {
     // calling out to two other modules makes it part of the flow instead
     edges.push({ from: 'core.F', to: 'a.F', type: 'calls' }, { from: 'core.F', to: 'd.F', type: 'calls' });
     expect(buildModel({ version: 1, modules: mods, nodes, edges }, [], null).box.get('mod:core')!.shared).toBe(false);
+  });
+});
+
+describe('folder groups', () => {
+  const graph = (paths: string[]): Graph => ({
+    version: 1,
+    modules: paths.map((p) => ({ id: 'mod:' + p, label: p, path: p })),
+    nodes: paths.map((p) => ({ id: p + '.F', kind: 'function', label: 'F', module: 'mod:' + p })),
+    edges: [],
+  });
+  const group = (paths: string[], keep: string[] = []) => {
+    const m = buildModel(graph(paths), [], null);
+    return buildGrouping(m.boxes, m.box, new Set(keep));
+  };
+  const many = (dir: string, n: number) => Array.from({ length: n }, (_, i) => `${dir}/p${i}`);
+
+  test('small maps are left alone', () => {
+    expect(group(many('internal', GROUP_AT))).toBeNull();
+  });
+
+  test('big folders of similar packages fold; the rest shows', () => {
+    const top = ['cmd/app', 'internal/api', 'internal/store', 'internal/auth', 'internal/a', 'internal/b', 'internal/c', 'internal/d', 'internal/e'];
+    const G = group([...top, ...many('internal/reader', 20), ...many('internal/integration', 25), 'internal/http/request', 'internal/http/response'])!;
+    expect(G.top.filter((id) => id.startsWith('group:')).sort()).toEqual(['group:internal/integration', 'group:internal/reader']);
+    for (const p of top) expect(G.top).toContain('mod:' + p);
+    // small folders open
+    expect(G.top).toContain('mod:internal/http/request');
+    expect(G.groups.get('group:internal/reader')!.members).toHaveLength(20);
+    expect(chain(G, 'mod:internal/reader/p3')).toEqual(['group:internal/reader']);
+    expect(G.top.length).toBeLessThanOrEqual(GROUP_AT);
+  });
+
+  test('a one-child chain reads as one path, for TS directories too', () => {
+    const G = group([...many('frontend/apps/site/app/components', 30), 'frontend/apps/site/app/hooks', 'backend/main'])!;
+    expect([...G.groups.keys()]).toContain('group:frontend/apps/site/app/components');
+    expect([...G.groups.keys()].some((k) => k === 'group:frontend' || k === 'group:frontend/apps')).toBe(false);
+  });
+
+  test('kept modules (in an area, or shared) never fold', () => {
+    const G = group([...many('internal/reader', 20), ...many('internal/plugins', 20)], ['mod:internal/reader/p7'])!;
+    expect(G.top).toContain('mod:internal/reader/p7');
+    expect(G.groups.get('group:internal/reader')!.members).not.toContain('mod:internal/reader/p7');
   });
 });
