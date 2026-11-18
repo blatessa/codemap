@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { bigGraph } from './synth';
+import { areasGraph, bigGraph } from './synth';
 
 // One test per thing a programmer comes to codemap for, against the mock API
 // serving testdata/shop. Details belong in unit tests.
@@ -148,4 +148,19 @@ test('when an agent changes areas.toml, the open map lays out again with the new
     return !!a && !!b && b.x >= a.x && b.y >= a.y && b.x + b.width <= a.x + a.width + 1 && b.y + b.height <= a.y + a.height + 1;
   };
   await expect.poll(inside).toBe(true);
+});
+
+test('on a map too big for one layout pass, areas keep their modules together and never overlap', async ({ page }) => {
+  const { graph, areas } = areasGraph();
+  await page.request.put('/__mock/load', { data: graph });
+  await page.request.put('/api/project/areas', { data: areas });
+  await page.goto('/#rev=worktree');
+  const rects = page.locator('#map [data-area-box] .arect');
+  await expect(rects).toHaveCount(areas.length);
+  const rs = await rects.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON() as DOMRect));
+  for (let i = 0; i < rs.length; i++)
+    for (let j = i + 1; j < rs.length; j++) {
+      const [a, b] = [rs[i], rs[j]];
+      expect(a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height, `areas ${i} and ${j} overlap`).toBe(false);
+    }
 });

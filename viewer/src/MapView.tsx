@@ -60,6 +60,7 @@ export interface ARect {
   w: number;
   h: number;
   empty: boolean;
+  fa?: number; // far mode: this area's title size
 }
 export interface Disp {
   boxes: DBox[];
@@ -109,6 +110,10 @@ export function farHeight(fh: number, k: number) {
   return Math.max(FARH, Math.min(Math.max(FARH, fh + 20), fs + fn * 1.2 + fs * 1.25));
 }
 const areaTop = (fa: number | null) => (fa ? Math.max(44, fa * 1.6 + 8) : 44);
+// areaFont is an area title's far-mode size: about 13.5px on screen, but no
+// wider than the area was laid out, so a title never stretches its area over a
+// neighbour (layout reserves room for the title at 13).
+const areaFont = (name: string, w: number, fa: number) => Math.max(13, Math.min(fa, w / (name.length * SANS + 1.4)));
 
 export function areaRect(a: Area, byId: Map<string, DBox>, pos: Record<string, [number, number]>, top = 44): ARect | null {
   const ms = (a.modules ?? []).map((id) => byId.get(id)).filter((d): d is DBox => !!d);
@@ -400,7 +405,12 @@ function buildDisp(
   const out: Disp['areas'] = [];
   let bottom = boxes.length ? Math.max(...boxes.map((d) => d.y + d.fullH)) + 60 : 80;
   for (const a of areas) {
-    let r = dragBox?.frozen.get(a.name) ?? areaRect(a, byId, pos, top);
+    let r = dragBox?.frozen.get(a.name) ?? areaRect(a, byId, pos);
+    if (r && k && !r.empty && r.fa === undefined) {
+      const fa = areaFont(a.name, r.w, farArea(k)),
+        t = areaTop(fa);
+      r = { ...r, y: r.y + 44 - t, h: r.h - 44 + t, fa };
+    }
     if (focusOn && (!r || r.empty)) continue;
     if (!r && !(a.modules ?? []).some((id) => m.box.has(id))) {
       r = { x: 20, y: bottom, w: 260, h: 140, empty: true };
@@ -452,7 +462,10 @@ function declutter(boxes: DBox[], edges: MEdge[], row: Disp['row'], areas: Disp[
   const placed: R[] = [];
   const hit = (r: R) => placed.some((q) => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1]);
   const fa = farArea(k);
-  for (const { a, r } of areas) placed.push([r.x + fa * 0.7, r.y + fa * 0.25, r.x + fa * 0.7 + a.name.length * fa * SANS, r.y + fa * 1.4]);
+  for (const { a, r } of areas) {
+    const f = r.fa ?? fa;
+    placed.push([r.x + f * 0.7, r.y + f * 0.25, r.x + f * 0.7 + a.name.length * f * SANS, r.y + f * 1.4]);
+  }
   for (const { g, r } of groups) placed.push([r.x + fa * 0.7, r.y + fa * 0.25, r.x + fa * 2.1 + g.path.length * fa * SANS, r.y + fa * 1.4]);
   const nb = new Map<DBox, Set<DBox>>();
   for (const e of edges) {
@@ -601,7 +614,8 @@ const Edges = memo(function Edges({ disp, S, shown }: { disp: Disp; S: Sel | nul
   );
 });
 
-const AreaG = memo(function AreaG({ a, r, sel, drop, fa }: { a: Area; r: ARect; sel: boolean; drop: boolean; fa: number | null }) {
+const AreaG = memo(function AreaG({ a, r, sel, drop, fa: far }: { a: Area; r: ARect; sel: boolean; drop: boolean; fa: number | null }) {
+  const fa = far && (r.fa ?? far);
   const hh = fa ? fa * 1.6 : 34;
   // an area is always wide enough for its name
   const w = Math.max(r.w, a.name.length * (fa ?? 13) * SANS + (fa ? fa * 1.4 : 32));

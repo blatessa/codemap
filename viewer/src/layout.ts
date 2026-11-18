@@ -17,6 +17,10 @@ export interface LBox {
 }
 export type Pos = Record<string, [number, number]>;
 
+// ELK_MAX is the most boxes handed to ELK in one pass; past it ELK gets slow and
+// its layers very tall, so that pass is laid out in columns instead.
+const ELK_MAX = 150;
+
 // AREA_PAD matches how areas are drawn around their members (see MapView).
 const AREA_PAD = '[top=44,left=20,bottom=20,right=20]';
 
@@ -53,12 +57,12 @@ function flowOrder(boxes: LBox[], links: [string, string][]): { order: Map<strin
 // columnLayout is the fallback for very large maps, where ELK gets slow and its
 // layers get very tall: boxes go in columns by distance from the entry points,
 // and a column wraps when it gets taller than a roughly 16:9 map would allow.
-function columnLayout(todo: LBox[], rank: Map<string, number>, areaOf: Map<string, string>, minH = 1200, GAPX = 70, GAPY = 28): Pos {
+function columnLayout(todo: LBox[], rank: Map<string, number>, minH = 1200, GAPX = 70, GAPY = 28): Pos {
   const maxRank = Math.max(0, ...[...rank.values()]);
   const col = (b: LBox) => (b.external ? maxRank + 2 : rank.get(b.id) ?? maxRank + 1);
   const area = todo.reduce((s, b) => s + (b.w + GAPX) * (b.h + GAPY), 0);
   const maxH = Math.max(minH, ...todo.map((b) => b.h), Math.sqrt((area * 9) / 16));
-  const sorted = [...todo].sort((a, b) => col(a) - col(b) || (areaOf.get(a.id) ?? '~').localeCompare(areaOf.get(b.id) ?? '~') || a.id.localeCompare(b.id));
+  const sorted = [...todo].sort((a, b) => col(a) - col(b) || a.id.localeCompare(b.id));
   const out: Pos = {};
   let x = 0,
     y = 0,
@@ -87,7 +91,7 @@ export function innerLayout(items: LBox[], links: [string, string][]): { pos: Po
   const inner = links.filter(([a, b]) => a !== b && ids.has(a) && ids.has(b));
   const { order, rank } = flowOrder(items, inner);
   const sorted = [...items].sort((a, b) => order.get(a.id)! - order.get(b.id)!);
-  const pos = columnLayout(sorted, rank, new Map(), 0, 50, 24);
+  const pos = columnLayout(sorted, rank, 0, 50, 24);
   let w = 0,
     h = 0;
   for (const b of items) {
@@ -151,11 +155,6 @@ async function layoutFlow(
   order: Map<string, number>,
   rank: Map<string, number>,
 ): Promise<Pos> {
-  if (todo.length > 150) {
-    const areaOf = new Map<string, string>();
-    for (const a of areas) for (const m of a.modules) if (!areaOf.has(m)) areaOf.set(m, a.name);
-    return columnLayout(todo, rank, areaOf);
-  }
   const ids = new Set(todo.map((b) => b.id));
   const parent = new Map<string, string>();
   const children: ElkNode[] = [];
@@ -169,6 +168,8 @@ async function layoutFlow(
     children.push(g);
     mine.forEach((m) => parent.set(m, g.id));
   }
+  // Without areas there's nothing to split the work: very large maps go in columns.
+  if (!groups.size && todo.length > ELK_MAX) return columnLayout(todo, rank);
   for (const b of todo) {
     const n: ElkNode = { id: b.id, width: b.w, height: b.h };
     const p = parent.get(b.id);
@@ -183,7 +184,7 @@ async function layoutFlow(
     m.set(b, (m.get(b) ?? 0) + 1);
   }
   const big = todo.length > 60;
-  const perBox = todo.length > 150 ? 2 : 3;
+  const perBox = todo.length > ELK_MAX ? 2 : 3;
   const edges: ElkExtendedEdge[] = [];
   for (const b of todo) {
     const outs = [...(weight.get(b.id) ?? [])].sort((x, y) => y[1] - x[1] || order.get(x[0])! - order.get(y[0])!);
@@ -206,12 +207,19 @@ async function layoutFlow(
   // Two passes, so calls between areas don't pull an area's modules apart:
   // each area is laid out on its own into a compact rectangle, then the areas
   // and the loose boxes are laid out together, with calls between areas
-  // counted once per pair.
+  // counted once per pair. This holds for big maps too: only a pass with more
+  // than ELK_MAX boxes falls back to columns, and only for that pass, so an
+  // area's modules always stay together.
   const elk = getElk();
+  const byId = new Map(todo.map((b) => [b.id, b]));
   const inner = new Map<string, { pos: Pos; w: number; h: number }>();
   await Promise.all(
     [...groups.values()].map(async (g) => {
       const kids = new Set(g.children!.map((c) => c.id));
+      if (kids.size > ELK_MAX) {
+        inner.set(g.id, innerLayout([...kids].map((k) => byId.get(k)!), links));
+        return;
+      }
       const es = edges.filter((e) => kids.has(e.sources[0]) && kids.has(e.targets[0]));
       const r = await elk.layout({ id: g.id, layoutOptions: { ...opts, 'elk.padding': '[top=0,left=0,bottom=0,right=0]' }, children: g.children, edges: es });
       const pos: Pos = {};
@@ -241,7 +249,9 @@ async function layoutFlow(
     seen.add(a + '>' + b);
     topEdges.push({ id: 't' + topEdges.length, sources: [a], targets: [b] });
   }
-  const res = await elk.layout({ id: 'root', layoutOptions: opts, children: top, edges: topEdges });
+  let res: ElkNode =
+    top.length > ELK_MAX ? columnTop(top, topEdges) : await elk.layout({ id: 'root', layoutOptions: opts, children: top, edges: topEdges });
+  if (todo.length > ELK_MAX) res = wrapRows(res);
   const out: Pos = {};
   for (const c of res.children ?? []) {
     const x = c.x ?? 0,
@@ -251,6 +261,47 @@ async function layoutFlow(
     else if (ids.has(c.id)) out[c.id] = [Math.round(x), Math.round(y)];
   }
   return pack(out, todo, links, parent);
+}
+
+// columnTop places the top pass (areas as single boxes, plus loose boxes) in
+// columns when there are too many for ELK, in the shape ELK would return.
+function columnTop(top: ElkNode[], edges: ElkExtendedEdge[]): ElkNode {
+  const bs: LBox[] = top.map((c) => ({ id: c.id, w: c.width ?? 0, h: c.height ?? 0 }));
+  const { pos } = innerLayout(bs, edges.map((e) => [e.sources[0], e.targets[0]]));
+  return { id: 'root', children: top.map((c) => ({ ...c, x: pos[c.id][0], y: pos[c.id][1] })) };
+}
+
+// wrapRows breaks a big map's top pass that came out much wider than a screen
+// (a long chain of areas) into rows, keeping its left-to-right order.
+function wrapRows(res: ElkNode): ElkNode {
+  const cs = res.children ?? [];
+  const w = Math.max(0, ...cs.map((c) => (c.x ?? 0) + (c.width ?? 0))),
+    h = Math.max(1, ...cs.map((c) => (c.y ?? 0) + (c.height ?? 0)));
+  if (cs.length < 3 || w / h < 3) return res;
+  const GAP = 90;
+  const area = cs.reduce((s, c) => s + ((c.width ?? 0) + GAP) * ((c.height ?? 0) + GAP), 0);
+  const maxW = Math.max(Math.sqrt(area * 1.7), ...cs.map((c) => c.width ?? 0));
+  // Zoomed out to fit, area titles keep a readable size on screen and grow up
+  // past the room layout reserves, by about 1.2% of the map's width; rows leave
+  // room for that.
+  const rowGap = Math.max(GAP, maxW * 0.025);
+  const sorted = [...cs].sort((a, b) => (a.x ?? 0) - (b.x ?? 0) || (a.y ?? 0) - (b.y ?? 0));
+  let x = 0,
+    y = 0,
+    rowH = 0;
+  const out: ElkNode[] = [];
+  for (const c of sorted) {
+    const cw = c.width ?? 0;
+    if (x > 0 && x + cw > maxW) {
+      x = 0;
+      y += rowH + rowGap;
+      rowH = 0;
+    }
+    out.push({ ...c, x, y });
+    x += cw + GAP;
+    rowH = Math.max(rowH, c.height ?? 0);
+  }
+  return { ...res, children: out };
 }
 
 // pack lays ELK's connected components out in rows, roughly as wide as a
