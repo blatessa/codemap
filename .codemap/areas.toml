@@ -1,0 +1,23 @@
+[[area]]
+name = 'Command line'
+modules = ['mod:go:codemap/cmd/codemap', 'mod:go:codemap/internal/cli']
+
+[[area]]
+name = 'Extraction'
+modules = ['mod:go:codemap/internal/build', 'mod:go:codemap/internal/extract/goext', 'block:goext-routes', 'mod:go:codemap/internal/extract/sqlext', 'mod:go:codemap/internal/extract/tsext', 'mod:ts:extractor-ts/src']
+
+[[area]]
+name = 'Map data'
+modules = ['mod:go:codemap/internal/graph', 'mod:go:codemap/internal/project']
+
+[[area]]
+name = 'Git history'
+modules = ['mod:go:codemap/internal/gitrev']
+
+[[area]]
+name = 'Viewer'
+modules = ['mod:go:codemap/internal/server', 'block:viewer-map', 'block:viewer-panels', 'block:viewer-state', 'block:viewer-compare']
+
+[[area]]
+name = 'Viewer dev'
+modules = ['mod:ts:viewer', 'mod:ts:viewer/mock', 'mod:ts:viewer/e2e']

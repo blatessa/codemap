@@ -27,7 +27,7 @@ type moduleRow struct {
 	Functions int          `json:"functions"`
 	Entries   int          `json:"entries"`
 	Area      string       `json:"area,omitempty"`
-	Blocks    []string     `json:"blocks,omitempty"`
+	From      string       `json:"from,omitempty"` // for a block: the module it's split from
 	DependsOn []moduleLink `json:"dependsOn"`
 	UsedBy    int          `json:"usedBy"` // modules that call into this one
 }
@@ -69,7 +69,6 @@ func runModules(w io.Writer, args []string) error {
 			areaOf[m] = a.Name
 		}
 	}
-	blocksOf := map[string][]string{}
 	for _, b := range proj.Blocks {
 		if ix.Module[b.From] == nil {
 			problems = append(problems, fmt.Sprintf("block %q splits %s, which isn't a module", b.Name, b.From))
@@ -78,15 +77,27 @@ func runModules(w io.Writer, args []string) error {
 		if b.ID == "" {
 			problems = append(problems, fmt.Sprintf("block %q has no id (use \"block:%s\")", b.Name, project.Slugify(b.Name)))
 		}
-		blocksOf[b.From] = append(blocksOf[b.From], b.Name)
 	}
 
 	rows := map[string]*moduleRow{}
 	for _, m := range ix.G.Modules {
-		rows[m.ID] = &moduleRow{ID: m.ID, Label: m.Label, External: m.External, Area: areaOf[m.ID], Blocks: blocksOf[m.ID], DependsOn: []moduleLink{}}
+		rows[m.ID] = &moduleRow{ID: m.ID, Label: m.Label, External: m.External, Area: areaOf[m.ID], DependsOn: []moduleLink{}}
 	}
-	for _, n := range ix.G.Nodes {
-		r := rows[n.Module]
+	for _, b := range proj.Blocks {
+		if ix.Module[b.From] != nil && b.ID != "" {
+			rows[b.ID] = &moduleRow{ID: b.ID, Label: b.Name, From: b.From, Area: areaOf[b.ID], DependsOn: []moduleLink{}}
+		}
+	}
+	// where a node is drawn: its block, if one takes it, else its module
+	boxOf := func(n *graph.Node) string {
+		if b := project.BlockFor(proj.Blocks, *n); b != "" && rows[b] != nil {
+			return b
+		}
+		return n.Module
+	}
+	for i := range ix.G.Nodes {
+		n := &ix.G.Nodes[i]
+		r := rows[boxOf(n)]
 		if r == nil || n.Kind == graph.KindTest {
 			continue
 		}
@@ -99,24 +110,33 @@ func runModules(w io.Writer, args []string) error {
 	users := map[string]map[string]bool{}
 	for _, e := range ix.G.Edges {
 		from, to := ix.Node[e.From], ix.Node[e.To]
-		if from == nil || to == nil || from.Module == to.Module || from.Kind == graph.KindTest {
+		if from == nil || to == nil || from.Kind == graph.KindTest {
 			continue
 		}
-		if deps[from.Module] == nil {
-			deps[from.Module] = map[string]int{}
+		a, b := boxOf(from), boxOf(to)
+		if a == b {
+			continue
 		}
-		deps[from.Module][to.Module]++
-		if users[to.Module] == nil {
-			users[to.Module] = map[string]bool{}
+		if deps[a] == nil {
+			deps[a] = map[string]int{}
 		}
-		users[to.Module][from.Module] = true
+		deps[a][b]++
+		if users[b] == nil {
+			users[b] = map[string]bool{}
+		}
+		users[b][a] = true
 	}
 	list := make([]*moduleRow, 0, len(rows))
 	for id, r := range rows {
 		if r.Functions == 0 {
-			continue // modules with only tests don't show on the map
+			continue // modules with only tests, or wholly split into blocks, don't show on the map
 		}
 		r.DependsOn = links(ix, deps[id])
+		for i := range r.DependsOn {
+			if br := rows[r.DependsOn[i].Module]; br != nil && br.From != "" {
+				r.DependsOn[i].Label = br.Label
+			}
+		}
 		r.UsedBy = len(users[id])
 		list = append(list, r)
 	}
@@ -148,8 +168,8 @@ func runModules(w io.Writer, args []string) error {
 			ds = append(ds, d.Label)
 		}
 		label := r.ID
-		if len(r.Blocks) > 0 {
-			label += " (blocks: " + strings.Join(r.Blocks, ", ") + ")"
+		if r.From != "" {
+			label += " (" + r.Label + ")"
 		}
 		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\t%s\n", label, r.Functions, r.Entries, r.UsedBy, area, strings.Join(ds, ", "))
 	}

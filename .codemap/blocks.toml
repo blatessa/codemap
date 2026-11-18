@@ -1,0 +1,31 @@
+# viewer/src is a third of the repo; split it by what each part of the UI does.
+
+[[block]]
+id = 'block:viewer-map'
+name = 'viewer · map'
+from = 'mod:ts:viewer/src'
+files = ['viewer/src/MapView.tsx', 'viewer/src/layout.ts', 'viewer/src/groups.ts', 'viewer/src/blocks.ts']
+
+[[block]]
+id = 'block:viewer-panels'
+name = 'viewer · panels'
+from = 'mod:ts:viewer/src'
+files = ['viewer/src/App.tsx', 'viewer/src/Drawer.tsx', 'viewer/src/Fields.tsx', 'viewer/src/fields.ts', 'viewer/src/Code.tsx', 'viewer/src/Comment.tsx', 'viewer/src/Proposals.tsx']
+
+[[block]]
+id = 'block:viewer-state'
+name = 'viewer · state'
+from = 'mod:ts:viewer/src'
+files = ['viewer/src/store.ts', 'viewer/src/model.ts', 'viewer/src/api.ts']
+
+[[block]]
+id = 'block:viewer-compare'
+name = 'viewer · compare'
+from = 'mod:ts:viewer/src'
+files = ['viewer/src/revs.ts', 'viewer/src/Compare.tsx']
+
+[[block]]
+id = 'block:goext-routes'
+name = 'goext · routes'
+from = 'mod:go:codemap/internal/extract/goext'
+files = ['internal/extract/goext/routes.go', 'internal/extract/goext/handlers.go']

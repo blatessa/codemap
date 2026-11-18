@@ -322,7 +322,7 @@ function buildDisp(
     let name = fitText(b.label, tw, fn, MONO, true);
     // big maps: a name that doesn't fit runs past its box rather than being cut;
     // names that would collide are hidden by declutter
-    if (G && (!name || name.endsWith('…'))) name = b.label.split('/').pop() || b.label;
+    if (!name || (name.endsWith('…') && (G || name.length < 8))) name = b.label.split('/').pop() || b.label;
     return {
       h,
       far: { name, sub: room ? subT : '', fn, fs, px: px + nx * fn, nb: (room ? py : (h - fn * 1.2) / 2) + fn * 0.95, sb: py + fn * 1.2 + fs },
@@ -604,13 +604,15 @@ const Edges = memo(function Edges({ disp, S, shown }: { disp: Disp; S: Sel | nul
 
 const AreaG = memo(function AreaG({ a, r, sel, drop, fa }: { a: Area; r: ARect; sel: boolean; drop: boolean; fa: number | null }) {
   const hh = fa ? fa * 1.6 : 34;
+  // an area is always wide enough for its name
+  const w = Math.max(r.w, a.name.length * (fa ?? 13) * SANS + (fa ? fa * 1.4 : 32));
   return (
     <g className={`area${sel ? ' asel' : ''}${r.empty ? ' empty' : ''}${drop ? ' drop' : ''}`} data-area-box={a.name}>
-      <rect className="arect" x={r.x} y={r.y} width={r.w} height={r.h} rx={14} />
+      <rect className="arect" x={r.x} y={r.y} width={w} height={r.h} rx={14} />
       <g className="ahead" data-area={a.name}>
-        <rect className="hit" x={r.x} y={r.y} width={r.w} height={hh} rx={14} />
+        <rect className="hit" x={r.x} y={r.y} width={w} height={hh} rx={14} />
         <text className="alabel" x={r.x + (fa ? fa * 0.7 : 16)} y={r.y + (fa ? fa * 1.15 : 23)} style={fa ? { fontSize: fa } : undefined}>
-          {fa ? fitText(a.name, r.w - fa * 1.4, fa, SANS, false) || a.name : a.name}
+          {a.name}
         </text>
       </g>
     </g>

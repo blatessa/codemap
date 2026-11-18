@@ -189,36 +189,63 @@ async function layoutFlow(
     const outs = [...(weight.get(b.id) ?? [])].sort((x, y) => y[1] - x[1] || order.get(x[0])! - order.get(y[0])!);
     for (const [t] of big ? outs.slice(0, perBox) : outs) edges.push({ id: 'e' + edges.length, sources: [b.id], targets: [t] });
   }
-  const res = await getElk().layout({
-    id: 'root',
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': 'RIGHT',
-      'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '70',
-      'elk.spacing.nodeNode': '28',
-      'elk.spacing.componentComponent': '60',
-      'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
-      'elk.layered.cycleBreaking.strategy': 'MODEL_ORDER',
-      'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
-      // spreads tall layers over more columns, so the map is wider than it is tall
-      'elk.layered.layering.strategy': 'STRETCH_WIDTH',
-      'elk.edgeRouting': 'POLYLINE', // routes aren't used; the map draws its own curves
-      ...(big ? { 'elk.layered.thoroughness': '2' } : {}),
-    },
-    children,
-    edges,
-  });
-  const out: Pos = {};
-  const visit = (n: ElkNode, ox: number, oy: number) => {
-    for (const c of n.children ?? []) {
-      const x = ox + (c.x ?? 0),
-        y = oy + (c.y ?? 0);
-      if (ids.has(c.id)) out[c.id] = [Math.round(x), Math.round(y)];
-      visit(c, x, y);
-    }
+  const opts = {
+    'elk.algorithm': 'layered',
+    'elk.direction': 'RIGHT',
+    'elk.layered.spacing.nodeNodeBetweenLayers': '70',
+    'elk.spacing.nodeNode': '28',
+    'elk.spacing.componentComponent': '60',
+    'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+    'elk.layered.cycleBreaking.strategy': 'MODEL_ORDER',
+    'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
+    // spreads tall layers over more columns, so the map is wider than it is tall
+    'elk.layered.layering.strategy': 'STRETCH_WIDTH',
+    'elk.edgeRouting': 'POLYLINE', // routes aren't used; the map draws its own curves
+    ...(big ? { 'elk.layered.thoroughness': '2' } : {}),
   };
-  visit(res, 0, 0);
+  // Two passes, so calls between areas don't pull an area's modules apart:
+  // each area is laid out on its own into a compact rectangle, then the areas
+  // and the loose boxes are laid out together, with calls between areas
+  // counted once per pair.
+  const elk = getElk();
+  const inner = new Map<string, { pos: Pos; w: number; h: number }>();
+  await Promise.all(
+    [...groups.values()].map(async (g) => {
+      const kids = new Set(g.children!.map((c) => c.id));
+      const es = edges.filter((e) => kids.has(e.sources[0]) && kids.has(e.targets[0]));
+      const r = await elk.layout({ id: g.id, layoutOptions: { ...opts, 'elk.padding': '[top=0,left=0,bottom=0,right=0]' }, children: g.children, edges: es });
+      const pos: Pos = {};
+      let w = 0,
+        h = 0;
+      for (const c of r.children ?? []) {
+        pos[c.id] = [c.x ?? 0, c.y ?? 0];
+        w = Math.max(w, (c.x ?? 0) + (c.width ?? 0));
+        h = Math.max(h, (c.y ?? 0) + (c.height ?? 0));
+      }
+      inner.set(g.id, { pos, w, h });
+    }),
+  );
+  const [pt, pl, pb, pr] = [44, 20, 20, 20]; // AREA_PAD
+  const top = children.map((c) => (groups.has(c.id) ? { id: c.id, width: inner.get(c.id)!.w + pl + pr, height: inner.get(c.id)!.h + pt + pb } : c));
+  const at = (id: string) => parent.get(id) ?? id;
+  const seen = new Set<string>();
+  const topEdges: ElkExtendedEdge[] = [];
+  for (const e of edges) {
+    const a = at(e.sources[0]),
+      b = at(e.targets[0]);
+    if (a === b || seen.has(a + '>' + b)) continue;
+    seen.add(a + '>' + b);
+    topEdges.push({ id: 't' + topEdges.length, sources: [a], targets: [b] });
+  }
+  const res = await elk.layout({ id: 'root', layoutOptions: opts, children: top, edges: topEdges });
+  const out: Pos = {};
+  for (const c of res.children ?? []) {
+    const x = c.x ?? 0,
+      y = c.y ?? 0;
+    const g = inner.get(c.id);
+    if (g) for (const [id, p] of Object.entries(g.pos)) out[id] = [Math.round(x + pl + p[0]), Math.round(y + pt + p[1])];
+    else if (ids.has(c.id)) out[c.id] = [Math.round(x), Math.round(y)];
+  }
   return pack(out, todo, links, parent);
 }
 

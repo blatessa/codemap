@@ -62,12 +62,12 @@ test('a new area, with a module dragged in', async ({ page }) => {
   await search(page, 'new area');
   await page.locator('#a-name').fill('Payments flow');
   await page.locator('#fit').click(); // the new area goes under everything
-  const area = page.locator('#map [data-area="Payments flow"]');
+  const area = page.locator('#map [data-area-box="Payments flow"] .arect');
   const a = (await area.boundingBox())!,
     s = (await page.locator('#map [data-mod="mod:go:shop/internal/sched"]').boundingBox())!;
   await page.mouse.move(s.x + 10, s.y + 6);
   await page.mouse.down();
-  await page.mouse.move(a.x + 40, a.y + 50, { steps: 8 });
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2, { steps: 8 });
   await page.mouse.up();
   await expect
     .poll(async () => (await (await page.request.get('/api/state')).json()).project.areas.find((x: { name: string }) => x.name === 'Payments flow')?.modules)
