@@ -9,6 +9,7 @@ import {
   currentProposal,
   deleteArea,
   getState,
+  hide,
   mergeBlock,
   proposeModule,
   proposeNode,
@@ -118,7 +119,7 @@ function CallTree({ m, id }: { m: Model; id: string }) {
           return (
             <button
               key={i}
-              className={`trow ${x.row.prop || r.via.prop ? 'prop' : ''}`}
+              className={`trow ${x.row.prop || r.via.prop ? 'prop' : ''} ${x.row.support || x.row.hidden ? 'sup' : ''}`}
               data-node={r.id}
               style={{ paddingLeft: 6 + Math.min(r.depth, 12) * 14 }}
               onClick={() => select(r.id)}
@@ -148,8 +149,8 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
   const n = row.node;
   const method = typeof n.fields?.method === 'string' ? (n.fields.method as string).toUpperCase() : '';
   const eyebrow = row.prop ? 'Proposed' : row.ghost ? 'Missing' : n.external || n.entry ? cap(n.kind) : box.label;
-  const inn = m.inn.get(id) ?? [],
-    out = m.out.get(id) ?? [];
+  const inn = m.all.inn.get(id) ?? [],
+    out = m.all.out.get(id) ?? [];
   let body: ReactNode;
   if (row.ghost) body = null;
   else if (n.external) {
@@ -262,6 +263,13 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
         <Where file={n.file} line={n.line} />
       </Head>
       {n.doc && <p className="doc">{n.doc}</p>}
+      {!propose && !row.prop && !row.ghost && !row.hidden && (
+        <div className="btns">
+          <button className="btn sm" id="hide" onClick={() => hide(id)}>
+            Hide
+          </button>
+        </div>
+      )}
       {propose && (
         <div className="btns">
           {!n.external && !row.ghost && (
@@ -320,6 +328,13 @@ function BoxPanel({ m, id }: { m: Model; id: string }) {
         {src && <div className="where">split from {src.label}</div>}
       </Head>
       {b.doc && <p className="doc">{b.doc}</p>}
+      {b.module && !b.block && !b.prop && !b.ghost && b.shown > 0 && (
+        <div className="btns">
+          <button className="btn sm" id="hide" onClick={() => hide(id)}>
+            Hide
+          </button>
+        </div>
+      )}
       <div className="cols">
         <Section title="Used by">{mlist(use)}</Section>
         <Section title="Depends on">{mlist(dep)}</Section>

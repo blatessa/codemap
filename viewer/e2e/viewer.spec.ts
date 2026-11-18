@@ -311,6 +311,7 @@ test('dragging a module into another area highlights it and moves the module the
 test('a module shows its public functions, and +N internal expands it', async ({ page }) => {
   const total = 'go:shop/internal/orders.(CreateOrder).Total',
     writeJSON = 'go:shop/internal/orders.writeJSON';
+  await page.locator('#d-code').click();
   await search(page, 'Service.Place');
   const more = page.locator('#map [data-more="mod:go:shop/internal/orders"]');
   // an internal row on the selected path still shows
@@ -325,6 +326,77 @@ test('a module shows its public functions, and +N internal expands it', async ({
   await expect(more).toHaveText('− 3 internal');
   await more.click();
   await expect(page.locator(`#map [data-node="${writeJSON}"]`)).toHaveCount(0);
+});
+
+// ---- detail level and hiding ----
+
+test('Features leaves support rows out, Code shows them, and a saved view keeps the level', async ({ page }) => {
+  const main = 'go:shop/cmd/server.main',
+    newService = 'go:shop/internal/orders.NewService',
+    useOrder = 'ts:web/src/components/OrderStatus.tsx#useOrder';
+  await expect(page.locator('#d-features')).toHaveAttribute('aria-pressed', 'true');
+  await search(page, 'Repo.Find'); // zooms in
+  await page.keyboard.press('Escape');
+  await expect(page.locator(`#map [data-node="${main}"]`)).toHaveCount(0);
+  await expect(page.locator(`#map [data-node="${newService}"]`)).toHaveCount(0);
+  // one expander row per box, counting support and internal rows together
+  await expect(page.locator('#map [data-more="mod:go:shop/internal/orders"]')).toHaveText('+6 more');
+  await expect(page.locator('#map [data-more="mod:go:shop/cmd/server"]')).toHaveText('+5 support');
+  await page.locator('#d-code').click();
+  await expect(node(page, main)).toBeVisible();
+  await expect(node(page, newService)).toBeVisible();
+  await expect(node(page, useOrder)).toBeVisible();
+
+  // a selected path shows support rows; a passthrough stays collapsed on the
+  // map and shows, dimmed, in the call tree
+  await page.locator('#d-features').click();
+  await page.keyboard.press('/');
+  await page.keyboard.type('/orders/:id');
+  await page.locator('#results [data-go="page:/orders/:id"]').click();
+  await expect(node(page, 'ts:web/src/api/http.ts#request')).toBeVisible();
+  await expect(page.locator(`#map [data-node="${useOrder}"]`)).toHaveCount(0);
+  await expect(page.locator(`#drawer .trow.sup[data-node="${useOrder}"]`)).toBeVisible();
+
+  await page.locator('#d-code').click();
+  await page.locator('#viewsbtn').click();
+  await page.locator('#v-name').fill('All code');
+  await page.locator('#v-name').press('Enter');
+  await expect.poll(async () => (await state(page)).project.views.find((v: { name: string }) => v.name === 'All code')?.detail).toBe('code');
+  await page.locator('#d-features').click();
+  await page.locator('#viewsbtn').click();
+  await page.locator('#views [data-view="All code"]').click();
+  await expect(page.locator('#d-code')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('hiding a node takes it off the map; the Views menu unhides it', async ({ page }) => {
+  const find = 'go:shop/internal/orders.(*Repo).Find';
+  await search(page, 'Repo.Find');
+  await page.locator('#drawer #hide').click();
+  await expect(page.locator(`#map [data-node="${find}"]`)).toHaveCount(0);
+  await expect.poll(async () => (await state(page)).project.hidden).toEqual([{ id: find }]);
+  await page.locator('#d-code').click();
+  await expect(page.locator(`#map [data-node="${find}"]`)).toHaveCount(0);
+
+  // on a selected path it shows, dimmed
+  await search(page, 'GET /orders/:id');
+  await expect(node(page, find)).toHaveClass(/\bhid\b/);
+  await page.keyboard.press('Escape');
+  await expect(page.locator(`#map [data-node="${find}"]`)).toHaveCount(0);
+
+  await page.locator('#viewsbtn').click();
+  await page.locator('#hiddenbtn').click();
+  await expect(page.locator('#hiddenbtn')).toHaveText('Hidden (1)');
+  await page.locator(`#views [data-hidden="${find}"] button`).click();
+  await expect(node(page, find)).toBeVisible();
+  await expect.poll(async () => (await state(page)).project.hidden).toEqual([]);
+  await expect(page.locator('#hiddenbtn')).toHaveCount(0);
+});
+
+test('hiding a module takes its box off the map', async ({ page }) => {
+  await mod(page, 'mod:go:shop/internal/sched').click();
+  await page.locator('#drawer #hide').click();
+  await expect(page.locator('#map [data-box="mod:go:shop/internal/sched"]')).toHaveCount(0);
+  await expect.poll(async () => (await state(page)).project.hidden).toEqual([{ id: 'mod:go:shop/internal/sched' }]);
 });
 
 // ---- folder groups, on a synthetic map too big to show whole ----

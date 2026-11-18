@@ -80,6 +80,7 @@ svg#map.connecting{cursor:crosshair}
 .trow.prop .l{color:var(--plan)}
 .trow .q{color:var(--muted);font-size:11px;word-break:break-word;padding-left:14px}
 .trow .seen{color:var(--muted);font-style:italic}
+.trow.sup{opacity:.5}
 .k{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 .k.db{color:var(--db)}.k.http{color:var(--http)}.k.queue{color:var(--queue)}.k.mail{color:var(--mail)}
 .code{display:grid;grid-template-columns:auto 1fr;background:var(--code-bg);border:1px solid var(--line);border-radius:7px;overflow:hidden}
@@ -157,6 +158,9 @@ details.test .code{border:0;border-top:1px solid var(--line);border-radius:0}
 .plctl input{flex:1;min-width:0;font-family:var(--mono);font-size:12.5px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
 .plctl select{font-size:12.5px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
 .seg.sm{margin-left:0;align-self:flex-start}
+.seg.mode{margin-left:10px}
+.hrow{padding:2px 0 2px 14px}
+.hrow .hname{flex:1;font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .seg.sm button{padding:5px 11px;font-size:12px}
 .plist{display:flex;flex-direction:column;gap:2px;margin-top:-4px}
 .pitem{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:7px;border:1px solid transparent}
@@ -216,6 +220,8 @@ details.test .code{border:0;border-top:1px solid var(--line);border-radius:0}
 .fn .untested{fill:var(--warn)}
 .fn:hover .hit{fill:var(--bg)}
 .fn.dim{opacity:.32}
+.fn.hid{opacity:.45}
+.fn.hid.dim{opacity:.2}
 .fn.on .lbl{font-weight:600}
 .fn.on .fm{fill:var(--accent)}
 .fn .dot{fill:var(--accent);opacity:0}
