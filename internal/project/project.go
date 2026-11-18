@@ -1,5 +1,6 @@
 // Package project loads and saves the user state in a repo's .codemap/ directory
-// (areas, blocks, external, config and proposals). Every file is optional.
+// (blocks, external, config and proposals). Every file is optional. Files it
+// doesn't know, such as an areas.toml from older versions, are ignored.
 package project
 
 import (
@@ -21,16 +22,9 @@ const Dir = ".codemap"
 // Project is everything in .codemap/.
 type Project struct {
 	Config    Config      `json:"config"`
-	Areas     []Area      `json:"areas"`
 	Blocks    []Block     `json:"blocks"`
 	External  External    `json:"external"`
 	Proposals []*Proposal `json:"proposals"`
-}
-
-// Area is a user-defined group of modules and blocks.
-type Area struct {
-	Name    string   `toml:"name" json:"name"`
-	Modules []string `toml:"modules" json:"modules"`
 }
 
 // Block splits nodes out of a module by rules, so new code lands automatically (§4.1).
@@ -67,7 +61,6 @@ func LoadFS(fsys fs.FS) (*Project, error) {
 		parse func([]byte) error
 	}{
 		{"config.toml", func(b []byte) error { return UnmarshalTOML(b, &p.Config) }},
-		{"areas.toml", func(b []byte) error { return UnmarshalList(AreaKey, b, &p.Areas) }},
 		{"blocks.toml", func(b []byte) error { return UnmarshalList(BlockKey, b, &p.Blocks) }},
 		{"external.toml", func(b []byte) error { return UnmarshalTOML(b, &p.External) }},
 	}

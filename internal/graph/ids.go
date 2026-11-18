@@ -6,7 +6,7 @@ import (
 )
 
 // ID helpers: each function below is the format for one kind of thing. IDs must
-// survive unrelated edits, because areas, blocks and proposals refer to them.
+// survive unrelated edits, because blocks and proposals refer to them.
 
 // GoFuncID returns the ID of a Go function or method. name uses go/ssa naming,
 // e.g. "Place" for a function or "(*Service).Place" for a method.

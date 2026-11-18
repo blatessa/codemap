@@ -199,7 +199,6 @@ func (s *Server) reloadProject() error {
 
 // projectFiles maps the writable project keys to their file names.
 var projectFiles = map[string]string{
-	"areas":    "areas.toml",
 	"blocks":   "blocks.toml",
 	"external": "external.toml",
 }

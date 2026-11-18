@@ -13,11 +13,8 @@ import (
 )
 
 // TOML has no top-level arrays, so list files keep their entries as an array of
-// tables under a singular key ([[area]], [[block]]).
-const (
-	AreaKey  = "area"
-	BlockKey = "block"
-)
+// tables under a singular key ([[block]]).
+const BlockKey = "block"
 
 // MarshalTOML encodes v as TOML. Free-form maps (declared nodes, proposal
 // sketches) are written with their well-known keys first (id, from, to, kind,

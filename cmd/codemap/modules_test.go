@@ -7,14 +7,18 @@ import (
 	"testing"
 )
 
-func TestModulesFlagsBadAreas(t *testing.T) {
+func TestModulesFlagsBadBlocks(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, ".codemap")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	areas := "[[area]]\nname = 'A'\nmodules = ['mod:nope', 'mod:go:shop/internal/orders']\n\n[[area]]\nname = 'B'\nmodules = ['mod:go:shop/internal/orders']\n"
-	if err := os.WriteFile(filepath.Join(dir, "areas.toml"), []byte(areas), 0o644); err != nil {
+	blocks := "[[block]]\nid = 'block:x'\nname = 'X'\nfrom = 'mod:nope'\n"
+	if err := os.WriteFile(filepath.Join(dir, "blocks.toml"), []byte(blocks), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// An areas.toml left over from older versions is ignored.
+	if err := os.WriteFile(filepath.Join(dir, "areas.toml"), []byte("[[area]]\nname = 'A'\nmodules = ['mod:nope']\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	graph, _ := filepath.Abs("../../testdata/shop.expected.json")
@@ -24,12 +28,13 @@ func TestModulesFlagsBadAreas(t *testing.T) {
 	}
 	for _, want := range []string{
 		"mod:go:shop/internal/orders  ",
-		`area "A" lists mod:nope, which isn't a module or block`,
-		`mod:go:shop/internal/orders is in two areas: "A" and "B"`,
-		"not in an area",
+		`block "X" splits mod:nope, which isn't a module`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
+	}
+	if strings.Contains(strings.ToLower(out), "area") {
+		t.Errorf("areas should be gone:\n%s", out)
 	}
 }

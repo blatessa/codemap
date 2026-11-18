@@ -59,9 +59,6 @@ func ifMatch(r *http.Request) string {
 // projectJSON is the project as sent to the viewer, with empty lists instead of null.
 func projectJSON(p *project.Project) project.Project {
 	c := *p
-	if c.Areas == nil {
-		c.Areas = []project.Area{}
-	}
 	if c.Blocks == nil {
 		c.Blocks = []project.Block{}
 	}
@@ -124,11 +121,6 @@ func tomlKind[T any](empty T, fix func(*T)) fileKind {
 }
 
 var kinds = map[string]fileKind{
-	"areas": listKind(project.AreaKey, func(v *[]project.Area) {
-		if *v == nil {
-			*v = []project.Area{}
-		}
-	}),
 	"blocks": listKind(project.BlockKey, func(v *[]project.Block) {
 		if *v == nil {
 			*v = []project.Block{}

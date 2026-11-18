@@ -129,14 +129,13 @@ func TestState(t *testing.T) {
 	if st.Graph.Rev != "worktree" || len(st.Graph.Nodes) == 0 {
 		t.Errorf("graph: rev=%q nodes=%d", st.Graph.Rev, len(st.Graph.Nodes))
 	}
-	if len(st.Project.Areas) != 5 || len(st.Project.Proposals) != 2 || st.Project.Proposals[1].Body == "" {
+	if len(st.Project.Proposals) != 2 || st.Project.Proposals[1].Body == "" {
 		t.Errorf("project: %+v", st.Project)
 	}
 	if st.Project.Blocks == nil {
 		t.Error("empty lists should be [] / {}, not null")
 	}
 	want := map[string]string{
-		"areas":                  diskVersion(t, root, "areas.toml"),
 		"blocks":                 Missing,
 		"external":               diskVersion(t, root, "external.toml"),
 		"proposals/refunds":      diskVersion(t, root, "proposals/refunds.md"),
@@ -162,9 +161,6 @@ func TestProjectRoundTrip(t *testing.T) {
 		value      any
 		want       func(p *project.Project) any
 	}{
-		{"areas", "areas.toml",
-			[]project.Area{{Name: "Commerce", Modules: []string{"mod:go:shop/internal/orders"}}},
-			func(p *project.Project) any { return p.Areas }},
 		{"blocks", "blocks.toml",
 			[]project.Block{{ID: "block:pages-checkout", Name: "pages · checkout", From: "mod:ts:web/src/pages", Match: []string{"/checkout*"}}},
 			func(p *project.Project) any { return p.Blocks }},
@@ -203,8 +199,8 @@ func TestProjectRoundTrip(t *testing.T) {
 			if st.Versions[c.name] != v.Version {
 				t.Errorf("state version %q, want %q", st.Versions[c.name], v.Version)
 			}
-			if c.name == "areas" && len(st.Project.Areas) != 1 {
-				t.Errorf("state not refreshed: %+v", st.Project.Areas)
+			if c.name == "blocks" && len(st.Project.Blocks) != 1 {
+				t.Errorf("state not refreshed: %+v", st.Project.Blocks)
 			}
 
 			// A stale If-Match conflicts and returns what's on disk.
@@ -254,30 +250,34 @@ func TestExternalWriteUpdatesGraph(t *testing.T) {
 
 func TestConflictAfterDiskEdit(t *testing.T) {
 	_, ts, root := setup(t)
-	v := getState(t, ts).Versions["areas"]
-	if err := os.WriteFile(filepath.Join(root, ".codemap/areas.toml"), []byte("[[area]]\nname = \"Agent\"\nmodules = [\"mod:x\"]\n"), 0o644); err != nil {
+	// Creating a missing file uses the "missing" version.
+	if r := do(t, ts, "PUT", "/api/project/blocks", []project.Block{}, "If-Match", Missing); r.status != 200 {
+		t.Errorf("create blocks: %d %s", r.status, r.body)
+	}
+	v := getState(t, ts).Versions["blocks"]
+	if err := os.WriteFile(filepath.Join(root, ".codemap/blocks.toml"), []byte("[[block]]\nid = \"block:agent\"\nname = \"Agent\"\nfrom = \"mod:x\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := do(t, ts, "PUT", "/api/project/areas", []project.Area{{Name: "Mine"}}, "If-Match", v)
+	r := do(t, ts, "PUT", "/api/project/blocks", []project.Block{{Name: "Mine"}}, "If-Match", v)
 	if r.status != 409 {
 		t.Fatalf("%d %s", r.status, r.body)
 	}
 	var cf struct {
 		Version string
-		Value   []project.Area
+		Value   []project.Block
 	}
 	r.decode(t, &cf)
-	if cf.Version != diskVersion(t, root, "areas.toml") || len(cf.Value) != 1 || cf.Value[0].Name != "Agent" {
+	if cf.Version != diskVersion(t, root, "blocks.toml") || len(cf.Value) != 1 || cf.Value[0].Name != "Agent" {
 		t.Errorf("409: %+v", cf)
 	}
-	// Creating a missing file uses the "missing" version.
-	if r := do(t, ts, "PUT", "/api/project/blocks", []project.Block{}, "If-Match", Missing); r.status != 200 {
-		t.Errorf("create blocks: %d %s", r.status, r.body)
+	// Areas are gone: the endpoint is unknown.
+	if r := do(t, ts, "PUT", "/api/project/areas", []any{}, "If-Match", Missing); r.status != 404 {
+		t.Errorf("areas: %d", r.status)
 	}
 	if r := do(t, ts, "PUT", "/api/project/bogus", []any{}, "If-Match", Missing); r.status != 404 {
 		t.Errorf("bogus: %d", r.status)
 	}
-	if r := do(t, ts, "PUT", "/api/project/areas", map[string]any{"not": "a list"}, "If-Match", Missing); r.status != 400 {
+	if r := do(t, ts, "PUT", "/api/project/external", []any{"not", "a table"}, "If-Match", getState(t, ts).Versions["external"]); r.status != 400 {
 		t.Errorf("bad body: %d", r.status)
 	}
 }
@@ -454,15 +454,15 @@ func TestHostAndOrigin(t *testing.T) {
 			t.Errorf("Host %s: %d", h, r.status)
 		}
 	}
-	areas := []project.Area{{Name: "A"}}
-	if r := do(t, ts, "PUT", "/api/project/areas", areas, "If-Match", "x", "Origin", "http://evil.example"); r.status != 403 {
+	blocks := []project.Block{{Name: "A"}}
+	if r := do(t, ts, "PUT", "/api/project/blocks", blocks, "If-Match", "x", "Origin", "http://evil.example"); r.status != 403 {
 		t.Errorf("cross-origin write: %d", r.status)
 	}
 	if r := do(t, ts, "POST", "/api/open", map[string]any{"file": "go.mod"}, "Origin", "null"); r.status != 403 {
 		t.Errorf("null origin: %d", r.status)
 	}
 	// Same origin passes the guard and reaches the handler (here a 409).
-	if r := do(t, ts, "PUT", "/api/project/areas", areas, "If-Match", "x", "Origin", ts.URL); r.status != 409 {
+	if r := do(t, ts, "PUT", "/api/project/blocks", blocks, "If-Match", "x", "Origin", ts.URL); r.status != 409 {
 		t.Errorf("same-origin write: %d %s", r.status, r.body)
 	}
 	// Cross-origin reads are allowed through (the browser won't expose them without CORS).
@@ -644,27 +644,28 @@ func TestEvents(t *testing.T) {
 	ev := openEvents(t, ts)
 
 	// Editing a .codemap file reloads the project.
-	os.WriteFile(filepath.Join(root, ".codemap/areas.toml"), []byte("[[area]]\nname = \"Only\"\nmodules = []\n"), 0o644)
+	good := []byte("[[block]]\nid = \"block:only\"\nname = \"Only\"\nfrom = \"mod:x\"\n")
+	os.WriteFile(filepath.Join(root, ".codemap/blocks.toml"), good, 0o644)
 	e := ev.wait(t, "project-changed")
-	if !reflect.DeepEqual(e.Data.Files, []string{"areas.toml"}) || e.Data.Error != "" {
+	if !reflect.DeepEqual(e.Data.Files, []string{"blocks.toml"}) || e.Data.Error != "" {
 		t.Errorf("project-changed: %+v", e.Data)
 	}
-	if st := getState(t, ts); len(st.Project.Areas) != 1 || st.Project.Areas[0].Name != "Only" {
-		t.Errorf("areas after edit: %+v", st.Project.Areas)
+	if st := getState(t, ts); len(st.Project.Blocks) != 1 || st.Project.Blocks[0].Name != "Only" {
+		t.Errorf("blocks after edit: %+v", st.Project.Blocks)
 	}
 
 	// A broken file keeps the last good state and reports the error.
-	os.WriteFile(filepath.Join(root, ".codemap/areas.toml"), []byte("[[area]]\nname = [unclosed\n"), 0o644)
+	os.WriteFile(filepath.Join(root, ".codemap/blocks.toml"), []byte("[[block]]\nname = [unclosed\n"), 0o644)
 	e = ev.wait(t, "project-changed")
 	if e.Data.Error == "" {
 		t.Errorf("expected an error: %+v", e.Data)
 	}
-	if st := getState(t, ts); len(st.Project.Areas) != 1 {
-		t.Errorf("should keep last good areas: %+v", st.Project.Areas)
+	if st := getState(t, ts); len(st.Project.Blocks) != 1 {
+		t.Errorf("should keep last good blocks: %+v", st.Project.Blocks)
 	}
 
 	// Fix it again before the next steps.
-	os.WriteFile(filepath.Join(root, ".codemap/areas.toml"), []byte("[[area]]\nname = \"Only\"\nmodules = []\n"), 0o644)
+	os.WriteFile(filepath.Join(root, ".codemap/blocks.toml"), good, 0o644)
 	ev.wait(t, "project-changed")
 
 	// A new directory is watched too.

@@ -39,13 +39,13 @@ From the terminal (handy for agents too): `codemap show "POST /orders"`,
 `codemap callers Repo.Find`, `codemap modules`, `codemap diff main...`. Run `codemap` for
 the full list.
 
-Settings, areas, blocks and proposals live in `.codemap/` in your repo, as plain TOML and
+Settings, blocks and proposals live in `.codemap/` in your repo, as plain TOML and
 Markdown you can commit.
 
 ## Agent skill
 
 `skills/codemap/SKILL.md` teaches a coding agent to query the map, review what it changed,
-work through proposals, and organise the map. The repo is a Claude Code plugin and its own
+and work through proposals. The repo is a Claude Code plugin and its own
 marketplace, so in Claude Code:
 
 ```

@@ -98,7 +98,7 @@ func TestRevEndpoints(t *testing.T) {
 	if !sawBuilding {
 		t.Error("no building event")
 	}
-	if r := do(t, ts, "PUT", "/api/project/areas?rev=HEAD~1", []any{}); r.status != 405 {
+	if r := do(t, ts, "PUT", "/api/project/blocks?rev=HEAD~1", []any{}); r.status != 405 {
 		t.Errorf("write at a rev: %d", r.status)
 	}
 

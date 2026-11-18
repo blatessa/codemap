@@ -26,15 +26,13 @@ type moduleRow struct {
 	External  bool         `json:"external,omitempty"`
 	Functions int          `json:"functions"`
 	Entries   int          `json:"entries"`
-	Area      string       `json:"area,omitempty"`
 	From      string       `json:"from,omitempty"` // for a block: the module it's split from
 	DependsOn []moduleLink `json:"dependsOn"`
 	UsedBy    int          `json:"usedBy"` // modules that call into this one
 }
 
-// runModules prints every module with its size, area and dependencies, then the
-// areas and anything in areas.toml or blocks.toml that doesn't match the code.
-// It's the overview an agent needs to organise the map (skills/codemap).
+// runModules prints every module with its size and dependencies, then anything
+// in blocks.toml that doesn't match the code.
 func runModules(w io.Writer, args []string) error {
 	var c cli.Common
 	fs := cli.NewFlagSet("modules", modulesUsage)
@@ -54,21 +52,7 @@ func runModules(w io.Writer, args []string) error {
 		proj = &project.Project{}
 	}
 
-	areaOf := map[string]string{}
 	var problems []string
-	for _, a := range proj.Areas {
-		for _, m := range a.Modules {
-			if ix.Module[m] == nil && !isBlock(proj, m) {
-				problems = append(problems, fmt.Sprintf("area %q lists %s, which isn't a module or block", a.Name, m))
-				continue
-			}
-			if prev, ok := areaOf[m]; ok {
-				problems = append(problems, fmt.Sprintf("%s is in two areas: %q and %q", m, prev, a.Name))
-				continue
-			}
-			areaOf[m] = a.Name
-		}
-	}
 	for _, b := range proj.Blocks {
 		if ix.Module[b.From] == nil {
 			problems = append(problems, fmt.Sprintf("block %q splits %s, which isn't a module", b.Name, b.From))
@@ -81,11 +65,11 @@ func runModules(w io.Writer, args []string) error {
 
 	rows := map[string]*moduleRow{}
 	for _, m := range ix.G.Modules {
-		rows[m.ID] = &moduleRow{ID: m.ID, Label: m.Label, External: m.External, Area: areaOf[m.ID], DependsOn: []moduleLink{}}
+		rows[m.ID] = &moduleRow{ID: m.ID, Label: m.Label, External: m.External, DependsOn: []moduleLink{}}
 	}
 	for _, b := range proj.Blocks {
 		if ix.Module[b.From] != nil && b.ID != "" {
-			rows[b.ID] = &moduleRow{ID: b.ID, Label: b.Name, From: b.From, Area: areaOf[b.ID], DependsOn: []moduleLink{}}
+			rows[b.ID] = &moduleRow{ID: b.ID, Label: b.Name, From: b.From, DependsOn: []moduleLink{}}
 		}
 	}
 	// where a node is drawn: its block, if one takes it, else its module
@@ -143,22 +127,12 @@ func runModules(w io.Writer, args []string) error {
 	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 
 	if c.JSON {
-		areas := proj.Areas
-		if areas == nil {
-			areas = []project.Area{}
-		}
-		return cli.WriteJSON(w, map[string]any{"modules": list, "areas": areas, "blocks": nonNilBlocks(proj.Blocks), "problems": nonNilStrings(problems)})
+		return cli.WriteJSON(w, map[string]any{"modules": list, "blocks": nonNilBlocks(proj.Blocks), "problems": nonNilStrings(problems)})
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "MODULE ID\tFNS\tENTRIES\tUSED BY\tAREA\tDEPENDS ON")
-	unplaced := 0
+	fmt.Fprintln(tw, "MODULE ID\tFNS\tENTRIES\tUSED BY\tDEPENDS ON")
 	for _, r := range list {
-		area := r.Area
-		if area == "" {
-			area = "-"
-			unplaced++
-		}
 		var ds []string
 		for i, d := range r.DependsOn {
 			if i == 4 {
@@ -171,10 +145,10 @@ func runModules(w io.Writer, args []string) error {
 		if r.From != "" {
 			label += " (" + r.Label + ")"
 		}
-		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\t%s\n", label, r.Functions, r.Entries, r.UsedBy, area, strings.Join(ds, ", "))
+		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\n", label, r.Functions, r.Entries, r.UsedBy, strings.Join(ds, ", "))
 	}
 	tw.Flush()
-	fmt.Fprintf(w, "\n%d modules, %d areas, %d not in an area.\n", len(list), len(proj.Areas), unplaced)
+	fmt.Fprintf(w, "\n%d modules.\n", len(list))
 	if len(problems) > 0 {
 		fmt.Fprintln(w, "\nProblems:")
 		for _, p := range problems {
@@ -182,15 +156,6 @@ func runModules(w io.Writer, args []string) error {
 		}
 	}
 	return nil
-}
-
-func isBlock(p *project.Project, id string) bool {
-	for _, b := range p.Blocks {
-		if b.ID == id {
-			return true
-		}
-	}
-	return false
 }
 
 func nonNilBlocks(b []project.Block) []project.Block {

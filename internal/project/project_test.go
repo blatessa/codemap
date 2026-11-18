@@ -10,6 +10,7 @@ import (
 
 func TestLoadFSAndProposals(t *testing.T) {
 	fsys := fstest.MapFS{
+		// Left over from older versions: ignored, not an error.
 		"areas.toml": {Data: []byte("[[area]]\nname = \"Commerce\"\nmodules = [\"mod:go:shop/internal/orders\"]\n")},
 		"external.toml": {Data: []byte(`[[node]]
 id = "ext:stripe"
@@ -32,9 +33,6 @@ detail = "sends events"
 	p, err := LoadFS(fsys)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if len(p.Areas) != 1 || p.Areas[0].Name != "Commerce" {
-		t.Errorf("areas: %+v", p.Areas)
 	}
 	if len(p.Proposals) != 2 {
 		t.Fatalf("proposals: %d", len(p.Proposals))
@@ -116,9 +114,9 @@ func TestLoadFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p.Areas) != 5 || len(p.Proposals) != 2 || len(p.External.Nodes) != 2 || len(p.Config.Go.Jobs) != 1 {
-		t.Errorf("unexpected fixture project: areas=%d proposals=%d external=%d jobs=%d",
-			len(p.Areas), len(p.Proposals), len(p.External.Nodes), len(p.Config.Go.Jobs))
+	if len(p.Proposals) != 2 || len(p.External.Nodes) != 2 || len(p.Config.Go.Jobs) != 1 {
+		t.Errorf("unexpected fixture project: proposals=%d external=%d jobs=%d",
+			len(p.Proposals), len(p.External.Nodes), len(p.Config.Go.Jobs))
 	}
 	if p.Proposals[0].Slug != "order-search" || p.Proposals[0].Status != "archived" || p.Proposals[1].Name != "Refunds" {
 		t.Errorf("proposals: %+v %+v", p.Proposals[0], p.Proposals[1])
@@ -162,16 +160,16 @@ to = 'x'
 		t.Errorf("not stable:\n%s", b2)
 	}
 
-	areas := []Area{{Name: "A", Modules: []string{"mod:a"}}}
-	b, _ = MarshalList(AreaKey, areas)
-	var got []Area
-	if want := "[[area]]\nname = 'A'\nmodules = ['mod:a']\n"; string(b) != want {
-		t.Errorf("areas file:\n%s", b)
+	blocks := []Block{{ID: "block:a", Name: "A", From: "mod:a", Match: []string{"A*"}}}
+	b, _ = MarshalList(BlockKey, blocks)
+	var got []Block
+	if want := "[[block]]\nid = 'block:a'\nname = 'A'\nfrom = 'mod:a'\nmatch = ['A*']\n"; string(b) != want {
+		t.Errorf("blocks file:\n%s", b)
 	}
-	if err := UnmarshalList(AreaKey, b, &got); err != nil || !reflect.DeepEqual(got, areas) {
-		t.Errorf("areas: %v %+v\n%s", err, got, b)
+	if err := UnmarshalList(BlockKey, b, &got); err != nil || !reflect.DeepEqual(got, blocks) {
+		t.Errorf("blocks: %v %+v\n%s", err, got, b)
 	}
-	if err := UnmarshalList(AreaKey, []byte("[[areas]]\nname = 'x'\n"), &got); err == nil {
+	if err := UnmarshalList(BlockKey, []byte("[[blocks]]\nname = 'x'\n"), &got); err == nil {
 		t.Error("want an error for the wrong table key")
 	}
 }

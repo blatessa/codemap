@@ -14,7 +14,7 @@ func TestLoadFromGraphFile(t *testing.T) {
 	if errs := graph.Validate(g); len(errs) > 0 {
 		t.Fatal(errs)
 	}
-	if len(p.Areas) == 0 {
+	if len(p.External.Nodes) == 0 {
 		t.Error("project not loaded")
 	}
 	ix := graph.NewIndex(g)
