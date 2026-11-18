@@ -1,7 +1,7 @@
 // The map: SVG with areas, boxes (modules/blocks) and edges. Pan, zoom, drag.
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GROUP_H, chain, isGroup, layoutH, type Group, type Grouping } from './groups';
-import { innerLayout, type LBox } from './layout';
+import { innerLayout, layoutUnplaced, type LBox } from './layout';
 import { FAR, FARH, HEAD, MORE, ROW, heightOf, type Box, type MEdge, type Model, type Row, type Sel } from './model';
 import {
   currentProposal,
@@ -842,9 +842,42 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     setDropState(t);
   };
 
+  // Focus lays out just the boxes on the selection's path, so a feature on a
+  // big map gets a picture of its own instead of a dimmed corner of the map.
+  const [focusPos, setFocusPos] = useState<Record<string, [number, number]> | null>(null);
+  useEffect(() => {
+    if (!focus || !S) {
+      setFocusPos(null);
+      return;
+    }
+    const ids = m.boxes.filter((b) => b.rows.some((r) => S.nodes.has(r.id))).map((b) => b.id);
+    const items = ids.map((id) => {
+      const b = m.box.get(id)!;
+      const n = b.rows.filter((r) => S.nodes.has(r.id)).length;
+      return { id, w: b.w, h: heightOf(n, false), entry: b.hasEntry, external: b.external, shared: false };
+    });
+    const links: [string, string][] = [];
+    for (const e of [...m.edges.filter((x) => S.edges.has(x.i)), ...S.extra]) {
+      const a = m.node.get(e.from)?.box.id,
+        b = m.node.get(e.to)?.box.id;
+      if (a && b && a !== b) links.push([a, b]);
+    }
+    let live = true;
+    void layoutUnplaced(items, links, [], {}).then((p) => {
+      if (!live) return;
+      setFocusPos(p);
+      setState({ fitSeq: getState().fitSeq + 1 });
+    });
+    return () => {
+      live = false;
+    };
+  }, [focus, S, m]);
   const disp = useMemo(
-    () => buildDisp(m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, !!connectFrom),
-    [m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, connectFrom],
+    () =>
+      focusPos
+        ? buildDisp(m, S, focusPos, {}, collapsed, expanded, focus, farK, [], null, null, sel, !!connectFrom)
+        : buildDisp(m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, !!connectFrom),
+    [m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, connectFrom, focusPos],
   );
 
   // Big maps only draw what's near the viewport. The culling window moves in
