@@ -168,6 +168,29 @@ Fields show in insertion order, with the key as the label (`snake_case` becomes 
 The extractors use this same mechanism. For example, table columns are just
 `fields.columns = [[name, type, note], …]`.
 
+### 3.4 Roles
+
+`internal/graph/roles.go` sets `fields.role` on function nodes that look like support code,
+using only the graph and a cheap read of the source (nobody annotates code). `build` applies it
+after merging. Nodes without a role are core. External, entry, test and proposal nodes never
+get one, except that an entry function named `main` is wiring.
+
+| Role | Rule |
+|---|---|
+| `generated` | the file has a `// Code generated … DO NOT EDIT.` header, or a mock path (`mock_*`, `mockX.go`, `*_mock`, `mocks/`, `__mocks__/`) |
+| `wiring` | `main` and `init`; a constructor (`New…`/`new…`, top-level, declares a result) whose callers are all wiring or dead; a function only wiring calls, with no effects (path literals allowed: routes are registered by path), that calls only wiring or registration APIs (`Subscribe`, `Every`, `Handle…`, `Get`/`Post`/…) |
+| `unreachable` | no path from any entry; only in a language where entries reach at least half the functions (otherwise the extractors are missing entry points, and it would mean little) |
+| `utility` | no effects and calls only utilities, and: 3+ callers; or ≤12 lines and used from another module or by 2+ entries (not counting through other entries); or only utilities call it; or ≤6 lines and forwards to utilities. Never a function an entry calls directly, or a Go method calling through a field of its receiver (an injected dependency) |
+| `passthrough` | ≤6 lines (`endLine - line`), no effects, exactly one repo callee, not called directly by an entry |
+
+Effects are `reads`/`writes`/`publishes`/`fetches` edges, calls to external nodes, and, from
+the source, SQL and ORM or key-value store calls, Go HTTP requests, file and process I/O, and
+API path literals (`"/api/…"`). With no route, page, job or subscriber entries (a library),
+exported functions act as entry points and get `fields.entry_reason = "exported"`.
+
+The viewer's **Features** level (the default) and `show`/`callers --detail features` leave
+rows with a role out and draw A → C through passthroughs. **Code** shows everything.
+
 ---
 
 ## 4. `.codemap/` files
@@ -183,7 +206,8 @@ array of tables under a singular key (`[[area]]`, `[[block]]`, `[[view]]`).
 | `areas.toml` | `[[area]]` / `name = "Commerce"` / `modules = ["mod:…", "block:…"]`. Any number of areas. |
 | `blocks.toml` | Splits of a module into named blocks, as **rules** so new code lands automatically (§4.1). |
 | `layout.json` | Positions written by the viewer: `{ "<module or block id>": [x, y], "area:<name>": [x, y] }`. Machine-written, sorted keys. |
-| `views.toml` | Saved views, one `[[view]]` each: `name`, `selection = [ids]`, `focus = bool`, `collapsed = [ids]`, `expanded = [ids]`. |
+| `views.toml` | Saved views, one `[[view]]` each: `name`, `selection = [ids]`, `focus = bool`, `collapsed = [ids]`, `expanded = [ids]`, `detail = "features"\|"code"`. |
+| `hidden.toml` | Things taken off the map, one `[[hide]]` each: `id = "<node or module id>"`, or `match = "*.String"` (a glob on labels) with an optional `module`. Hidden nodes draw only on a selected path, dimmed. |
 | `external.toml` | Declared nodes and edges, plus extra fields merged into extracted nodes (§5.6). |
 | `proposals/<slug>.md` | One proposal per file (§6). |
 
@@ -467,6 +491,11 @@ and wording.
   - Focus, which shows only the selected path
   - Shift-click multi-selection, offering "Split into a new block" and "New area from these"
   - saved views
+  - detail level (top bar): **Features** puts rows with a `fields.role` behind each box's one
+    `+N` expander and collapses passthroughs in edges; **Code** shows everything. Rows on a
+    selected path always show; the call tree shows support rows dimmed
+  - Hide (details panel, for a node or a module) writes `hidden.toml`; the Views menu lists
+    hidden things to unhide
 - **Selection:**
   - Selecting a node lights up everything upstream and downstream of it. Traced paths stop at
     external nodes unless the external node itself is selected.
@@ -505,6 +534,7 @@ codemap build [--rev R] [--out graph.json]
 codemap serve [--rev R] [--port 7777] [--no-open]
 codemap show <id|label|"POST /orders">      # call tree as indented text, with SQL and HTTP details
 codemap callers <id|label> [--depth N]
+                                            # show/callers: --detail features (default) | code
 codemap module <id|path>                    # contents, uses, depends on
 codemap search <text>
 codemap proposal list | new <name> | archive <slug> --pr N
