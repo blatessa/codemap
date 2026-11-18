@@ -37,7 +37,6 @@ export interface S {
   form: Form | null;
   splitting: string | null;
   pslug: string | null;
-  showAll: boolean; // every row and call on the map
   cslug: string | null; // the proposal comments go to: the last one opened
   editing: boolean;
   plist: { q: string; sort: 'updated' | 'name' | 'status'; status: 'all' | 'open' | 'archived' };
@@ -71,7 +70,6 @@ export const useStore = create<S>(() => ({
   form: null,
   splitting: null,
   pslug: null,
-  showAll: false,
   cslug: readCslug(),
   editing: false,
   plist: { q: '', sort: 'updated', status: 'all' },

@@ -8,6 +8,7 @@ const node = (page: Page, id: string) => page.locator(`#map [data-node="${id}"]`
 const box = (page: Page, id: string) => page.locator(`#map [data-box="${id}"]`).first();
 const ORDERS = 'mod:go:shop/internal/orders';
 const INSERT = 'go:shop/internal/orders.(*Repo).Insert';
+const TOTAL = 'go:shop/internal/orders.(CreateOrder).Total'; // only called inside its module
 
 type P = { slug: string; body: string; nodes?: { id: string; module?: string }[] };
 const refunds = async (page: Page) => ((await (await page.request.get('/api/proposals')).json()) as P[]).find((p) => p.slug === 'refunds')!;
@@ -27,32 +28,33 @@ async function search(page: Page, text: string) {
   await page.keyboard.press('Enter');
 }
 
-test('detail follows what you select: overview, a module, a trace, show all', async ({ page }) => {
+test('detail follows what you select: overview, a module, a trace', async ({ page }) => {
   await open(page);
   // at rest: entry points show, internals wait behind "N more"
   await expect(node(page, 'route:POST /orders')).toBeVisible();
   await expect(page.locator(`#map [data-node="${INSERT}"]`)).toHaveCount(0);
   await expect(page.locator(`#map [data-more="${ORDERS}"]`)).toBeVisible();
-  // a module shows everything in it
+  // a module shows its public surface (what other modules call, and what
+  // touches a table), never its internals
   await page.locator(`#map [data-more="${ORDERS}"]`).click();
   await expect(node(page, INSERT)).toBeVisible();
+  await expect(page.locator(`#map [data-node="${TOTAL}"]`)).toHaveCount(0);
   // a function shows its path, down to the table
   await search(page, '/checkout');
   await expect(node(page, 'page:/checkout')).toHaveClass(/\bsel\b/);
   await expect(node(page, 'table:orders')).toHaveClass(/\bon\b/);
   await expect(page.locator('#drawer').getByText('Call tree')).toBeVisible();
-  // everything, on request
-  await page.keyboard.press('Escape');
-  await page.locator('#showall').click();
-  await expect(node(page, INSERT)).toBeVisible();
-  await expect(page.locator(`#map [data-more]`)).toHaveCount(0);
-  await expect(page.locator('#drawer .dhead')).toHaveCount(0);
+  // the trace stops 4 levels down; what's below still shows as effects
+  await expect(page.locator('#drawer .trow .reach').first()).toContainText('writes orders');
+  await expect(page.locator('#map path.edge.reach.on').first()).toBeAttached();
+  // there's no way to show every function
+  await expect(page.locator('#showall')).toHaveCount(0);
 });
 
 test('search runs commands; switching selections keeps one panel', async ({ page }) => {
   await open(page);
-  await search(page, 'show all');
-  await expect(page.locator('#showall')).toHaveAttribute('aria-pressed', 'true');
+  await search(page, 'collapse all');
+  await expect(page.locator(`#map [data-more="${ORDERS}"]`)).toHaveCount(0); // folded to its header
   for (const q of ['web/src/api', 'internal/auth', 'Handler.Login']) await search(page, q);
   await expect(page.locator('#drawer .dhead')).toHaveCount(1);
 });

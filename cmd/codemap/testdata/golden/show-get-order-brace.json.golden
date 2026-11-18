@@ -27,7 +27,29 @@
           "from": "route:GET /orders/:id",
           "to": "go:shop/internal/auth.(*Handler).RequireUser",
           "type": "calls"
-        }
+        },
+        "children": [
+          {
+            "id": "go:shop/internal/auth.(*Store).UserByID",
+            "via": {
+              "from": "go:shop/internal/auth.(*Handler).RequireUser",
+              "to": "go:shop/internal/auth.(*Store).UserByID",
+              "type": "calls"
+            },
+            "children": [
+              {
+                "id": "table:users",
+                "via": {
+                  "from": "go:shop/internal/auth.(*Store).UserByID",
+                  "to": "table:users",
+                  "type": "reads",
+                  "detail": "SELECT id, email FROM users WHERE id = $1"
+                }
+              }
+            ]
+          }
+        ],
+        "support": 2
       },
       {
         "id": "go:shop/internal/orders.(*Handler).Get",
@@ -35,7 +57,29 @@
           "from": "route:GET /orders/:id",
           "to": "go:shop/internal/orders.(*Handler).Get",
           "type": "calls"
-        }
+        },
+        "children": [
+          {
+            "id": "go:shop/internal/orders.(*Repo).Find",
+            "via": {
+              "from": "go:shop/internal/orders.(*Handler).Get",
+              "to": "go:shop/internal/orders.(*Repo).Find",
+              "type": "calls"
+            },
+            "children": [
+              {
+                "id": "table:orders",
+                "via": {
+                  "from": "go:shop/internal/orders.(*Repo).Find",
+                  "to": "table:orders",
+                  "type": "reads",
+                  "detail": "SELECT * FROM orders WHERE id = $1"
+                }
+              }
+            ]
+          }
+        ],
+        "support": 2
       }
     ]
   }

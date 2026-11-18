@@ -48,7 +48,6 @@ function newAreaAt(m: Model, rectOf: RectOf, mods: string[]) {
 }
 
 const fit = () => setState({ fitSeq: getState().fitSeq + 1, touchedView: false });
-const toggleAll = () => setState({ showAll: !getState().showAll });
 const collapseAll = (m: Model) => {
   const c = getState().collapsed;
   setState({ collapsed: c.size ? new Set() : new Set(m.boxes.filter((b) => !b.hasEntry).map((b) => b.id)) });
@@ -58,14 +57,12 @@ function useMapCommands(): Cmd[] {
   const m = useModel();
   const rectOf = useAreaRect();
   const ro = useStore((s) => s.readOnly);
-  const showAll = useStore((s) => s.showAll);
   const collapsed = useStore((s) => s.collapsed.size > 0);
   const revs = useCompare((c) => c.revs);
   const spec = useCompare((c) => c.spec);
   const propose = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
   return [
     { id: 'addmod', label: 'Propose a new module', run: () => setState({ form: { type: 'mod' }, sel: [], connectFrom: null }), off: !propose || ro },
-    { id: 'all', label: showAll ? 'Show less' : 'Show all functions and calls', hint: 'A', run: toggleAll },
     { id: 'fit', label: 'Fit map to screen', hint: '0', run: fit },
     { id: 'collapse', label: collapsed ? 'Expand all modules' : 'Collapse all modules', run: () => collapseAll(m) },
     { id: 'area', label: 'New area', run: () => newAreaAt(m, rectOf, []), off: ro },
@@ -220,12 +217,8 @@ function useOutside<T extends HTMLElement>(open: boolean, close: () => void) {
 }
 
 function MapControls() {
-  const showAll = useStore((s) => s.showAll);
   return (
     <div className="mapctl">
-      <button className="ctl" id="showall" aria-pressed={showAll} title="Every function and call (A)" onClick={toggleAll}>
-        Show all
-      </button>
       <div className="ctlgrp">
         <button className="ctl" id="zout" aria-label="Zoom out" onClick={() => zoomCenter(1 / 1.2)}>
           −
@@ -348,7 +341,6 @@ export function App() {
       const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName);
       if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const s = getState();
-        if (e.key === 'a' || e.key === 'A') return toggleAll();
         if (e.key === '0') return fit();
         if ((e.key === 'f' || e.key === 'F') && s.sel.length) return setState({ focus: !s.focus });
       }

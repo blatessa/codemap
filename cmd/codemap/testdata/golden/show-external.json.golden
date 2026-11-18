@@ -55,7 +55,77 @@
           "type": "declared",
           "detail": "sends payment_intent.succeeded",
           "declared": true
-        }
+        },
+        "children": [
+          {
+            "id": "go:shop/internal/payments.(*Handler).HandleWebhook",
+            "via": {
+              "from": "route:POST /webhooks/stripe",
+              "to": "go:shop/internal/payments.(*Handler).HandleWebhook",
+              "type": "calls"
+            },
+            "children": [
+              {
+                "id": "go:shop/internal/orders.(*Service).MarkPaid",
+                "via": {
+                  "from": "go:shop/internal/payments.(*Handler).HandleWebhook",
+                  "to": "go:shop/internal/orders.(*Service).MarkPaid",
+                  "type": "calls"
+                },
+                "children": [
+                  {
+                    "id": "go:shop/internal/notify.(*Mailer).SendReceipt",
+                    "via": {
+                      "from": "go:shop/internal/orders.(*Service).MarkPaid",
+                      "to": "go:shop/internal/notify.(*Mailer).SendReceipt",
+                      "type": "calls"
+                    },
+                    "reaches": [
+                      {
+                        "to": "ext:postmark",
+                        "type": "calls"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "go:shop/internal/orders.(*Repo).UpdateStatus",
+                    "via": {
+                      "from": "go:shop/internal/orders.(*Service).MarkPaid",
+                      "to": "go:shop/internal/orders.(*Repo).UpdateStatus",
+                      "type": "calls"
+                    },
+                    "reaches": [
+                      {
+                        "to": "table:orders",
+                        "type": "writes"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "go:shop/internal/payments.(*Handler).verifySignature",
+                "via": {
+                  "from": "go:shop/internal/payments.(*Handler).HandleWebhook",
+                  "to": "go:shop/internal/payments.(*Handler).verifySignature",
+                  "type": "calls"
+                },
+                "children": [
+                  {
+                    "id": "ext:stripe",
+                    "via": {
+                      "from": "go:shop/internal/payments.(*Handler).verifySignature",
+                      "to": "ext:stripe",
+                      "type": "calls",
+                      "detail": "webhook.ConstructEvent"
+                    },
+                    "seen": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       }
     ]
   }

@@ -48,7 +48,44 @@
                   "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
                   "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
                   "type": "calls"
-                }
+                },
+                "children": [
+                  {
+                    "id": "ts:web/src/api/orders.ts#createOrder",
+                    "via": {
+                      "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+                      "to": "ts:web/src/api/orders.ts#createOrder",
+                      "type": "calls"
+                    },
+                    "support": 1,
+                    "reaches": [
+                      {
+                        "to": "ext:stripe",
+                        "type": "calls"
+                      },
+                      {
+                        "to": "route:POST /orders",
+                        "type": "fetches"
+                      },
+                      {
+                        "to": "topic:order.placed",
+                        "type": "publishes"
+                      },
+                      {
+                        "to": "table:users",
+                        "type": "reads"
+                      },
+                      {
+                        "to": "table:orders",
+                        "type": "writes"
+                      },
+                      {
+                        "to": "table:stock",
+                        "type": "writes"
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           }

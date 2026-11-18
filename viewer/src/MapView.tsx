@@ -71,7 +71,6 @@ export interface Disp {
   groups: { g: Group; r: ARect; reveal: boolean; top: string }[]; // open folder groups
   shift: Map<string, [number, number]>; // how far open groups pushed each top-level box
   reveal: string; // groups opened for the selection, joined
-  all: boolean; // Show all: every row and every call
   boxSel: boolean; // only modules are selected: their calls stay one line per pair
 }
 
@@ -158,7 +157,7 @@ function buildDisp(
   dragBox: DragBox | null,
   G: Grouping | null,
   selIds: string[],
-  showAll = false,
+  connecting = false, // picking an edge's target in a proposal: every row is a target
 ): Disp {
   const boxes: DBox[] = [];
   const byId = new Map<string, DBox>();
@@ -171,18 +170,21 @@ function buildDisp(
   // How much a box shows follows what the user is doing:
   // - at rest, the rows that say what a module is for: entry points, external
   //   systems, proposed and changed rows;
-  // - a selected module shows everything in it;
-  // - a selected function adds every row on its traced path;
-  // - Show all shows every row in every box.
-  // Rows left out are counted in a quiet "N more" line, which selects the module.
+  // - a selected module adds its public surface: the functions other modules
+  //   call, without support code;
+  // - a selected function adds the rows on its trace.
+  // Internal functions never show (except as targets while connecting an
+  // edge in a proposal); rows left out are counted in a quiet line.
   const openBoxes = new Set(selIds.filter((id) => m.box.has(id)));
   const visible = (b: Box): { rows: Row[]; more: number; moreWord: string; open: boolean } => {
     if (focusOn) return { rows: b.rows.filter((r) => S.nodes.has(r.id)), more: 0, moreWord: '', open: false };
     const all = b.rows;
-    if (showAll || openBoxes.has(b.id)) return { rows: all, more: 0, moreWord: '', open: openBoxes.has(b.id) };
-    const keep = (r: Row) => r.node.entry || r.node.external || r.prop || r.ghost || !!r.moved || !!nodeStatus(r.id) || !!S?.path.has(r.id);
+    if (connecting) return { rows: all, more: 0, moreWord: '', open: false };
+    const open = openBoxes.has(b.id);
+    const keep = (r: Row) =>
+      r.node.entry || r.node.external || r.prop || r.ghost || !!r.moved || !!nodeStatus(r.id) || !!S?.path.has(r.id) || (open && r.pub && !r.role);
     const rows = all.filter(keep);
-    return { rows, more: all.length - rows.length, moreWord: 'more', open: false };
+    return { rows, more: all.length - rows.length, moreWord: open ? 'internal' : 'more', open };
   };
 
   // Folded groups open when the user opens them, or for the selection: the
@@ -392,7 +394,7 @@ function buildDisp(
   }
   // Show all: boxes grow to every row, and push the boxes below them down by as
   // much, so nothing overlaps and the map keeps its shape.
-  if (showAll && !k) pushDown(boxes.filter((d) => !d.inG), (d) => (G ? layoutH(d.b) : d.b.defH));
+  if (connecting && !k) pushDown(boxes.filter((d) => !d.inG), (d) => (G ? layoutH(d.b) : d.b.defH));
   // edges into shared modules only draw when the selection uses them
   const edges = m.edges.filter((e) => {
     const a = row.get(e.from),
@@ -402,6 +404,9 @@ function buildDisp(
     if (b.d.b.shared && a.d !== b.d && !e.prop) return !!S && S.edges.has(e.i);
     return true;
   });
+  // the selection's trace: calls through skipped forwarding functions, and
+  // effects reached through code the trace doesn't show
+  if (S) for (const e of S.extra) if (row.has(e.from) && row.has(e.to)) edges.push(e);
   const out: Disp['areas'] = [];
   let bottom = boxes.length ? Math.max(...boxes.map((d) => d.y + d.fullH)) + 60 : 80;
   for (const a of areas) {
@@ -422,7 +427,7 @@ function buildDisp(
   if (k) declutter(boxes, edges, row, out, groupsOut, k);
   // expanded and dragged boxes draw above their neighbours
   boxes.sort((x, y) => Number(x.lift) - Number(y.lift));
-  return { boxes, byId, row, edges, areas: out, groups: groupsOut, shift, reveal: [...reveal].sort().join('\0'), all: showAll, boxSel: !!selIds.length && selIds.every((id) => m.box.has(id)) };
+  return { boxes, byId, row, edges, areas: out, groups: groupsOut, shift, reveal: [...reveal].sort().join('\0'), boxSel: !!selIds.length && selIds.every((id) => m.box.has(id)) };
 }
 
 function pushDown(ds: DBox[], base: (d: DBox) => number) {
@@ -571,7 +576,7 @@ const Edges = memo(function Edges({ disp, S, shown }: { disp: Disp; S: Sel | nul
     // call is on the selection (or nothing is selected). The rest merge into one
     // quiet line per pair of boxes, and calls inside a box between rows that
     // aren't showing don't draw.
-    const real = !(a.col && b.col) && !a.b.group && !b.b.group && ia >= 0 && ib >= 0 && (disp.all || !S || (on && !disp.boxSel) || e.prop);
+    const real = !(a.col && b.col) && !a.b.group && !b.b.group && ia >= 0 && ib >= 0 && (!S || (on && !disp.boxSel) || e.prop);
     if (!real && a === b) continue;
     if (!real) {
       const key = a.b.id + '>' + b.b.id;
@@ -585,7 +590,7 @@ const Edges = memo(function Edges({ disp, S, shown }: { disp: Disp; S: Sel | nul
     const d = edgePath(disp, e);
     if (!d) continue;
     const ghost = a.b.ghost || b.b.ghost;
-    const cls = ['edge', e.net && 'net', e.declared && 'decl', e.prop && 'prop', ghost && 'ghost', edgeCls(e), S ? (on ? 'on' : 'dim') : ''].filter(Boolean).join(' ');
+    const cls = ['edge', e.net && 'net', e.declared && 'decl', e.prop && 'prop', ghost && 'ghost', edgeCls(e), e.synth === 'reach' && 'reach', S ? (on ? 'on' : 'dim') : ''].filter(Boolean).join(' ');
     const p = <path key={e.i} className={cls} d={d} data-edge={e.i} markerEnd={`url(#${e.prop ? 'mk-p' : on ? 'mk-h' : 'mk-n'})`} />;
     (on || e.prop ? top : base).push(p);
   }
@@ -798,7 +803,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   const pos = useStore((s) => s.pos);
   const collapsed = useStore((s) => s.collapsed);
   const expanded = useStore((s) => s.expanded);
-  const showAll = useStore((s) => s.showAll);
   const focus = useStore((s) => s.focus);
   const areas = useStore((s) => s.areas);
   const view = useStore((s) => s.view);
@@ -833,8 +837,8 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   };
 
   const disp = useMemo(
-    () => buildDisp(m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, showAll || !!connectFrom),
-    [m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, showAll, connectFrom],
+    () => buildDisp(m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, !!connectFrom),
+    [m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, connectFrom],
   );
 
   // Big maps only draw what's near the viewport. The culling window moves in

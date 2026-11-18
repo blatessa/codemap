@@ -79,6 +79,8 @@ svg#map.connecting{cursor:crosshair}
 .trow .m{color:var(--muted)}
 .trow.prop .l{color:var(--plan)}
 .trow .q{color:var(--muted);font-size:11px;word-break:break-word;padding-left:14px}
+.trow .reach{color:var(--muted);font-size:11px;word-break:break-word;padding-left:14px;font-style:italic}
+.edge.reach{stroke-dasharray:4 3}
 .trow .seen{color:var(--muted);font-style:italic}
 .trow.sup{opacity:.5}
 .k{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}

@@ -12,21 +12,15 @@ func init() {
 	commands["callers"] = func(args []string) error { return runCallers(os.Stdout, args) }
 }
 
-const callersUsage = `callers <node> [--depth N] [--detail features|code] [--root DIR] [--graph FILE] [--rev worktree] [--json]`
+const callersUsage = `callers <node> [--root DIR] [--graph FILE] [--rev worktree] [--json]`
 
 func runCallers(w io.Writer, args []string) error {
 	var c cli.Common
 	fs := cli.NewFlagSet("callers", callersUsage)
 	c.Register(fs)
-	depth := fs.Int("depth", 0, "limit the tree to N levels (0 = no limit)")
-	detail := cli.DetailFlag(fs)
 	pos, err := cli.Parse(fs, args)
 	if err != nil {
 		return err
-	}
-	level, err := detail()
-	if err != nil {
-		return &cli.ExitError{Code: 2, Err: err}
 	}
 	if len(pos) != 1 {
 		return cli.Usage(callersUsage)
@@ -40,10 +34,7 @@ func runCallers(w io.Writer, args []string) error {
 		return err
 	}
 	// Walks upstream and stops at external nodes, as Index.Up with StopAtExternalUp does.
-	tree := cli.UpTree(ix, id, *depth)
-	if level == cli.DetailFeatures {
-		tree = cli.Settle(cli.Features(ix, tree))
-	}
+	tree := cli.Settle(cli.Features(ix, cli.UpTree(ix, id, 0)))
 	if c.JSON {
 		return cli.WriteJSON(w, map[string]any{"node": ix.Node[id], "tree": tree})
 	}

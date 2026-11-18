@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { blockFor, escapeGlob, globMatch, pathMatch } from './blocks';
 import { classify, humanize } from './fields';
 import { GROUP_AT, buildGrouping, chain } from './groups';
-import { buildModel, callTree, selectionOf, testsReaching } from './model';
+import { SYNTH, buildModel, selectionOf, testsReaching, trace } from './model';
 import type { Graph } from './types';
 
 describe('blocks (port of project.BlockFor)', () => {
@@ -209,10 +209,14 @@ describe('traces on a big codebase', () => {
   const errs = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6'];
   const g: Graph = {
     version: 1,
-    modules: [{ id: 'mod:go:x/a', label: 'a', lang: 'go', path: 'a' }],
+    modules: [
+      { id: 'mod:go:x/a', label: 'a', lang: 'go', path: 'a' },
+      { id: 'mod:sql:database', label: 'database', lang: 'sql', path: '', external: true },
+    ],
     nodes: [
       fn('h'), fn('save', { shared: true }), fn('getEngine', { role: 'utility' }), fn('deep'), fn('step1'), fn('step2'), fn('step3'), fn('step4'), fn('step5'),
       ...errs.map((e) => fn(e)),
+      { id: 'table:t', kind: 'table', label: 't', module: 'mod:sql:database', external: true },
     ],
     edges: [
       ...errs.map((e) => ({ from: 'go:x/a.h', to: 'go:x/a.' + e, type: 'calls', file: 'a/a.go', line: 3 })),
@@ -226,6 +230,7 @@ describe('traces on a big codebase', () => {
       { from: 'go:x/a.step2', to: 'go:x/a.step3', type: 'calls', file: 'a/a.go', line: 31 },
       { from: 'go:x/a.step3', to: 'go:x/a.step4', type: 'calls', file: 'a/a.go', line: 32 },
       { from: 'go:x/a.step4', to: 'go:x/a.step5', type: 'calls', file: 'a/a.go', line: 33 },
+      { from: 'go:x/a.step5', to: 'table:t', type: 'writes', file: 'a/a.go', line: 34 },
     ],
   };
   const m = buildModel(g, [], null);
@@ -234,15 +239,28 @@ describe('traces on a big codebase', () => {
   test('a selection stops at wide calls, utilities and shared functions', () => {
     const S = selectionOf(m, [id('h')], [])!;
     expect(S.nodes.has(id('save'))).toBe(true);
-    expect(S.nodes.has(id('getEngine'))).toBe(true);
+    expect(S.nodes.has(id('getEngine'))).toBe(false); // support code isn't part of a trace
     expect(S.nodes.has(id('E1'))).toBe(false);
     expect(S.nodes.has(id('deep'))).toBe(false);
     // and going up, a wide call isn't a caller of each implementation
     expect(selectionOf(m, [id('E3')], [])!.nodes.has(id('h'))).toBe(false);
   });
 
+  test('a selection still reaches effects below the depth limit', () => {
+    const S = selectionOf(m, [id('h')], [])!;
+    expect(S.nodes.has(id('step5'))).toBe(false);
+    expect(S.nodes.has('table:t')).toBe(true);
+    const e = S.extra.find((x) => x.to === 'table:t')!;
+    expect(e).toMatchObject({ from: id('step4'), type: 'writes', synth: 'reach' });
+    expect(e.i).toBeGreaterThanOrEqual(SYNTH);
+    expect(S.edges.has(e.i)).toBe(true);
+  });
+
   test('the call tree folds a wide call into one row and stops at depth', () => {
-    const rows = callTree(m, id('h'));
+    const t = trace(m, id('h'));
+    const rows = t.rows;
+    expect(t.support).toBe(1); // getEngine
+    expect(rows.find((r) => r.id === id('step4'))!.reaches).toEqual([{ to: 'table:t', type: 'writes' }]);
     const wide = rows.filter((r) => r.targets);
     expect(wide).toHaveLength(1);
     expect(wide[0].targets).toHaveLength(6);

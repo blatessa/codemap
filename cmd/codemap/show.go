@@ -13,21 +13,15 @@ func init() {
 	commands["show"] = func(args []string) error { return runShow(os.Stdout, args) }
 }
 
-const showUsage = `show <node> [--depth N] [--detail features|code] [--root DIR] [--graph FILE] [--rev worktree] [--json]`
+const showUsage = `show <node> [--root DIR] [--graph FILE] [--rev worktree] [--json]`
 
 func runShow(w io.Writer, args []string) error {
 	var c cli.Common
 	fs := cli.NewFlagSet("show", showUsage)
 	c.Register(fs)
-	depth := fs.Int("depth", -1, fmt.Sprintf("limit the tree to N levels (default %d at --detail features; 0 = no limit)", cli.FeatureDepth))
-	detail := cli.DetailFlag(fs)
 	pos, err := cli.Parse(fs, args)
 	if err != nil {
 		return err
-	}
-	level, err := detail()
-	if err != nil {
-		return &cli.ExitError{Code: 2, Err: err}
 	}
 	if len(pos) != 1 {
 		return cli.Usage(showUsage)
@@ -41,15 +35,7 @@ func runShow(w io.Writer, args []string) error {
 		return err
 	}
 	n := ix.Node[id]
-	tree := ix.Tree(id, max(*depth, 0))
-
-	if level == cli.DetailFeatures {
-		tree = cli.Features(ix, tree)
-		if *depth < 0 {
-			tree = cli.Cut(tree, cli.FeatureDepth)
-		}
-		tree = cli.Settle(tree)
-	}
+	tree := cli.Trace(ix, id)
 
 	// Entry points show the tests along the path shown; other nodes show the
 	// tests that reach them (as the viewer's details panel does).

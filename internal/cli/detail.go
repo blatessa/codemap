@@ -1,28 +1,15 @@
 package cli
 
 import (
-	"flag"
-	"fmt"
-
 	"github.com/blatessa/codemap/internal/graph"
 )
 
-// Detail levels for trees, as in the viewer: features shows a feature's spine,
-// code shows everything.
-const (
-	DetailFeatures = "features"
-	DetailCode     = "code"
-)
-
-// DetailFlag registers --detail and returns a function that validates it.
-func DetailFlag(fs *flag.FlagSet) func() (string, error) {
-	d := fs.String("detail", DetailFeatures, "features (skip support code) or code (everything)")
-	return func() (string, error) {
-		if *d != DetailFeatures && *d != DetailCode {
-			return "", fmt.Errorf("--detail %q: want features or code", *d)
-		}
-		return *d, nil
-	}
+// Trace is the tree codemap shows below a node, in the CLI and the viewer:
+// the feature's spine (support code left out, forwarding functions skipped,
+// shared functions not gone into), FeatureDepth levels deep, with every row
+// listing the effects it reaches through code the tree doesn't show.
+func Trace(ix *graph.Index, id string) *graph.TreeNode {
+	return Settle(Rollup(ix, Cut(Features(ix, ix.Tree(id, 0)), FeatureDepth)))
 }
 
 // RoleOf is a node's fields.role, or "".
@@ -77,7 +64,8 @@ func Shared(ix *graph.Index, id string) bool {
 	return false
 }
 
-// FeatureDepth is how many levels a features tree shows unless asked for more.
+// FeatureDepth is how many levels a trace shows. Deeper code is summarised by
+// the effects it reaches (Rollup); show a row on its own to see inside it.
 const FeatureDepth = 4
 
 // Cut limits a tree to depth levels below its root; 0 means no limit. Rows
@@ -126,5 +114,54 @@ func Settle(t *graph.TreeNode) *graph.TreeNode {
 		}
 	}
 	fix(t)
+	return t
+}
+
+// Rollup sets each row's Reaches: the effects reachable below it that its
+// shown subtree doesn't already show, as an effect row or another row's
+// Reaches. A row shown higher up ("see above") covers its own effects there.
+// It changes t in place and returns it.
+func Rollup(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
+	cache := map[string][]graph.Effect{}
+	beneath := func(id string) []graph.Effect {
+		if r, ok := cache[id]; ok {
+			return r
+		}
+		r := ix.EffectsBeneath(id)
+		cache[id] = r
+		return r
+	}
+	var walk func(t *graph.TreeNode) map[graph.Effect]bool
+	walk = func(t *graph.TreeNode) map[graph.Effect]bool {
+		covered := map[graph.Effect]bool{}
+		for _, c := range t.Children {
+			for f := range walk(c) {
+				covered[f] = true
+			}
+			if c.Via != nil && ix.IsEffect(c.Via) {
+				covered[graph.Effect{To: c.ID, Type: c.Via.Type}] = true
+			}
+			if c.Seen {
+				for _, f := range beneath(c.ID) {
+					covered[f] = true
+				}
+			}
+		}
+		if t.Seen || t.ID == "" || t.Targets != nil {
+			return covered
+		}
+		if n := ix.Node[t.ID]; n == nil || n.External {
+			return covered
+		}
+		t.Reaches = nil
+		for _, f := range beneath(t.ID) {
+			if !covered[f] {
+				t.Reaches = append(t.Reaches, f)
+				covered[f] = true
+			}
+		}
+		return covered
+	}
+	walk(t)
 	return t
 }

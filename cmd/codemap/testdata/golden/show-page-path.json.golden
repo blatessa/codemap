@@ -19,7 +19,56 @@
           "from": "page:/login",
           "to": "ts:web/src/pages/LoginPage.tsx#LoginPage",
           "type": "renders"
-        }
+        },
+        "children": [
+          {
+            "id": "ts:web/src/components/Layout.tsx#Layout",
+            "via": {
+              "from": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+              "to": "ts:web/src/components/Layout.tsx#Layout",
+              "type": "renders"
+            }
+          },
+          {
+            "id": "ts:web/src/components/LoginForm.tsx#LoginForm",
+            "via": {
+              "from": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+              "to": "ts:web/src/components/LoginForm.tsx#LoginForm",
+              "type": "renders"
+            },
+            "children": [
+              {
+                "id": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+                "via": {
+                  "from": "ts:web/src/components/LoginForm.tsx#LoginForm",
+                  "to": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+                  "type": "calls"
+                },
+                "children": [
+                  {
+                    "id": "ts:web/src/api/auth.ts#login",
+                    "via": {
+                      "from": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+                      "to": "ts:web/src/api/auth.ts#login",
+                      "type": "calls"
+                    },
+                    "support": 1,
+                    "reaches": [
+                      {
+                        "to": "route:POST /login",
+                        "type": "fetches"
+                      },
+                      {
+                        "to": "table:users",
+                        "type": "reads"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       }
     ]
   }

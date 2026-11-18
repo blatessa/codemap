@@ -5,8 +5,12 @@ file:   cmd/server/routes.go:14
 method: GET
 
 GET /orders/:id
-  auth.Handler.RequireUser  ...
-  orders.Handler.Get  ...
+  auth.Handler.RequireUser  (+2 support)
+    auth.Store.UserByID
+      users [table]  reads: SELECT id, email FROM users WHERE id = $1
+  orders.Handler.Get  (+2 support)
+    orders.Repo.Find
+      orders [table]  reads: SELECT * FROM orders WHERE id = $1
 
 Tests:
   test:go:shop/internal/auth.TestRequireUser_MissingToken  internal/auth/middleware_test.go:11  (direct)

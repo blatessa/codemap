@@ -7,7 +7,8 @@ page /checkout
   pages.CheckoutPage  renders  (+1 support)
     components.Layout  renders
     components.PlaceOrderButton  renders
-      components.PlaceOrderButton.onClick  ...
+      components.PlaceOrderButton.onClick
+        api.createOrder  (+1 support)  → writes orders, stock · reads users · publishes order.placed · calls api.stripe.com · fetches POST /orders
 
 Tests:
   test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order  web/src/components/PlaceOrderButton.test.tsx:12  (direct)

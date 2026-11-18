@@ -154,6 +154,84 @@ type TreeNode struct {
 	// Targets is set on a row standing for a wide call (see WideCall): the
 	// call may go to any of these, and the row isn't expanded. ID is "".
 	Targets []string `json:"targets,omitempty"`
+	// Reaches lists effects reached through code the tree doesn't show
+	// below this row (cut, support code, a shared function's insides), so a
+	// trace never hides a table, service, topic or API it leads to.
+	Reaches []Effect `json:"reaches,omitempty"`
+}
+
+// Effect is an edge into the outside world: reads or writes a table,
+// publishes to a topic, calls an external service, fetches a route.
+type Effect struct {
+	To   string `json:"to"`
+	Type string `json:"type"`
+}
+
+// IsEffect reports whether e is an effect edge.
+func (ix *Index) IsEffect(e *Edge) bool {
+	switch e.Type {
+	case Reads, Writes, Publishes, Fetches:
+		return true
+	case Calls:
+		n := ix.Node[e.To]
+		return n != nil && n.External
+	}
+	return false
+}
+
+// EffectsBeneath returns the effects reachable from id over calls and renders
+// edges that aren't wide, and through the routes it fetches, not going into support code or shared functions
+// (their own effects count, what they call doesn't), as traces do.
+func (ix *Index) EffectsBeneath(id string) []Effect {
+	seen := map[string]bool{id: true}
+	got := map[Effect]bool{}
+	var out []Effect
+	q := []string{id}
+	for len(q) > 0 {
+		x := q[0]
+		q = q[1:]
+		for _, e := range ix.Out[x] {
+			if ix.IsEffect(e) {
+				if f := (Effect{e.To, e.Type}); !got[f] {
+					got[f] = true
+					out = append(out, f)
+				}
+				// a fetched route's own effects are this code's too
+				if e.Type == Fetches && !seen[e.To] {
+					seen[e.To] = true
+					q = append(q, e.To)
+				}
+				continue
+			}
+			if e.Type != Calls && e.Type != Renders || ix.Wide(e) || seen[e.To] {
+				continue
+			}
+			n := ix.Node[e.To]
+			if n == nil || n.External || n.Kind == KindTest {
+				continue
+			}
+			seen[e.To] = true
+			if ix.Stop(e.To) {
+				for _, f := range ix.Out[e.To] {
+					if ix.IsEffect(f) {
+						if g := (Effect{f.To, f.Type}); !got[g] {
+							got[g] = true
+							out = append(out, g)
+						}
+					}
+				}
+				continue
+			}
+			q = append(q, e.To)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Type != out[j].Type {
+			return out[i].Type < out[j].Type
+		}
+		return out[i].To < out[j].To
+	})
+	return out
 }
 
 // treeRows turns the edges out of (or, up, into) a node into tree rows,

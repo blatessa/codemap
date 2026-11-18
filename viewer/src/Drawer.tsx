@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Source, Where } from './Code';
 import { Fields } from './Fields';
-import { HEAD, PAD, ROW, callTree, entriesReaching, qn, sharedFn, shortMod, testsReaching, type MEdge, type Model } from './model';
+import { HEAD, PAD, ROW, effectSummary, entriesReaching, trace, qn, sharedFn, shortMod, testsReaching, type MEdge, type Model } from './model';
 import { ProposalList, ProposalView } from './Proposals';
 import {
   addArea,
@@ -119,18 +119,26 @@ function kindClass(m: Model, id: string) {
 }
 
 function CallTree({ m, id }: { m: Model; id: string }) {
-  const rows = callTree(m, id);
-  if (!rows.length) return null;
+  const t = trace(m, id);
+  if (!t.rows.length && !t.reaches.length) return null;
   return (
     <Section title="Call tree">
       <div className="tree">
-        {rows.map((r, i) => {
-          const x = m.node.get(r.id)!;
+        {(t.support > 0 || t.reaches.length > 0) && (
+          <div className="trow sup">
+            <span className="l">
+              {t.support > 0 && <span className="seen">+{t.support} support</span>}
+              {t.reaches.length > 0 && <span className="reach">→ {effectSummary(m, t.reaches)}</span>}
+            </span>
+          </div>
+        )}
+        {t.rows.map((r, i) => {
+          const pad = { paddingLeft: 6 + Math.min(r.depth, 12) * 14 };
           if (r.targets) {
-            const names = new Set(r.targets.map((t) => m.node.get(t)?.row.label.split('.').pop() ?? t));
+            const names = new Set(r.targets.map((x) => m.node.get(x)?.row.label.split('.').pop() ?? x));
             const method = names.size === 1 ? [...names][0] : 'a function value';
             return (
-              <div key={i} className="trow wide sup" style={{ paddingLeft: 6 + Math.min(r.depth, 12) * 14 }} title={r.targets.map((t) => qn(m, t)).join('\n')}>
+              <div key={i} className="trow wide sup" style={pad} title={r.targets.map((x) => qn(m, x)).join('\n')}>
                 <span className="l">
                   └<span>{method}</span>
                   <span className="seen">{r.targets.length} implementations</span>
@@ -138,14 +146,9 @@ function CallTree({ m, id }: { m: Model; id: string }) {
               </div>
             );
           }
+          const x = m.node.get(r.id)!;
           return (
-            <button
-              key={i}
-              className={`trow ${x.row.prop || r.via.prop ? 'prop' : ''} ${x.row.role ? 'sup' : ''}`}
-              data-node={r.id}
-              style={{ paddingLeft: 6 + Math.min(r.depth, 12) * 14 }}
-              onClick={() => select(r.id)}
-            >
+            <button key={i} className={`trow ${x.row.prop || r.via.prop ? 'prop' : ''}`} data-node={r.id} style={pad} onClick={() => select(r.id)}>
               <span className="l">
                 └
                 <span>
@@ -153,10 +156,12 @@ function CallTree({ m, id }: { m: Model; id: string }) {
                   {x.row.prefix ? x.row.prefix + ' ' + x.row.label : x.row.label}
                 </span>
                 {x.row.tag && <span className={`k ${kindClass(m, r.id)}`}>{x.row.tag}</span>}
+                {r.support > 0 && <span className="seen">+{r.support} support</span>}
                 {r.seen && <span className="seen">see above</span>}
                 {r.more && <span className="seen">…</span>}
               </span>
               {r.via.detail && <span className="q">{r.via.detail}</span>}
+              {r.reaches.length > 0 && <span className="reach">→ {effectSummary(m, r.reaches)}</span>}
             </button>
           );
         })}

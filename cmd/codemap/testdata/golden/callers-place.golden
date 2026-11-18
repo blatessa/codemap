@@ -1,10 +1,10 @@
-id:     go:shop/internal/orders.writeJSON
+id:     go:shop/internal/orders.(*Service).Place
 kind:   function
 module: internal/orders
-file:   internal/orders/handler.go:48
-role:   utility
+file:   internal/orders/service.go:48
+doc:    Place reserves stock, charges the card and saves the order, in that order. If the charge fails, the reservation is left for the expire-carts job to release.
 
-orders.writeJSON
+orders.Service.Place
   orders.Handler.Create
     POST /orders
       api.createOrder  fetches: POST /orders
@@ -13,10 +13,5 @@ orders.writeJSON
             navigates to the new order [test]  renders
             pages.CheckoutPage  renders
               page /checkout  renders
-  orders.Handler.Get
-    GET /orders/:id
-      api.getOrder  fetches: GET /orders/:id
-        components.useOrder
-          components.OrderStatus
-            pages.OrderPage  renders
-              page /orders/:id  renders
+  TestPlace_ChargesAndInserts [test]
+  TestPlace_OutOfStock [test]

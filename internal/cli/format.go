@@ -174,6 +174,9 @@ func WriteTree(w io.Writer, ix *graph.Index, t *graph.TreeNode, opt TreeOptions)
 		} else if depth > 0 && len(t.Children) == 0 && t.Support == 0 && hasMore(ix, t.ID, opt.Up) {
 			row += "  ..."
 		}
+		if len(t.Reaches) > 0 {
+			row += "  → " + EffectSummary(ix, t.Reaches)
+		}
 		fmt.Fprintln(w, row)
 		for _, c := range t.Children {
 			walk(c, depth+1)
@@ -261,4 +264,30 @@ func TreeIDs(t *graph.TreeNode) []string {
 	}
 	walk(t)
 	return out
+}
+
+// EffectSummary words a list of effects: "writes comment, issue · reads user ·
+// calls api.stripe.com".
+func EffectSummary(ix *graph.Index, effs []graph.Effect) string {
+	by := map[string][]string{}
+	for _, f := range effs {
+		l := f.To
+		if n := ix.Node[f.To]; n != nil {
+			l = n.Label
+			if n.Kind == graph.KindRoute {
+				if m, _ := n.Fields["method"].(string); m != "" {
+					l = m + " " + l
+				}
+			}
+		}
+		by[f.Type] = append(by[f.Type], l)
+	}
+	var parts []string
+	for _, t := range []string{graph.Writes, graph.Reads, graph.Publishes, graph.Calls, graph.Fetches} {
+		if ls := by[t]; len(ls) > 0 {
+			sort.Strings(ls)
+			parts = append(parts, t+" "+strings.Join(ls, ", "))
+		}
+	}
+	return strings.Join(parts, " · ")
 }
