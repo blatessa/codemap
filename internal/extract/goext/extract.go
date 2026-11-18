@@ -99,6 +99,7 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 	}
 	x.addModelColumns()
 	x.addScreens()
+	x.linkRequests()
 	return x.b.graph(), nil
 }
 
@@ -112,6 +113,7 @@ type extractor struct {
 	ddl         *sqlext.Schema  // tables created by DDL in Go strings (ddl.go)
 	models      []modelTable    // ORM models' columns, applied once all tables are known
 	tmpl        *templates      // template files and their names (screens.go)
+	requests    []request       // calls to the repo's own HTTP API, matched to routes at the end (requests.go)
 }
 
 // findModules returns the directories under root holding a go.mod, skipping
@@ -160,6 +162,10 @@ type load struct {
 
 	queryParams map[*types.Func]int // functions passing a parameter to a DB method → its index
 
+	reqWrappers map[*types.Func][]reqTmpl // request helpers → their requests (requests.go)
+	reqSeen     map[*types.Func]map[string]bool
+	strHelpers  map[*types.Func][]rpart // functions building a string from their parameters (requests.go)
+
 	ormParams  map[*types.Func][]ormWrap // ORM wrappers → the parameters naming their model
 	ormIfaces  map[*types.Interface]*ormPreset
 	ormTypes   map[*types.Named]*ormPreset // concrete types of the ORM packages imported
@@ -194,6 +200,9 @@ func (x *extractor) extractModule(dir string) (err error) {
 		sites:       map[token.Pos][]*ssa.Function{},
 		files:       map[string][]byte{},
 		queryParams: map[*types.Func]int{},
+		reqWrappers: map[*types.Func][]reqTmpl{},
+		reqSeen:     map[*types.Func]map[string]bool{},
+		strHelpers:  map[*types.Func][]rpart{},
 		ormParams:   map[*types.Func][]ormWrap{},
 		ormIfaces:   map[*types.Interface]*ormPreset{},
 		tableNames:  map[*types.TypeName]string{},

@@ -38,10 +38,12 @@ type fnCtx struct {
 	exprs  map[types.Object]ast.Expr // local variable → last assigned expression
 	consts map[types.Object]string   // local variables assigned exactly once, from a constant string
 	params map[types.Object]int      // parameter → index
+	body   ast.Node
+	rl     *reqLocals // computed on first use (requests.go)
 }
 
 func newFnCtx(p *packages.Package, id, mod string, fn *types.Func, ftype *ast.FuncType, body ast.Node) *fnCtx {
-	c := &fnCtx{p: p, id: id, mod: mod, fn: fn, params: map[types.Object]int{}}
+	c := &fnCtx{p: p, id: id, mod: mod, fn: fn, params: map[types.Object]int{}, body: body}
 	c.exprs, c.consts = localExprs(body, p.TypesInfo)
 	i := 0
 	for _, f := range ftype.Params.List {
@@ -281,6 +283,7 @@ func (l *load) scanCalls() {
 		})
 	})
 	l.queryWrappers()
+	l.reqWrapperCalls()
 	l.ormWrappers()
 	l.ormLocalAccesses()
 }
@@ -396,6 +399,7 @@ func (l *load) isRepoPkg(path string) bool {
 func (l *load) extCall(c *fnCtx, call *ast.CallExpr, callee *types.Func, file string, line int) {
 	pkgPath := callee.Pkg().Path()
 	if pkgPath == "net/http" {
+		l.httpRequest(c, call, callee, file, line)
 		l.httpCall(c, call, callee, file, line)
 		return
 	}
