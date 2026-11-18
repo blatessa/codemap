@@ -20,9 +20,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
+	"codemap/internal/extract/sqlext"
 	"codemap/internal/graph"
 	"codemap/internal/project"
 )
@@ -76,7 +78,7 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 		ModuleDepth:     cfg.TS.ModuleDepth,
 		HTTPClients:     cfg.TS.HTTPClients,
 		BaseURLPrefixes: cfg.TS.BaseURLPrefixes,
-		Exclude:         cfg.Exclude,
+		Exclude:         withDefaultExcludes(cfg.Exclude),
 	})
 	if err != nil {
 		return nil, err
@@ -208,4 +210,18 @@ func bundlePath() (string, error) {
 		bundleFile = file
 	})
 	return bundleFile, bundleErr
+}
+
+// withDefaultExcludes adds the directories the Go extractor also skips
+// (testdata, vendor, third_party, ...), so both sides map the same code.
+func withDefaultExcludes(exclude []string) []string {
+	out := append([]string{}, exclude...)
+	for d := range sqlext.SkippedDirs {
+		if d == "node_modules" {
+			continue // the TS extractor already skips it
+		}
+		out = append(out, d+"/**", "**/"+d+"/**")
+	}
+	sort.Strings(out[len(exclude):])
+	return out
 }
