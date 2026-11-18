@@ -171,7 +171,7 @@ func (s *Server) apply(paths []string) {
 			name := strings.TrimPrefix(p, prefix)
 			projFiles = append(projFiles, name)
 			// Declared nodes are merged into the graph, and config drives the extractors.
-			if name == "external.yaml" || name == "config.yaml" {
+			if name == "external.toml" || name == "config.toml" {
 				rebuild = true
 			}
 		default:

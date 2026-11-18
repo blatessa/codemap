@@ -12,8 +12,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"codemap/internal/cli"
 	"codemap/internal/project"
 )
@@ -165,61 +163,4 @@ func proposalArchive(w io.Writer, c cli.Common, slug, pr string) error {
 	}
 	fmt.Fprintln(w, msg)
 	return nil
-}
-
-// setFrontmatter sets top-level string keys in a proposal file's frontmatter,
-// keeping the rest of the file as written (flow-style lists stay flow-style,
-// and the body is untouched).
-func setFrontmatter(file []byte, set [][2]string) ([]byte, error) {
-	s := string(file)
-	if !strings.HasPrefix(s, "---\n") {
-		return nil, errors.New("no frontmatter")
-	}
-	rest := s[len("---\n"):]
-	end := strings.Index(rest, "\n---")
-	if end < 0 {
-		return nil, errors.New("frontmatter is not closed")
-	}
-	var doc yaml.Node
-	if err := yaml.Unmarshal([]byte(rest[:end]), &doc); err != nil {
-		return nil, err
-	}
-	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
-		return nil, errors.New("frontmatter is not a mapping")
-	}
-	m := doc.Content[0]
-	for _, kv := range set {
-		val := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: kv[1]}
-		found := false
-		for i := 0; i+1 < len(m.Content); i += 2 {
-			if m.Content[i].Value == kv[0] {
-				m.Content[i+1] = val
-				found = true
-			}
-		}
-		if !found {
-			// Put new keys before the sketch lists, next to the other scalars.
-			at := len(m.Content)
-			for i := 0; i+1 < len(m.Content); i += 2 {
-				if m.Content[i+1].Kind != yaml.ScalarNode {
-					at = i
-					break
-				}
-			}
-			key := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: kv[0]}
-			m.Content = append(m.Content[:at], append([]*yaml.Node{key, val}, m.Content[at:]...)...)
-		}
-	}
-	fm, err := project.MarshalYAML(&doc)
-	if err != nil {
-		return nil, err
-	}
-	return []byte("---\n" + string(fm) + rest[end+1:]), nil
-}
-
-func dash(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
 }

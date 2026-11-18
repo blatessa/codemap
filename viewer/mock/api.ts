@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin, Connect } from 'vite';
-import YAML from 'yaml';
+import * as TOML from 'smol-toml';
 
 const here = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = path.resolve(process.env.CODEMAP_MOCK_ROOT ?? path.join(here, '../../testdata/shop'));
@@ -42,21 +42,28 @@ function readFile(key: FileKey): unknown {
     const t = readText('layout.json');
     return t ? JSON.parse(t) : {};
   }
-  const t = readText(key + '.yaml');
-  const v = t ? YAML.parse(t) : null;
-  if (key === 'external') return v ?? {};
-  return v ?? [];
+  const t = readText(key + '.toml');
+  const v: Obj = t ? TOML.parse(t) : {};
+  // TOML has no top-level arrays: lists are [[area]], [[block]] and [[view]]
+  // tables, and external.toml holds [[node]] and [[edge]] (PLAN.md §4).
+  if (key === 'external') return renameKeys(v, { node: 'nodes', edge: 'edges' });
+  return v[key.slice(0, -1)] ?? [];
+}
+
+// renameKeys maps the singular TOML table keys to the JSON API's plural names.
+function renameKeys(v: Obj, names: Record<string, string>): Obj {
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [names[k] ?? k, x]));
 }
 
 // parseProposal mirrors project.ParseProposal.
 export function parseProposal(text: string): Obj {
   let p: Obj = { status: 'open' };
   let body = text;
-  if (text.startsWith('---\n') || text.startsWith('---\r\n')) {
+  if (text.startsWith('+++\n') || text.startsWith('+++\r\n')) {
     const rest = text.slice(text.indexOf('\n') + 1);
-    const end = rest.indexOf('\n---');
-    if (end < 0) throw new Error('frontmatter is not closed with ---');
-    p = { ...p, ...(YAML.parse(rest.slice(0, end)) ?? {}) };
+    const end = rest.indexOf('\n+++');
+    if (end < 0) throw new Error('frontmatter is not closed with +++');
+    p = { ...p, ...renameKeys(TOML.parse(rest.slice(0, end)), { module: 'modules', node: 'nodes', edge: 'edges' }) };
     body = rest.slice(end + 4).replace(/^\r/, '').replace(/^\n/, '');
   }
   p.body = body;
@@ -87,10 +94,10 @@ function loadProposals(): Map<string, Obj> {
 function load(): Mock {
   const files = {} as Record<FileKey, unknown>;
   for (const k of FILES) files[k] = readFile(k);
-  const t = readText('config.yaml');
+  const t = readText('config.toml');
   return {
     graph: JSON.parse(fs.readFileSync(GRAPH, 'utf8')),
-    config: t ? YAML.parse(t) ?? {} : {},
+    config: t ? TOML.parse(t) : {},
     files,
     proposals: loadProposals(),
   };
@@ -180,7 +187,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
     if (key === 'layout') v = sortedLayout((v ?? {}) as Obj);
     db.files[key] = v;
     // like the real server's file watcher, which also sees our own writes
-    broadcast('project-changed', [`.codemap/${key}.${key === 'layout' ? 'json' : 'yaml'}`]);
+    broadcast('project-changed', [`.codemap/${key}.${key === 'layout' ? 'json' : 'toml'}`]);
     return send(res, 200, { version: hash(v) });
   }
   if (p === '/api/proposals' && m === 'GET') return send(res, 200, [...db.proposals.values()]);
@@ -251,7 +258,7 @@ function watch() {
         }
         continue;
       }
-      const base = path.basename(f).replace(/\.(yaml|json)$/, '') as FileKey;
+      const base = path.basename(f).replace(/\.(toml|json)$/, '') as FileKey;
       if ((FILES as readonly string[]).includes(base)) db.files[base] = readFile(base);
       else if (f.includes('proposals')) db.proposals = loadProposals();
     }

@@ -45,29 +45,53 @@ codemap proposal list
 codemap proposal archive refunds --pr 91        # once the work has landed or been dropped
 ```
 
-Then edit the file directly. The frontmatter holds the sketch, and the Markdown below it is the document (why, the shape of the change, open questions):
+Then edit the file directly. The TOML frontmatter between the `+++` lines holds the sketch, and the Markdown below it is the document (why, the shape of the change, open questions):
 
 ```markdown
----
-name: Refunds
-status: open
-modules:
-  - {id: new:mod:refunds, label: internal/refunds, area: Commerce}
-nodes:
-  - {id: "new:route:POST /orders/:id/refund", kind: route, label: /orders/:id/refund, module: mod:go:shop/cmd/server, entry: true, method: POST}
-  - {id: new:orders.Service.Refund, kind: function, label: Service.Refund, module: mod:go:shop/internal/orders}
-edges:
-  - {from: "new:route:POST /orders/:id/refund", to: new:orders.Service.Refund}
-  - {from: new:orders.Service.Refund, to: "go:shop/internal/orders.(*Repo).UpdateStatus"}
-  - {from: new:orders.Service.Refund, to: ext:stripe, detail: POST /v1/refunds}
----
++++
+name = "Refunds"
+status = "open"
+
+[[module]]
+id = "new:mod:refunds"
+label = "internal/refunds"
+area = "Commerce"
+
+[[node]]
+id = "new:route:POST /orders/:id/refund"
+kind = "route"
+label = "/orders/:id/refund"
+module = "mod:go:shop/cmd/server"
+entry = true
+method = "POST"
+
+[[node]]
+id = "new:orders.Service.Refund"
+kind = "function"
+label = "Service.Refund"
+module = "mod:go:shop/internal/orders"
+
+[[edge]]
+from = "new:route:POST /orders/:id/refund"
+to = "new:orders.Service.Refund"
+
+[[edge]]
+from = "new:orders.Service.Refund"
+to = "go:shop/internal/orders.(*Repo).UpdateStatus"
+
+[[edge]]
+from = "new:orders.Service.Refund"
+to = "ext:stripe"
+detail = "POST /v1/refunds"
++++
 ## Why
 …
 ```
 
 - New things use `new:` IDs. Existing things use their real IDs, which you can find with `codemap search` or `codemap show … --json`.
 - `module` places a new node in an existing module (`mod:go:<import path>`, `mod:ts:<dir>`) or in a proposed one.
-- Nodes accept any extra fields. The viewer displays whatever you add.
+- Each `[[module]]`, `[[node]]` and `[[edge]]` table is one entry. Keep the top-level keys (`name`, `status`, …) above the first table.
+- Nodes accept any extra fields, including arrays and inline tables such as `links = [{label = "Docs", url = "https://…"}]`. The viewer displays whatever you add.
 - Leave `base` and `updated` alone. codemap sets them.
 
 ## Other .codemap files
@@ -76,11 +100,11 @@ These belong to the user. They edit them in the viewer, and the files are plain 
 
 | File | Contents |
 |---|---|
-| `areas.yaml` | Named groups of modules |
-| `blocks.yaml` | A module split into blocks by pattern |
-| `views.yaml` | Saved views |
+| `areas.toml` | Named groups of modules, one `[[area]]` each |
+| `blocks.toml` | A module split into blocks by pattern, one `[[block]]` each |
+| `views.toml` | Saved views, one `[[view]]` each |
 | `layout.json` | Box positions |
-| `external.yaml` | External systems and their details: owner, links, setup. Also calls into the code that the code can't show, such as a webhook from Stripe. |
-| `config.yaml` | Extractor settings: job, subscriber and publisher call patterns, HTTP client wrappers, migration globs, the editor command |
+| `external.toml` | External systems and their details (`[[node]]`): owner, links, setup. Also calls into the code that the code can't show, such as a webhook from Stripe (`[[edge]]`). |
+| `config.toml` | Extractor settings: job, subscriber and publisher call patterns, HTTP client wrappers, migration globs, the editor command |
 
 Don't rewrite them unprompted.

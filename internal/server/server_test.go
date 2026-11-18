@@ -132,11 +132,11 @@ func TestState(t *testing.T) {
 		t.Error("empty lists should be [] / {}, not null")
 	}
 	want := map[string]string{
-		"areas":                  diskVersion(t, root, "areas.yaml"),
+		"areas":                  diskVersion(t, root, "areas.toml"),
 		"blocks":                 Missing,
 		"layout":                 Missing,
 		"views":                  Missing,
-		"external":               diskVersion(t, root, "external.yaml"),
+		"external":               diskVersion(t, root, "external.toml"),
 		"proposals/refunds":      diskVersion(t, root, "proposals/refunds.md"),
 		"proposals/order-search": diskVersion(t, root, "proposals/order-search.md"),
 	}
@@ -160,19 +160,19 @@ func TestProjectRoundTrip(t *testing.T) {
 		value      any
 		want       func(p *project.Project) any
 	}{
-		{"areas", "areas.yaml",
+		{"areas", "areas.toml",
 			[]project.Area{{Name: "Commerce", Modules: []string{"mod:go:shop/internal/orders"}}},
 			func(p *project.Project) any { return p.Areas }},
-		{"blocks", "blocks.yaml",
+		{"blocks", "blocks.toml",
 			[]project.Block{{ID: "block:pages-checkout", Name: "pages · checkout", From: "mod:ts:web/src/pages", Match: []string{"/checkout*"}}},
 			func(p *project.Project) any { return p.Blocks }},
 		{"layout", "layout.json",
 			project.Layout{"mod:go:shop/internal/orders": {1200, 80}, "area:Commerce": {10, 20.5}},
 			func(p *project.Project) any { return p.Layout }},
-		{"views", "views.yaml",
+		{"views", "views.toml",
 			[]project.View{{Name: "Checkout", Selection: []string{"route:POST /orders"}, Focus: true}},
 			func(p *project.Project) any { return p.Views }},
-		{"external", "external.yaml",
+		{"external", "external.toml",
 			project.External{
 				Nodes: []map[string]any{{"id": "ext:stripe", "owner": "Someone else"}},
 				Edges: []project.ExternalEdge{{From: "ext:stripe", To: "route:POST /webhooks/stripe", Detail: "events"}},
@@ -265,7 +265,7 @@ func TestExternalWriteUpdatesGraph(t *testing.T) {
 func TestConflictAfterDiskEdit(t *testing.T) {
 	_, ts, root := setup(t)
 	v := getState(t, ts).Versions["areas"]
-	if err := os.WriteFile(filepath.Join(root, ".codemap/areas.yaml"), []byte("- name: Agent\n  modules: [mod:x]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".codemap/areas.toml"), []byte("[[area]]\nname = \"Agent\"\nmodules = [\"mod:x\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	r := do(t, ts, "PUT", "/api/project/areas", []project.Area{{Name: "Mine"}}, "If-Match", v)
@@ -277,7 +277,7 @@ func TestConflictAfterDiskEdit(t *testing.T) {
 		Value   []project.Area
 	}
 	r.decode(t, &cf)
-	if cf.Version != diskVersion(t, root, "areas.yaml") || len(cf.Value) != 1 || cf.Value[0].Name != "Agent" {
+	if cf.Version != diskVersion(t, root, "areas.toml") || len(cf.Value) != 1 || cf.Value[0].Name != "Agent" {
 		t.Errorf("409: %+v", cf)
 	}
 	// Creating a missing file uses the "missing" version.
@@ -335,7 +335,7 @@ func TestProposals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(string(b), "---\n") || got.Name != "Stock via events" || got.Status != "open" ||
+	if !strings.HasPrefix(string(b), "+++\n") || got.Name != "Stock via events" || got.Status != "open" ||
 		got.Base != "3f2c9e1" || got.Updated == "" || got.Body != p.Body || len(got.Nodes) != 1 || len(got.Edges) != 1 {
 		t.Errorf("created file:\n%s", b)
 	}
@@ -496,9 +496,9 @@ func TestOpen(t *testing.T) {
 		t.Errorf("args %q, want %q", got, want)
 	}
 
-	cfg := filepath.Join(root, ".codemap/config.yaml")
+	cfg := filepath.Join(root, ".codemap/config.toml")
 	b, _ := os.ReadFile(cfg)
-	os.WriteFile(cfg, append(b, []byte("editor: \"code -g {file}:{line}\"\n")...), 0o644)
+	os.WriteFile(cfg, append([]byte("editor = \"code -g {file}:{line}\"\n"), b...), 0o644) // top-level keys go before the tables
 	if err := s.reloadProject(); err != nil {
 		t.Fatal(err)
 	}
@@ -654,9 +654,9 @@ func TestEvents(t *testing.T) {
 	ev := openEvents(t, ts)
 
 	// Editing a .codemap file reloads the project.
-	os.WriteFile(filepath.Join(root, ".codemap/areas.yaml"), []byte("- name: Only\n  modules: []\n"), 0o644)
+	os.WriteFile(filepath.Join(root, ".codemap/areas.toml"), []byte("[[area]]\nname = \"Only\"\nmodules = []\n"), 0o644)
 	e := ev.wait(t, "project-changed")
-	if !reflect.DeepEqual(e.Data.Files, []string{"areas.yaml"}) || e.Data.Error != "" {
+	if !reflect.DeepEqual(e.Data.Files, []string{"areas.toml"}) || e.Data.Error != "" {
 		t.Errorf("project-changed: %+v", e.Data)
 	}
 	if st := getState(t, ts); len(st.Project.Areas) != 1 || st.Project.Areas[0].Name != "Only" {
@@ -664,7 +664,7 @@ func TestEvents(t *testing.T) {
 	}
 
 	// A broken file keeps the last good state and reports the error.
-	os.WriteFile(filepath.Join(root, ".codemap/areas.yaml"), []byte("- name: [unclosed\n"), 0o644)
+	os.WriteFile(filepath.Join(root, ".codemap/areas.toml"), []byte("[[area]]\nname = [unclosed\n"), 0o644)
 	e = ev.wait(t, "project-changed")
 	if e.Data.Error == "" {
 		t.Errorf("expected an error: %+v", e.Data)
@@ -674,7 +674,7 @@ func TestEvents(t *testing.T) {
 	}
 
 	// Fix it again before the next steps.
-	os.WriteFile(filepath.Join(root, ".codemap/areas.yaml"), []byte("- name: Only\n  modules: []\n"), 0o644)
+	os.WriteFile(filepath.Join(root, ".codemap/areas.toml"), []byte("[[area]]\nname = \"Only\"\nmodules = []\n"), 0o644)
 	ev.wait(t, "project-changed")
 
 	// A new directory is watched too.

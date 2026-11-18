@@ -1,0 +1,20 @@
+migrations = ["db/migrations/*.sql"]
+
+[go]
+jobs = [
+  {call = "(*shop/internal/sched.Scheduler).Every", name_arg = 1, handler_arg = 2},
+]
+subscribers = [
+  {call = "(*shop/internal/events.Bus).Subscribe", topic_arg = 0, handler_arg = 1},
+]
+publishers = [
+  {call = "(*shop/internal/events.Bus).Publish", topic_arg = 1, value_arg = 2},
+]
+
+[ts]
+roots = ["web"]
+# calls to these count as requests to the server; the fetch inside the wrapper itself doesn't
+http_clients = ["http.get", "http.post"]
+
+[external.imports]
+"github.com/mrz1836/postmark" = "ext:postmark"

@@ -687,7 +687,7 @@ const TABLES={
 const QUEUES={x_queue:{type:'orders.Order',file:'internal/orders/order.go',line:8,code:[
  'type Order struct {','\tID       string `json:"id"`','\tUserID   string `json:"user_id"`','\tItems    []Item `json:"items"`',
  '\tChargeID string `json:"charge_id"`','\tStatus   string `json:"status"`','}'].join('\n')}};
-// hand-written, from .codemap/outside.yaml
+// hand-written, from .codemap/outside.toml
 const INFO={
  x_stripe:{owner:'Payments team',env:'Live and test accounts; key in STRIPE_SECRET_KEY',limits:'100 read and 100 write requests per second in live mode',
    links:[['Dashboard','https://dashboard.stripe.com'],['API docs','https://docs.stripe.com/api'],['Status','https://status.stripe.com']]},
@@ -710,7 +710,7 @@ const BASE_EDGES=[
  ['j_expire','i_release'],['i_release','x_stock','UPDATE stock SET reserved = 0 WHERE expires_at < now()'],
  ['x_queue','s_placed','subscribe order.placed'],['s_placed','n_confirm'],['n_confirm','x_smtp','send template "confirmation"']
 ].map(([from,to,detail])=>({from,to,detail}));
-// declared in .codemap/outside.yaml: calls into us that the code can't show
+// declared in .codemap/outside.toml: calls into us that the code can't show
 BASE_EDGES.push({from:'x_stripe',to:'r_hook',detail:'sends payment_intent.succeeded',decl:true});
 
 // the comment directly above a function (// lines or a /** */ block)
