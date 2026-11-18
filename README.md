@@ -70,3 +70,7 @@ go test -short ./...                         # fast; drop -short to include git 
 ```
 
 Releases: push a `v*` tag and the `release` workflow builds the binaries with GoReleaser.
+
+## License
+
+MIT. See `LICENSE`.
