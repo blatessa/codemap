@@ -9,10 +9,11 @@ setup:  Live and test accounts; key in STRIPE_SECRET_KEY
 
 api.stripe.com [service]
   POST /webhooks/stripe  declared: sends payment_intent.succeeded
-    payments.Handler.HandleWebhook  (+1)  → calls api.stripe.com
+    payments.Handler.HandleWebhook
       orders.Service.MarkPaid
         notify.Mailer.SendReceipt  ...  → calls postmark
         orders.Repo.UpdateStatus  ...  → writes orders
+      payments.Handler.verifySignature  (+1)  → calls api.stripe.com
 
 Reached by:
   server.main

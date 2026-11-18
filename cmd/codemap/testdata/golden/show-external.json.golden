@@ -102,13 +102,21 @@
                     ]
                   }
                 ]
-              }
-            ],
-            "support": 1,
-            "reaches": [
+              },
               {
-                "to": "ext:stripe",
-                "type": "calls"
+                "id": "go:shop/internal/payments.(*Handler).verifySignature",
+                "via": {
+                  "from": "go:shop/internal/payments.(*Handler).HandleWebhook",
+                  "to": "go:shop/internal/payments.(*Handler).verifySignature",
+                  "type": "calls"
+                },
+                "support": 1,
+                "reaches": [
+                  {
+                    "to": "ext:stripe",
+                    "type": "calls"
+                  }
+                ]
               }
             ]
           }

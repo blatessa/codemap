@@ -36,8 +36,7 @@ func Prune(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
 		return v
 	}
 	memo := map[*graph.TreeNode]bool{}
-	var leads func(c *graph.TreeNode) bool
-	leads = func(c *graph.TreeNode) bool {
+	leads := func(c *graph.TreeNode) bool {
 		if v, ok := memo[c]; ok {
 			return v
 		}
@@ -46,14 +45,8 @@ func Prune(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
 		case c.Targets != nil || c.Seen:
 		case c.Via != nil && ix.IsEffect(c.Via):
 			v = !common[graph.Effect{To: c.ID, Type: c.Via.Type}]
-		case len(c.Children) == 0:
-			v = distinct(c.ID) // a shared function, or a leaf: what it does itself
 		default:
-			for _, k := range c.Children {
-				if leads(k) {
-					v = true
-				}
-			}
+			v = distinct(c.ID) // anything it reaches, as the viewer decides it
 		}
 		memo[c] = v
 		return v
