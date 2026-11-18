@@ -106,3 +106,31 @@ func handlerB()                       {}
 func applyPart(context.Context) error { return nil }
 func initA()                          {}
 func initB()                          {}
+
+// ---- decorators ----
+
+type HandlerFunc func(string) error
+
+// Wrap returns a handler that runs h: its call of h belongs to whoever passed h.
+func Wrap(h func(string) error) HandlerFunc {
+	return HandlerFunc(func(s string) error {
+		logged()
+		return h(s)
+	})
+}
+
+// Plain returns a closure without a conversion.
+func Plain(h func()) func() {
+	return func() { h() }
+}
+
+func logged()               {}
+func showUser(string) error { return nil }
+func showRepo(string) error { return nil }
+func ping()                 {}
+
+func Routes() []HandlerFunc {
+	return []HandlerFunc{Wrap(showUser), Wrap(func(s string) error { return showRepo(s) })}
+}
+
+func Health() func() { return Plain(ping) }

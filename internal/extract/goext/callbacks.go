@@ -23,8 +23,10 @@ import (
 //
 // Forwarding (WithTx passing f on to txWithNoCheck) and wrapping (WithTx2
 // wrapping f in a closure it passes to WithTx) follow through. Only calls the
-// helper makes before it returns count: a function it starts with `go` or
-// stores for later is a registration (a job, a handler), and keeps its edges.
+// helper makes before it returns count, plus calls in a closure it returns (a
+// decorator such as HTTP middleware: wrap(h) runs h for whoever passed it). A
+// function it starts with `go` or stores for later is a registration (a job, a
+// handler), and keeps its edges.
 
 // cbParam is parameter i of fn (receivers count, as in ssa.Function.Params).
 type cbParam struct {
@@ -172,8 +174,16 @@ func (cb *callbacks) synchronous(f, helper *ssa.Function, cand map[cbParam]bool)
 					}
 				}
 			case *ssa.DebugRef:
+			case *ssa.Return:
+				// A decorator: wrap(h) returns a closure that calls h (HTTP
+				// middleware, s.wrap(handler)). Calling the result runs h for
+				// whoever passed it, so the call is theirs, as if made now.
+			case *ssa.ChangeType, *ssa.Convert, *ssa.MakeInterface:
+				if !onlyReturned(x.(ssa.Value)) {
+					return false
+				}
 			default:
-				return false // launched with go, stored, returned…
+				return false // launched with go, stored…
 			}
 		}
 		f = f.Parent()
@@ -460,4 +470,22 @@ func (cb *callbacks) stored(addr ssa.Value) ([]ssa.Value, bool) {
 func isFunc(t types.Type) bool {
 	_, ok := t.Underlying().(*types.Signature)
 	return ok
+}
+
+// onlyReturned reports whether v (a closure converted to a named function
+// type or an interface, as in return http.HandlerFunc(func…)) is only
+// returned.
+func onlyReturned(v ssa.Value) bool {
+	refs := v.Referrers()
+	if refs == nil || len(*refs) == 0 {
+		return false
+	}
+	for _, r := range *refs {
+		switch r.(type) {
+		case *ssa.Return, *ssa.DebugRef:
+		default:
+			return false
+		}
+	}
+	return true
 }

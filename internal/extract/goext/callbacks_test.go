@@ -36,6 +36,8 @@ func TestCallbacks(t *testing.T) {
 		"UpdateState -> WithTx", "UpdateState -> applyFull", "UpdateState -> applyPart",
 		"Direct -> Run", "Direct -> handlerB",
 		"ByName -> Run", "ByName -> handlerA", "ByName -> handlerB", // untraceable: everything Run was passed
+		"Routes -> Wrap", "Routes -> showUser", "Routes -> showRepo", "Wrap -> logged", // a decorator's call is its caller's
+		"Health -> Plain", "Health -> ping",
 	} {
 		if !has[w] {
 			t.Errorf("missing edge %s", w)
@@ -46,6 +48,7 @@ func TestCallbacks(t *testing.T) {
 		"WithTx -> WithTx2", "txNoCheck -> WithTx2", "WithTx2 -> MakePR", "WithTx -> MakePR",
 		"Retry -> syncMirror", "WithTx -> UpdateState", "WithTx -> applyPart", "txNoCheck -> applyPart",
 		"Dynamic -> Poke", "Run -> handlerA", "Run -> handlerB", "Direct -> handlerA",
+		"Wrap -> showUser", "Wrap -> showRepo", "Wrap -> Routes", "Plain -> ping", "Plain -> Health",
 	} {
 		if has[w] {
 			t.Errorf("unexpected edge %s", w)
