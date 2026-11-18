@@ -26,7 +26,7 @@ var DefaultDBMethods = []string{
 	"Get", "GetContext", "Select", "SelectContext", "NamedExec", "NamedExecContext",
 	"NamedQuery", "NamedQueryContext", "Queryx", "QueryRowx", "QueryxContext", "QueryRowxContext",
 	"MustExec", "MustExecContext", "Prepare", "PrepareContext", "Preparex", "PreparexContext",
-	"Raw", "Queue",
+	"Raw", "Queue", "SQL",
 }
 
 // fnCtx is the function whose body is being scanned.
@@ -282,6 +282,7 @@ func (l *load) scanCalls() {
 	})
 	l.queryWrappers()
 	l.ormWrappers()
+	l.ormLocalAccesses()
 }
 
 // queryWrappers follows queries passed through the repo's own helpers: when a

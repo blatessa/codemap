@@ -13,6 +13,7 @@ func (*Engine) Get(bean any) (bool, error)                   { return false, nil
 func (*Session) Where(q any, args ...any) *Session           { return nil }
 func (*Session) ID(id any) *Session                          { return nil }
 func (*Session) Table(t any) *Session                        { return nil }
+func (*Session) SQL(q string, args ...any) *Session          { return nil }
 func (*Session) Cols(cols ...string) *Session                { return nil }
 func (*Session) Get(bean any) (bool, error)                  { return false, nil }
 func (*Session) Find(beans any, cond ...any) error           { return nil }

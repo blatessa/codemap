@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode"
 
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 
 	"github.com/blatessa/codemap/internal/extract/sqlext"
@@ -55,6 +56,8 @@ var (
 		"NewInsert", "NewUpdate", "NewDelete", "NewMerge")
 	ormReads = set("Get", "Find", "First", "Last", "Take", "Count", "Exist", "Exists", "Iterate", "Rows",
 		"Scan", "Pluck", "Sum", "Sums", "SumInt", "SumsInt", "FindAndCount", "ScanAndCount", "NewSelect")
+	// ormRawSQL are chain methods taking a SQL string; DefaultDBMethods has them.
+	ormRawSQL = set("SQL", "Raw")
 	// ormModelArgs are methods whose argument names the model for the whole chain.
 	ormModelArgs = set("Model", "Table")
 )
@@ -78,6 +81,7 @@ func methodName(call *ast.CallExpr) string {
 type ormWrap struct {
 	param, tparam int // -1 when unused
 	variadic      bool
+	table         bool // param is a table name: Table(name)
 	write         bool
 	orm           *ormPreset
 }
@@ -85,7 +89,27 @@ type ormWrap struct {
 // ormModel is what a model expression resolves to.
 type ormModel struct {
 	tables []string
-	wrap   *ormWrap // the enclosing function's parameter or type parameter
+	local  []*types.Named // types declared in a function: models only if their table exists
+	wrap   *ormWrap       // the enclosing function's parameter or type parameter
+}
+
+func (m ormModel) empty() bool { return m.wrap == nil && len(m.tables) == 0 && len(m.local) == 0 }
+
+func (m *ormModel) add(o ormModel) {
+	m.tables = append(m.tables, o.tables...)
+	m.local = append(m.local, o.local...)
+}
+
+// ormLocal is an access through a type declared in a function, kept until all
+// tables are known (migrations declare local copies of the tables they change;
+// other local types are query result rows).
+type ormLocal struct {
+	from         string
+	typ          *types.Named
+	orm          *ormPreset
+	write        bool
+	detail, file string
+	line         int
 }
 
 // ormCall handles a call in a function body if it ends an ORM chain. done
@@ -106,6 +130,9 @@ func (l *load) ormCall(c *fnCtx, call *ast.CallExpr, done map[*ast.CallExpr]bool
 	var orm *ormPreset
 	for _, k := range chain {
 		n := methodName(k)
+		if ormRawSQL[n] {
+			return // SQL(…)/Raw(…): the query string says what it touches (scan.go)
+		}
 		write = write || ormWrites[n]
 		read = read || ormReads[n]
 		if orm == nil {
@@ -146,6 +173,26 @@ func (l *load) ormAccess(c *fnCtx, m ormModel, write bool, orm *ormPreset, detai
 		l.ensureTable(id, t)
 		l.x.b.addEdge(graph.Edge{From: c.id, To: id, Type: typ, Detail: detail, File: file, Line: line})
 	}
+	for _, n := range m.local {
+		l.ormLocals = append(l.ormLocals, ormLocal{c.id, n, orm, write, detail, file, line})
+	}
+}
+
+// ormLocalAccesses adds the accesses through local types whose table exists.
+func (l *load) ormLocalAccesses() {
+	for _, a := range l.ormLocals {
+		for _, t := range tableCandidates(a.typ, a.orm) {
+			if id := sqlext.TableID(t); l.x.b.has(id) {
+				typ := graph.Reads
+				if a.write {
+					typ = graph.Writes
+				}
+				l.x.b.addEdge(graph.Edge{From: a.from, To: id, Type: typ, Detail: a.detail, File: a.file, Line: a.line})
+				break
+			}
+		}
+	}
+	l.ormLocals = nil
 }
 
 // chain returns call and the calls its receiver is built from, outermost
@@ -274,10 +321,17 @@ func (l *load) chainModel(c *fnCtx, chain []*ast.CallExpr, orm *ormPreset) ormMo
 		if s, isSel := c.p.TypesInfo.Selections[sel]; !ok || !isSel || s.Kind() != types.MethodVal {
 			return out
 		}
+		named := ormModelArgs[methodName(k)]
 		for i, a := range k.Args {
 			if s, ok := c.stringValue(a); ok {
-				if t := cleanTable(s); ormModelArgs[methodName(k)] && t != "" {
+				if t := cleanTable(s); named && t != "" {
 					out.tables = append(out.tables, t)
+				}
+				continue
+			}
+			if isString(c.p.TypesInfo, a) {
+				if p := c.paramIndex(a); named && p >= 0 {
+					return ormModel{wrap: &ormWrap{param: p, tparam: -1, table: true}}
 				}
 				continue
 			}
@@ -285,23 +339,83 @@ func (l *load) chainModel(c *fnCtx, chain []*ast.CallExpr, orm *ormPreset) ormMo
 			if m.wrap != nil {
 				return m
 			}
-			out.tables = append(out.tables, m.tables...)
+			out.add(m)
 		}
 		return out
 	}
 	for _, k := range chain {
 		if ormModelArgs[methodName(k)] {
-			if m := try(k); m.wrap != nil || len(m.tables) > 0 {
+			if m := try(k); !m.empty() {
 				return m
 			}
 		}
 	}
 	for _, k := range chain {
-		if m := try(k); m.wrap != nil || len(m.tables) > 0 {
+		if m := try(k); !m.empty() {
 			return m
 		}
 	}
+	// The session came from one of the repo's own helpers
+	// (makeQuery(ctx).Count()): the model is in what it returns.
+	if root := staticCallee(c.p.TypesInfo, chain[len(chain)-1]); root != nil && root.Pkg() != nil && l.isRepoPkg(root.Pkg().Path()) {
+		return l.helperModel(root.Origin(), orm)
+	}
 	return ormModel{}
+}
+
+// helperModel is the model of the ORM chains a repo function returns.
+func (l *load) helperModel(f *types.Func, orm *ormPreset) ormModel {
+	if m, ok := l.ormHelpers[f]; ok {
+		return m
+	}
+	l.ormHelpers[f] = ormModel{} // a helper calling itself
+	var out ormModel
+	if p, d := l.declOf(f); d != nil {
+		hc := newFnCtx(p, "", "", f, d.Type, d.Body)
+		ast.Inspect(d.Body, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.FuncLit:
+				return false
+			case *ast.ReturnStmt:
+				for _, r := range n.Results {
+					r = ast.Unparen(r)
+					if id, ok := r.(*ast.Ident); ok {
+						if e := hc.exprs[p.TypesInfo.Uses[id]]; e != nil {
+							r = ast.Unparen(e)
+						}
+					}
+					if call, ok := r.(*ast.CallExpr); ok {
+						if m := l.chainModel(hc, l.chain(hc, call), orm); m.wrap == nil {
+							out.add(m)
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	l.ormHelpers[f] = out
+	return out
+}
+
+// declOf finds a repo function's declaration.
+func (l *load) declOf(f *types.Func) (*packages.Package, *ast.FuncDecl) {
+	if l.decls == nil {
+		l.decls = map[*types.Func]declRef{}
+		for _, p := range l.plain {
+			for _, file := range p.Syntax {
+				for _, d := range file.Decls {
+					if fd, ok := d.(*ast.FuncDecl); ok && fd.Body != nil {
+						if obj, ok := p.TypesInfo.Defs[fd.Name].(*types.Func); ok {
+							l.decls[obj] = declRef{fd, p}
+						}
+					}
+				}
+			}
+		}
+	}
+	r := l.decls[f]
+	return r.p, r.decl
 }
 
 // modelOf resolves a model argument. spread is true for args... passing a
@@ -364,8 +478,14 @@ func (l *load) modelOfType(c *fnCtx, t types.Type, orm *ormPreset) ormModel {
 				continue
 			}
 			obj := u.Obj()
-			if obj.Pkg() == nil || !l.isRepoPkg(obj.Pkg().Path()) || obj.Parent() != obj.Pkg().Scope() {
-				return ormModel{} // not the repo's, or declared in a function (a result row)
+			if obj.Pkg() == nil || !l.isRepoPkg(obj.Pkg().Path()) {
+				return ormModel{}
+			}
+			if obj.Parent() != obj.Pkg().Scope() {
+				if s := l.declaredTable(u); s != "" {
+					return ormModel{tables: []string{s}}
+				}
+				return ormModel{local: []*types.Named{u}}
 			}
 			return ormModel{tables: []string{l.tableName(u, orm)}}
 		default:
@@ -385,11 +505,7 @@ func (l *load) tableName(n *types.Named, orm *ormPreset) string {
 	}
 	s := l.declaredTable(n)
 	if s == "" {
-		snake := snakeCase(n.Obj().Name())
-		cands := []string{snake, plural(snake)}
-		if orm.plural {
-			cands[0], cands[1] = cands[1], cands[0]
-		}
+		cands := tableCandidates(n, orm)
 		s = cands[0]
 		for _, c := range cands {
 			if l.x.b.has(sqlext.TableID(c)) {
@@ -400,6 +516,16 @@ func (l *load) tableName(n *types.Named, orm *ormPreset) string {
 	}
 	l.tableNames[n.Obj()] = s
 	return s
+}
+
+// tableCandidates are the names an ORM's convention gives a type's table, the
+// ORM's default first.
+func tableCandidates(n *types.Named, orm *ormPreset) []string {
+	snake := snakeCase(n.Obj().Name())
+	if orm.plural {
+		return []string{plural(snake), snake}
+	}
+	return []string{snake, plural(snake)}
 }
 
 func (l *load) declaredTable(n *types.Named) string {
@@ -542,6 +668,13 @@ func (l *load) ormWrappers() {
 							continue
 						}
 						m = l.modelOfType(c, inst.TypeArgs.At(w.tparam), w.orm)
+					case w.table && w.param < len(call.Args):
+						a := call.Args[w.param]
+						if s, ok := c.stringValue(a); ok && cleanTable(s) != "" {
+							m.tables = []string{cleanTable(s)}
+						} else if p := c.paramIndex(a); p >= 0 {
+							m.wrap = &ormWrap{param: p, tparam: -1, table: true}
+						}
 					case w.param < len(call.Args):
 						args := call.Args[w.param : w.param+1]
 						if w.variadic && !call.Ellipsis.IsValid() {
@@ -553,7 +686,7 @@ func (l *load) ormWrappers() {
 								m = am
 								break
 							}
-							m.tables = append(m.tables, am.tables...)
+							m.add(am)
 						}
 					}
 					l.ormAccess(c, m, w.write, w.orm, l.callText(call), file, line)

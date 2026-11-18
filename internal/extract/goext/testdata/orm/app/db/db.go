@@ -37,3 +37,9 @@ func DeleteByBean(bean any) error {
 	_, err := GetEngine().Where(nil).Delete(bean)
 	return err
 }
+
+// FindIDs takes the table by name.
+func FindIDs(tableName string) ([]int64, error) {
+	var ids []int64
+	return ids, GetEngine().Where("x").Table(tableName).Find(&ids)
+}

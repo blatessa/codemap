@@ -33,6 +33,7 @@ func TestORM(t *testing.T) {
 		"AddLabel writes label",         // through the repo's interface over xorm
 		"CountIssues reads issue",       // session in a local variable
 		"CountLabels reads label",       // not the *Ctx passed to the root
+		"CountRepoIssues reads issue",   // a helper building the session
 		"CreateIssue writes comment",    // variadic bean wrapper
 		"CreateIssue writes issue",
 		"DeleteLabel writes label",   // bean parameter wrapper
@@ -40,11 +41,14 @@ func TestORM(t *testing.T) {
 		"GetIssueByID reads issue",
 		"GetSource reads login_source", // TableName method
 		"GetUser reads users",
+		"LabelIDs reads label", // table name passed as a string
 		"ListBooks reads library_books",
-		"ListIssues reads issue",    // named list type
-		"RenameUsers writes users",  // gorm Model(…)
-		"Stats reads issue",         // Table("`issue` i"), not the local row type
-		"Totals reads order_totals", // gorm Table("…")
+		"ListIssues reads issue",        // named list type
+		"MaxIssueID reads issue",        // SQL(…) in a chain
+		"MigrateAddPinned writes issue", // a local copy of an existing table; not the local row type
+		"RenameUsers writes users",      // gorm Model(…)
+		"Stats reads issue",             // Table("`issue` i"), not the local row type
+		"Totals reads order_totals",     // gorm Table("…")
 		"UpdateIssueTitle writes issue",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {

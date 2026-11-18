@@ -138,3 +138,33 @@ func RepoIDs(ctx context.Context) ([]int64, error) {
 type AppCtx struct{ context.Context }
 
 func CallsRepoIDs(c *AppCtx) { RepoIDs(c) }
+
+// Raw SQL in a chain: the query says what it reads.
+func MaxIssueID() (n int64, err error) {
+	_, err = db.GetEngine().Where("x").SQL("SELECT max(id) FROM issue").Get(&n)
+	return n, err
+}
+
+// A migration declares its own copy of a table; a local result row isn't a table.
+func MigrateAddPinned() error {
+	type Issue struct {
+		ID     int64
+		Pinned bool
+	}
+	type row struct{ N int }
+	var rows []row
+	if err := db.GetEngine().Where("x").Find(&rows); err != nil {
+		return err
+	}
+	_, err := db.GetEngine().ID(1).Cols("pinned").Update(&Issue{})
+	return err
+}
+
+func LabelIDs() ([]int64, error) { return db.FindIDs("label") }
+
+// A helper builds the session; the model is in what it returns.
+func issueQuery(repoID int64) *xorm.Session {
+	return db.GetEngine().Where("repo_id = ?", repoID).Table(&Issue{})
+}
+
+func CountRepoIssues(repoID int64) (int64, error) { return issueQuery(repoID).Count() }

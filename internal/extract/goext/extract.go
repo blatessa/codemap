@@ -156,6 +156,9 @@ type load struct {
 	ormIfaces  map[*types.Interface]*ormPreset
 	ormTypes   map[*types.Named]*ormPreset // concrete types of the ORM packages imported
 	tableNames map[*types.TypeName]string
+	ormHelpers map[*types.Func]ormModel // session-building helpers → the model they return
+	ormLocals  []ormLocal
+	decls      map[*types.Func]declRef
 }
 
 const loadMode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes |
@@ -185,6 +188,7 @@ func (x *extractor) extractModule(dir string) (err error) {
 		ormParams:   map[*types.Func][]ormWrap{},
 		ormIfaces:   map[*types.Interface]*ormPreset{},
 		tableNames:  map[*types.TypeName]string{},
+		ormHelpers:  map[*types.Func]ormModel{},
 	}
 	var initial []*packages.Package
 	for _, p := range pkgs {
