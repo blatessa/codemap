@@ -19,7 +19,9 @@ import {
   select,
   setState,
   splitBlock,
+  toggleExpanded,
   toggleMulti,
+  useGrouping,
   useModel,
   useSel,
   useStore,
@@ -465,6 +467,50 @@ function AreaPanel({ m, name }: { m: Model; name: string }) {
   );
 }
 
+function GroupPanel({ m, id }: { m: Model; id: string }) {
+  const G = useGrouping();
+  const open = useStore((s) => s.expanded.has(id));
+  const g = G?.groups.get(id);
+  if (!g) return null;
+  const mine = new Set(g.members);
+  const use = new Map<string, string>(),
+    dep = new Map<string, string>();
+  for (const e of m.edges) {
+    const a = m.node.get(e.from)!.box,
+      c = m.node.get(e.to)!.box;
+    if (mine.has(a.id) === mine.has(c.id)) continue;
+    if (mine.has(a.id)) dep.set(c.id, c.label);
+    else use.set(a.id, a.label);
+  }
+  const mlist = (map: Map<string, string>) =>
+    map.size ? (
+      <div className="links">
+        {[...map].map(([k, v]) => (
+          <button key={k} className="lnk" onClick={() => select(k)}>
+            {v}
+          </button>
+        ))}
+      </div>
+    ) : (
+      <p>—</p>
+    );
+  return (
+    <>
+      <Head eyebrow="Folder" title={g.path} />
+      <div className="cols">
+        <Section title="Used by">{mlist(use)}</Section>
+        <Section title="Depends on">{mlist(dep)}</Section>
+      </div>
+      <Section title="Modules">{mlist(new Map(g.members.map((x) => [x, m.box.get(x)!.label])))}</Section>
+      <div className="btns">
+        <button className="btn" onClick={() => toggleExpanded(id)}>
+          {open ? 'Close' : 'Open'}
+        </button>
+      </div>
+    </>
+  );
+}
+
 function MultiPanel({ m, ids }: { m: Model; ids: string[] }) {
   const rectOf = useAreaRect();
   const pos = useStore((s) => s.pos);
@@ -617,6 +663,7 @@ export function Drawer() {
   let wide = false;
   if (form) content = <FormPanel key={form.type + form.box} m={m} />;
   else if (sel.length > 1) content = <MultiPanel m={m} ids={sel} />;
+  else if (sel.length === 1 && sel[0].startsWith('group:')) content = <GroupPanel m={m} id={sel[0]} />;
   else if (sel.length === 1 && sel[0].startsWith('area:')) content = <AreaPanel m={m} name={sel[0].slice(5)} />;
   else if (sel.length === 1 && m.node.has(sel[0])) content = <NodePanel m={m} id={sel[0]} />;
   else if (sel.length === 1 && m.box.has(sel[0])) content = <BoxPanel key={sel[0]} m={m} id={sel[0]} />;

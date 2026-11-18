@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import * as api from './api';
 import { escapeGlob, slugify } from './blocks';
 import { layoutUnplaced, type Pos } from './layout';
+import { buildGrouping, isGroup, layoutH, topOf, type Grouping } from './groups';
 import { buildModel, selectionOf, type Model, type Sel } from './model';
 import type { Area, Block, Graph, Layout, Loose, Proposal, View } from './types';
 
@@ -88,11 +89,26 @@ export function modelOf(s: S): Model {
 export const useModel = () => useStore(modelOf);
 export const currentProposal = (s: S) => (s.pslug ? s.proposals.find((p) => p.slug === s.pslug) ?? null : null);
 
+// groupingOf folds big maps into folder groups (groups.ts). Modules in an area
+// and shared modules stay on their own.
+const groupMemo = new WeakMap<Model, { areas: Area[]; G: Grouping | null }>();
+export function groupingFor(m: Model, areas: Area[]): Grouping | null {
+  const hit = groupMemo.get(m);
+  if (hit && hit.areas === areas) return hit.G;
+  const keep = new Set(areas.flatMap((a) => a.modules ?? []));
+  for (const b of m.boxes) if (b.shared) keep.add(b.id);
+  const G = buildGrouping(m.boxes, m.box, keep);
+  groupMemo.set(m, { areas, G });
+  return G;
+}
+export const groupingOf = (s: S) => groupingFor(modelOf(s), s.areas);
+export const useGrouping = () => useStore(groupingOf);
+
 let selMemo: { m?: Model; sel?: string[]; areas?: Area[]; S?: Sel | null } = {};
 export function selOf(s: S): Sel | null {
   const m = modelOf(s);
   if (selMemo.m !== m || selMemo.sel !== s.sel || selMemo.areas !== s.areas)
-    selMemo = { m, sel: s.sel, areas: s.areas, S: selectionOf(m, s.sel, s.areas) };
+    selMemo = { m, sel: s.sel, areas: s.areas, S: selectionOf(m, s.sel, s.areas, groupingOf(s)?.groups) };
   return selMemo.S!;
 }
 export const useSel = () => useStore(selOf);
@@ -156,20 +172,43 @@ let layoutRun = 0;
 export async function ensureLayout() {
   const s = get();
   const m = modelOf({ ...s, mode: 'explore' });
+  const G = groupingFor(m, s.areas);
   const real = m.boxes.filter((b) => !b.prop && !b.ghost);
-  const missing = real.filter((b) => !s.pos[b.id]);
-  if (!missing.length) return;
+  // what gets laid out: every box, or on big maps the top level (groups and the boxes left out of them)
+  const items = G
+    ? G.top.map((id) => (isGroup(id) ? G.groups.get(id)!.box : m.box.get(id)!))
+    : real;
+  const fixed: Pos = { ...s.pos };
+  // a group whose modules all have saved places goes where they were
+  if (G)
+    for (const id of G.top) {
+      const g = G.groups.get(id);
+      if (!g || fixed[id]) continue;
+      const ps = g.members.map((x) => s.pos[x]).filter(Boolean);
+      if (!ps.length || ps.length < g.members.length) continue;
+      const cx = ps.reduce((a, p) => a + p[0], 0) / ps.length,
+        cy = ps.reduce((a, p) => a + p[1], 0) / ps.length;
+      fixed[id] = ps.reduce((a, p) => (Math.hypot(p[0] - cx, p[1] - cy) < Math.hypot(a[0] - cx, a[1] - cy) ? p : a));
+    }
+  const missing = items.filter((b) => !fixed[b.id]);
+  const placed: Pos = {};
+  for (const b of items) if (fixed[b.id] && !s.pos[b.id]) placed[b.id] = fixed[b.id];
+  if (!missing.length) {
+    if (Object.keys(placed).length) set({ pos: { ...get().pos, ...placed } });
+    return;
+  }
   const run = ++layoutRun;
-  const links: [string, string][] = m.edges.map((e) => [m.node.get(e.from)!.box.id, m.node.get(e.to)!.box.id]);
+  const at = (id: string) => (G ? topOf(G, id) : id);
+  const links: [string, string][] = m.edges.map((e) => [at(m.node.get(e.from)!.box.id), at(m.node.get(e.to)!.box.id)]);
   const res = await layoutUnplaced(
-    real.map((b) => ({ id: b.id, w: b.w, h: b.defH, entry: b.hasEntry, external: b.external, shared: b.shared })),
+    items.map((b) => ({ id: b.id, w: b.w, h: G ? layoutH(b) : b.defH, entry: b.hasEntry, external: b.external, shared: b.shared })),
     links,
     s.areas.map((a) => ({ name: a.name, modules: a.modules ?? [] })),
-    s.pos,
+    G ? Object.fromEntries(items.filter((b) => fixed[b.id]).map((b) => [b.id, fixed[b.id]])) : fixed,
   );
   if (run !== layoutRun) return;
   const hadAny = Object.keys(s.pos).length > 0;
-  set({ pos: { ...get().pos, ...res } });
+  set({ pos: { ...get().pos, ...placed, ...res } });
   if (!hadAny) set({ fitSeq: get().fitSeq + 1 });
 }
 
@@ -213,6 +252,8 @@ function layoutValue(s: S): Layout {
   const out: Layout = {};
   for (const b of m.boxes) if (!b.prop && !b.ghost && s.pos[b.id]) out[b.id] = s.pos[b.id];
   for (const a of s.areas) if (s.pos['area:' + a.name]) out['area:' + a.name] = s.pos['area:' + a.name];
+  const G = groupingFor(m, s.areas);
+  if (G) for (const id of G.groups.keys()) if (s.pos[id]) out[id] = s.pos[id];
   return out;
 }
 

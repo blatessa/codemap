@@ -53,13 +53,11 @@ function flowOrder(boxes: LBox[], links: [string, string][]): { order: Map<strin
 // columnLayout is the fallback for very large maps, where ELK gets slow and its
 // layers get very tall: boxes go in columns by distance from the entry points,
 // and a column wraps when it gets taller than a roughly 16:9 map would allow.
-function columnLayout(todo: LBox[], rank: Map<string, number>, areaOf: Map<string, string>): Pos {
-  const GAPX = 70,
-    GAPY = 28;
+function columnLayout(todo: LBox[], rank: Map<string, number>, areaOf: Map<string, string>, minH = 1200, GAPX = 70, GAPY = 28): Pos {
   const maxRank = Math.max(0, ...[...rank.values()]);
   const col = (b: LBox) => (b.external ? maxRank + 2 : rank.get(b.id) ?? maxRank + 1);
   const area = todo.reduce((s, b) => s + (b.w + GAPX) * (b.h + GAPY), 0);
-  const maxH = Math.max(1200, Math.sqrt((area * 9) / 16));
+  const maxH = Math.max(minH, ...todo.map((b) => b.h), Math.sqrt((area * 9) / 16));
   const sorted = [...todo].sort((a, b) => col(a) - col(b) || (areaOf.get(a.id) ?? '~').localeCompare(areaOf.get(b.id) ?? '~') || a.id.localeCompare(b.id));
   const out: Pos = {};
   let x = 0,
@@ -79,6 +77,24 @@ function columnLayout(todo: LBox[], rank: Map<string, number>, areaOf: Map<strin
     w = Math.max(w, b.w);
   }
   return out;
+}
+
+// innerLayout places what an open folder group shows, at once and in place:
+// columns by distance from its entry points, wrapping into a wide block.
+export function innerLayout(items: LBox[], links: [string, string][]): { pos: Pos; w: number; h: number } {
+  if (!items.length) return { pos: {}, w: 0, h: 0 };
+  const ids = new Set(items.map((b) => b.id));
+  const inner = links.filter(([a, b]) => a !== b && ids.has(a) && ids.has(b));
+  const { order, rank } = flowOrder(items, inner);
+  const sorted = [...items].sort((a, b) => order.get(a.id)! - order.get(b.id)!);
+  const pos = columnLayout(sorted, rank, new Map(), 0, 50, 24);
+  let w = 0,
+    h = 0;
+  for (const b of items) {
+    w = Math.max(w, pos[b.id][0] + b.w);
+    h = Math.max(h, pos[b.id][1] + b.h);
+  }
+  return { pos, w, h };
 }
 
 export async function layoutUnplaced(
