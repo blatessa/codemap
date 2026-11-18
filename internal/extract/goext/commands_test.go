@@ -46,6 +46,14 @@ func TestCommands(t *testing.T) {
 		"cmd:server start": "startServer",
 		"cmd:ready":        "SetStatus",
 		"cmd:close":        "SetStatus",
+		// a map registry: literal entries and index assignments
+		"cmd:build": "runBuild",
+		"cmd:show":  "Show",
+		// switches over os.Args[1], flag.Args()[0] and flag.Arg(0); flags are skipped
+		"cmd:deploy": "Deploy",
+		"cmd:push":   "Deploy",
+		"cmd:lint":   "Lint",
+		"cmd:fmt":    "Format",
 	}
 	for id, w := range want {
 		edges, ok := got[id]

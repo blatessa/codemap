@@ -30,6 +30,16 @@ import (
 // package variables and through repo functions that return them. A literal
 // built in a loop over a table of structs (for _, t := range []T{…} { …
 // Name: t.name … }) gives one command per table row.
+//
+// Two simpler dispatch styles are recognised too:
+//
+//   - a map from constant strings to functions, whose variable or type name
+//     contains "command" or "cmd": map literal entries and index assignments
+//     (commands["serve"] = runServe), with the value as the handler;
+//   - a switch over the program's arguments (os.Args[i], flag.Arg(i), or a
+//     local taken from those or from os.Args[1:] / flag.Args()): each constant
+//     case is a command, and the calls in its body are its handlers. Cases
+//     starting with "-" are flags, not commands.
 
 // commandFramework returns "cobra", "urfave" or "repo" for a composite literal's
 // type, or "" if it isn't a command.
@@ -106,6 +116,15 @@ type commandAnalyzer struct {
 	decls   map[*types.Func]funcRef
 	scopes  map[*ast.FuncDecl]*cmdScope
 	calls   []cmdCall
+	simple  []simpleCmd
+}
+
+// simpleCmd is a command from a map entry or a switch case.
+type simpleCmd struct {
+	s    *cmdScope
+	name string
+	pos  token.Pos
+	hs   handlerSet
 }
 
 type varRef struct {
@@ -156,14 +175,14 @@ func (l *load) addCommands() {
 					s := &cmdScope{c: &fnCtx{p: p, mod: mod}}
 					for _, spec := range d.Specs {
 						vs := spec.(*ast.ValueSpec)
-						for i, v := range vs.Values {
-							if i < len(vs.Names) && len(vs.Names) == len(vs.Values) {
+						if len(vs.Names) == len(vs.Values) {
+							for i, v := range vs.Values {
 								if obj := p.TypesInfo.Defs[vs.Names[i]]; obj != nil {
 									a.pkgVars[obj] = varRef{s, v}
 								}
 							}
-							a.collect(s, v)
 						}
+						a.collect(s, vs)
 					}
 				}
 			}
@@ -189,6 +208,10 @@ func (l *load) addCommands() {
 	}
 	for _, cl := range a.order {
 		a.emit(cl)
+	}
+	for _, sc := range a.simple {
+		file, line := l.pos(sc.pos)
+		a.add(sc.s, sc.name, "", file, line, sc.hs)
 	}
 }
 
@@ -216,12 +239,27 @@ func (a *commandAnalyzer) funcScope(d *ast.FuncDecl, p *packages.Package, mod st
 	return s
 }
 
-// collect records the command literals under n, and the cobra AddCommand and
-// Execute/Run calls that connect them.
+// collect records the command literals under n, the cobra AddCommand and
+// Execute/Run calls that connect them, and commands registered in maps or
+// dispatched by switches.
 func (a *commandAnalyzer) collect(s *cmdScope, n ast.Node) {
 	info := s.c.p.TypesInfo
 	ast.Inspect(n, func(n ast.Node) bool {
 		switch v := n.(type) {
+		case *ast.ValueSpec:
+			if len(v.Names) == len(v.Values) {
+				for i, name := range v.Names {
+					a.mapLit(s, name.Name, v.Values[i])
+				}
+			}
+		case *ast.AssignStmt:
+			if len(v.Lhs) == len(v.Rhs) {
+				for i, lhs := range v.Lhs {
+					a.mapAssign(s, lhs, v.Rhs[i])
+				}
+			}
+		case *ast.SwitchStmt:
+			a.argSwitch(s, v)
 		case *ast.CompositeLit:
 			fw := a.l.commandFramework(info.TypeOf(v))
 			if fw == "" {
@@ -569,17 +607,177 @@ func (a *commandAnalyzer) emit(cl *cmdLit) {
 	}
 	for _, n := range names {
 		full := strings.Join(append(append([]string{}, prefix...), n.name), " ")
-		id := graph.CommandID(full)
-		var fields map[string]any
-		if n.usage != "" {
-			fields = map[string]any{"usage": n.usage}
-		}
-		a.l.x.b.addNode(graph.Node{
-			ID: id, Kind: graph.KindCommand, Label: full, Module: cl.s.c.mod,
-			File: cl.file, Line: cl.line, Entry: true, Fields: fields,
-		})
-		for _, to := range hs.all() {
-			a.l.x.b.addEdge(graph.Edge{From: id, To: to, Type: graph.Calls, File: cl.file, Line: cl.line})
+		a.add(cl.s, full, n.usage, cl.file, cl.line, hs)
+	}
+}
+
+// add adds a command node with calls edges to its handlers.
+func (a *commandAnalyzer) add(s *cmdScope, name, usage, file string, line int, hs handlerSet) {
+	id := graph.CommandID(name)
+	var fields map[string]any
+	if usage != "" {
+		fields = map[string]any{"usage": usage}
+	}
+	a.l.x.b.addNode(graph.Node{
+		ID: id, Kind: graph.KindCommand, Label: name, Module: s.c.mod,
+		File: file, Line: line, Entry: true, Fields: fields,
+	})
+	for _, to := range hs.all() {
+		a.l.x.b.addEdge(graph.Edge{From: id, To: to, Type: graph.Calls, File: file, Line: line})
+	}
+}
+
+// commandish reports whether a name suggests it holds commands.
+func commandish(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.Contains(lower, "command") || strings.Contains(lower, "cmd")
+}
+
+// isCommandMap reports whether t is a map from strings to functions that is
+// named, or held in a variable named, like a command registry.
+func isCommandMap(t types.Type, varName string) bool {
+	if t == nil {
+		return false
+	}
+	m, ok := t.Underlying().(*types.Map)
+	if !ok || !isFuncType(m.Elem()) {
+		return false
+	}
+	if k, ok := m.Key().Underlying().(*types.Basic); !ok || k.Info()&types.IsString == 0 {
+		return false
+	}
+	if named, ok := t.(*types.Named); ok && commandish(named.Obj().Name()) {
+		return true
+	}
+	return commandish(varName)
+}
+
+// mapLit records the entries of a command map literal assigned to a variable.
+func (a *commandAnalyzer) mapLit(s *cmdScope, varName string, e ast.Expr) {
+	lit, ok := ast.Unparen(e).(*ast.CompositeLit)
+	if !ok || !isCommandMap(s.c.p.TypesInfo.TypeOf(lit), varName) {
+		return
+	}
+	for _, elt := range lit.Elts {
+		if kv, ok := elt.(*ast.KeyValueExpr); ok {
+			a.mapEntry(s, kv.Key, kv.Value, kv.Pos())
 		}
 	}
+}
+
+// mapAssign records commands[name] = handler, and command maps assigned whole.
+func (a *commandAnalyzer) mapAssign(s *cmdScope, lhs, rhs ast.Expr) {
+	switch v := ast.Unparen(lhs).(type) {
+	case *ast.Ident:
+		a.mapLit(s, v.Name, rhs)
+	case *ast.IndexExpr:
+		var name string
+		switch x := ast.Unparen(v.X).(type) {
+		case *ast.Ident:
+			name = x.Name
+		case *ast.SelectorExpr:
+			name = x.Sel.Name
+		}
+		if isCommandMap(s.c.p.TypesInfo.TypeOf(v.X), name) {
+			a.mapEntry(s, v.Index, rhs, lhs.Pos())
+		}
+	}
+}
+
+func (a *commandAnalyzer) mapEntry(s *cmdScope, key, handler ast.Expr, pos token.Pos) {
+	if name, ok := cmdKey(s, key); ok {
+		a.simple = append(a.simple, simpleCmd{s: s, name: name, pos: pos, hs: a.l.resolveHandler(s.c, handler, 0)})
+	}
+}
+
+// cmdKey returns a constant command name; flags ("-h", "--help") aren't commands.
+func cmdKey(s *cmdScope, e ast.Expr) (string, bool) {
+	name, ok := s.c.stringValue(e)
+	name = strings.Join(strings.Fields(name), " ")
+	return name, ok && name != "" && !strings.HasPrefix(name, "-")
+}
+
+// argSwitch records a command per constant case of a switch over the
+// program's arguments, with the calls in the case body as its handlers.
+func (a *commandAnalyzer) argSwitch(s *cmdScope, sw *ast.SwitchStmt) {
+	if sw.Tag == nil || !a.isArg(s, sw.Tag, 0) {
+		return
+	}
+	for _, st := range sw.Body.List {
+		cc := st.(*ast.CaseClause)
+		var hs handlerSet
+		seen := map[string]bool{}
+		for _, b := range cc.Body {
+			ast.Inspect(b, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				for _, t := range a.l.sites[call.Lparen] {
+					id := a.l.idOf(t)
+					if id != "" && id != s.c.id && !seen[id] && a.l.x.b.has(id) && a.l.repoCode(t) && !a.l.isTestCode(t) {
+						seen[id] = true
+						hs.callees = append(hs.callees, id)
+					}
+				}
+				return true
+			})
+		}
+		for _, e := range cc.List {
+			if name, ok := cmdKey(s, e); ok {
+				a.simple = append(a.simple, simpleCmd{s: s, name: name, pos: cc.Pos(), hs: hs})
+			}
+		}
+	}
+}
+
+// isArg reports whether e is one of the program's arguments: os.Args[i],
+// flag.Arg(i), an element of os.Args[1:] or flag.Args(), or a local variable
+// assigned one of those.
+func (a *commandAnalyzer) isArg(s *cmdScope, e ast.Expr, depth int) bool {
+	if depth > 6 {
+		return false
+	}
+	switch v := ast.Unparen(e).(type) {
+	case *ast.IndexExpr:
+		return a.isArgs(s, v.X, depth+1)
+	case *ast.CallExpr:
+		return isFlagFunc(s.c.p.TypesInfo, v, "Arg")
+	case *ast.Ident:
+		if _, ok := s.c.exprs[s.c.p.TypesInfo.Uses[v]]; ok {
+			_, x, _ := a.follow(s, v)
+			return a.isArg(s, x, depth+1)
+		}
+	}
+	return false
+}
+
+// isArgs reports whether e is the program's argument list: os.Args, a slice of
+// it, flag.Args(), or a local variable assigned one of those.
+func (a *commandAnalyzer) isArgs(s *cmdScope, e ast.Expr, depth int) bool {
+	if depth > 6 {
+		return false
+	}
+	info := s.c.p.TypesInfo
+	switch v := ast.Unparen(e).(type) {
+	case *ast.SelectorExpr:
+		obj, ok := info.Uses[v.Sel].(*types.Var)
+		return ok && obj.Pkg() != nil && obj.Pkg().Path() == "os" && obj.Name() == "Args"
+	case *ast.SliceExpr:
+		return a.isArgs(s, v.X, depth+1)
+	case *ast.CallExpr:
+		return isFlagFunc(info, v, "Args")
+	case *ast.Ident:
+		if _, ok := s.c.exprs[info.Uses[v]]; ok {
+			_, x, _ := a.follow(s, v)
+			return a.isArgs(s, x, depth+1)
+		}
+	}
+	return false
+}
+
+// isFlagFunc reports whether call is flag.<name>() or (*flag.FlagSet).<name>().
+func isFlagFunc(info *types.Info, call *ast.CallExpr, name string) bool {
+	f := staticCallee(info, call)
+	return f != nil && f.Pkg() != nil && f.Pkg().Path() == "flag" && f.Name() == name
 }
