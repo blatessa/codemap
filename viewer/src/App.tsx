@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CompareControl, SummaryPanel } from './Compare';
 import { Drawer } from './Drawer';
+import { start as startRevs, useCompare } from './revs';
 import { MapView, useAreaRect, zoomCenter } from './MapView';
 import { qn } from './model';
 import {
@@ -240,26 +242,17 @@ function Banner() {
   );
 }
 
-function RevPicker() {
-  const rev = useStore((s) => s.rev);
-  // Only the working tree for now; the git layer adds branches and commits.
-  return (
-    <select className="revpick" aria-label="Revision" value={rev} onChange={(e) => {
-        setState({ rev: e.target.value });
-        void load();
-      }}>
-      <option value="worktree">worktree</option>
-    </select>
-  );
-}
+
 
 export function App() {
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
   const mode = useStore((s) => s.mode);
-  const drawerOpen = useStore((s) => s.sel.length > 0 || !!s.form || s.mode === 'propose');
+  const comparing = useCompare((c) => !!c.spec);
+  const summary = useStore((s) => comparing && !s.sel.length && !s.form && s.mode === 'explore');
+  const drawerOpen = useStore((s) => s.sel.length > 0 || !!s.form || s.mode === 'propose') || summary;
   useEffect(() => {
-    void load();
+    if (!startRevs()) void load();
     subscribe();
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
@@ -278,7 +271,7 @@ export function App() {
     <>
       <header className="top">
         <h1>codemap</h1>
-        <RevPicker />
+        <CompareControl />
         <div className="seg" role="group" aria-label="Mode">
           <button id="m-explore" aria-pressed={mode === 'explore'} onClick={() => setMode('explore')}>
             Explore
@@ -294,7 +287,7 @@ export function App() {
           <Tools />
           <Banner />
         </div>
-        {status === 'ready' && <Drawer />}
+        {status === 'ready' && (summary ? <SummaryPanel /> : <Drawer />)}
       </div>
     </>
   );

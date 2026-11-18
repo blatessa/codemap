@@ -322,7 +322,7 @@ func (r *Repo) Changes(ctx context.Context, a, b string) ([]graph.FileChange, er
 // FileDiff returns the unified diff of one file between a and b (b may be the
 // worktree). Renames are followed when the file was renamed.
 func (r *Repo) FileDiff(ctx context.Context, a, b, file string, context int) ([]byte, error) {
-	args := []string{"diff", "--relative", "-M", "--no-color", "--no-ext-diff", fmt.Sprintf("-U%d", context), a}
+	args := []string{"diff", "--relative", "-M", "--no-color", "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", fmt.Sprintf("-U%d", context), a}
 	if !IsWorktree(b) {
 		args = append(args, b)
 	}

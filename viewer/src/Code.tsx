@@ -1,6 +1,8 @@
 import { memo, useEffect, useState, type ReactNode } from 'react';
 import { getSource, openInEditor } from './api';
 import { useStore } from './store';
+import { fileChanged, sourceRev, useCompare } from './revs';
+import { DiffSource } from './Compare';
 
 const RE =
   /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|--[^\n]*)|("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`[^`]*`)|\b(func|return|if|else|for|range|defer|go|type|struct|var|nil|map|any|string|int|int64|bool|error|new|const|let|async|await|function|export|import|from|true|false|package|interface|class|extends|switch|case|default|break|continue|select|SELECT|FROM|WHERE|INSERT|INTO|UPDATE|SET|DELETE|CREATE|TABLE|ALTER|VALUES|RETURNING)\b|(\b\d+\b)/g;
@@ -53,9 +55,19 @@ function load(rev: string, file: string, from: number, to: number, graph: unknow
   return p;
 }
 
-// Source fetches lines from /api/source.
-export function Source({ file, from, to }: { file: string; from: number; to?: number }) {
-  const rev = useStore((s) => s.rev);
+// Source fetches lines from /api/source. When comparing and the file changed,
+// it shows the range as a diff (Compare.tsx).
+export function Source(p: { file: string; from: number; to?: number }) {
+  const diff = useCompare((s) => s.diff);
+  const rev = diff ? sourceRev(p.file, p.from) ?? undefined : undefined;
+  const plain = <PlainSource {...p} rev={rev} />;
+  if (!diff || !fileChanged(p.file)) return plain;
+  return <DiffSource file={p.file} from={p.from} to={p.to && p.to >= p.from ? p.to : p.from} plain={plain} />;
+}
+
+function PlainSource({ file, from, to, rev: at }: { file: string; from: number; to?: number; rev?: string }) {
+  const cur = useStore((s) => s.rev);
+  const rev = at ?? cur;
   const graph = useStore((s) => s.graph); // refetch when the graph changes
   const [code, setCode] = useState<string | null>(null);
   const end = to && to >= from ? to : from; // no end line: show the one line (a route registration, say)

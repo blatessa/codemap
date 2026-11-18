@@ -15,6 +15,8 @@ export interface Form {
 
 export interface S {
   rev: string;
+  readOnly: boolean; // viewing a past rev or comparing: no writes (revs.ts)
+  baseGraph: Graph | null; // an archived proposal's base, drawn under it (revs.ts)
   status: 'loading' | 'ready' | 'error';
   error: string;
   graph: Graph;
@@ -47,6 +49,8 @@ const empty: Graph = { version: 1, modules: [], nodes: [], edges: [] };
 
 export const useStore = create<S>(() => ({
   rev: 'worktree',
+  readOnly: false,
+  baseGraph: null,
   status: 'loading',
   error: '',
   graph: empty,
@@ -75,6 +79,9 @@ export const useStore = create<S>(() => ({
   centerOn: null,
 }));
 
+// hooks.graph post-processes every loaded graph (compare.ts merges a diff in).
+export const hooks = { graph: (g: Graph) => g };
+
 const set = useStore.setState;
 const get = useStore.getState;
 
@@ -83,7 +90,8 @@ const get = useStore.getState;
 let memo: { g?: Graph; b?: Block[]; p?: Proposal | null; m?: Model } = {};
 export function modelOf(s: S): Model {
   const p = s.mode === 'propose' ? currentProposal(s) : null;
-  if (memo.g !== s.graph || memo.b !== s.blocks || memo.p !== p) memo = { g: s.graph, b: s.blocks, p, m: buildModel(s.graph, s.blocks, p) };
+  const g = p && s.baseGraph ? s.baseGraph : s.graph;
+  if (memo.g !== g || memo.b !== s.blocks || memo.p !== p) memo = { g, b: s.blocks, p, m: buildModel(g, s.blocks, p) };
   return memo.m!;
 }
 export const useModel = () => useStore(modelOf);
@@ -124,7 +132,7 @@ export async function load() {
     const v = st.versions ?? {};
     const first = s.status !== 'ready';
     const keep = (key: string) => !first && (pending.has(key) || s.versions[key] === v[key]);
-    const next: Partial<S> = { status: 'ready', error: '', graph: st.graph ?? empty, versions: { ...v } };
+    const next: Partial<S> = { status: 'ready', error: '', graph: hooks.graph(st.graph ?? empty), versions: { ...v } };
     const pr = st.project ?? ({} as never);
     if (!keep('areas')) next.areas = pr.areas ?? [];
     else next.versions!.areas = s.versions.areas;
@@ -258,7 +266,7 @@ function layoutValue(s: S): Layout {
 }
 
 export function persist(file: api.ProjectFile, explicit?: unknown, ms = 300) {
-  if (get().rev !== 'worktree') return;
+  if (get().rev !== 'worktree' || get().readOnly) return;
   debounce(
     file,
     async () => {
@@ -286,7 +294,7 @@ function applyConflict(file: api.ProjectFile, c: api.Conflict) {
 }
 
 export function persistProposal(slug: string, ms = 400) {
-  if (get().rev !== 'worktree') return;
+  if (get().rev !== 'worktree' || get().readOnly) return;
   const key = 'proposals/' + slug;
   debounce(
     key,

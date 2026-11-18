@@ -2,6 +2,7 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArchivedBase } from './Compare';
 import { qn, type Model } from './model';
 import { currentProposal, newProposal, removeProposalEdge, removeProposalModule, removeProposalNode, setState, updateProposal, useStore } from './store';
 import type { Proposal } from './types';
@@ -171,6 +172,7 @@ export function ProposalView({ m }: { m: Model }) {
       {p.status === 'archived' ? (
         <div className="btns">
           <span className="arch">Closed by {p.pr || '—'}</span>
+          <ArchivedBase />
           <button className="btn" onClick={() => updateProposal(p.slug, { status: 'open' })}>
             Reopen
           </button>

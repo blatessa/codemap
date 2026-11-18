@@ -23,6 +23,7 @@ import {
   type RectOf,
 } from './store';
 import type { Area } from './types';
+import { boxCls, edgeCls, groupCls, rowCls } from './revs';
 
 // Far-mode text: scaled by 1/k so it stays readable on screen, and cut to fit.
 interface FarText {
@@ -528,7 +529,7 @@ const Edges = memo(function Edges({ disp, S, shown }: { disp: Disp; S: Sel | nul
     const d = edgePath(disp, e);
     if (!d) continue;
     const ghost = a.b.ghost || b.b.ghost;
-    const cls = ['edge', e.net && 'net', e.declared && 'decl', e.prop && 'prop', ghost && 'ghost', S ? (on ? 'on' : 'dim') : ''].filter(Boolean).join(' ');
+    const cls = ['edge', e.net && 'net', e.declared && 'decl', e.prop && 'prop', ghost && 'ghost', edgeCls(e), S ? (on ? 'on' : 'dim') : ''].filter(Boolean).join(' ');
     const p = <path key={e.i} className={cls} d={d} data-edge={e.i} markerEnd={`url(#${e.prop ? 'mk-p' : on ? 'mk-h' : 'mk-n'})`} />;
     (on || e.prop ? top : base).push(p);
   }
@@ -578,7 +579,7 @@ const GroupC = memo(function GroupC({ g, r, reveal, sel, fa }: { g: Group; r: AR
   const lx = r.x + (fa ? fa * 0.7 : 14);
   const by = r.y + (fa ? fa * 1.15 : 23);
   return (
-    <g className={`grp${reveal ? ' reveal' : ''}${sel ? ' gsel' : ''}`} data-group-box={g.id}>
+    <g className={`grp${reveal ? ' reveal' : ''}${sel ? ' gsel' : ''} ${groupCls(g.id)}`} data-group-box={g.id}>
       <rect className="grect" x={r.x} y={r.y} width={r.w} height={r.h} rx={14} />
       <g className="ghead" data-ghead={g.id}>
         <rect className="hit" x={r.x} y={r.y} width={r.w} height={hh} rx={14} />
@@ -609,7 +610,7 @@ const BoxG = memo(function BoxG({ d, S, selKey, hover, connectFrom, canAdd }: Bo
   const { b, x, y, w, h, far } = d;
   const touched = S && b.rows.some((r) => S.nodes.has(r.id));
   const sels = selKey ? selKey.split('\0') : [];
-  const cls = ['mod', b.group && 'grpbox', b.external && 'ext', b.prop && 'prop', b.ghost && 'ghost', b.shared && 'shared', sels.includes(b.id) && 'msel', S ? (touched ? 'touched' : 'dim') : '']
+  const cls = ['mod', b.group && 'grpbox', b.external && 'ext', b.prop && 'prop', b.ghost && 'ghost', b.shared && 'shared', boxCls(b), sels.includes(b.id) && 'msel', S ? (touched ? 'touched' : 'dim') : '']
     .filter(Boolean)
     .join(' ');
   const moreY = y + HEAD + d.rows.length * ROW;
@@ -660,7 +661,7 @@ const BoxG = memo(function BoxG({ d, S, selKey, hover, connectFrom, canAdd }: Bo
           {d.rows.map((r, i) => {
             const ry = y + HEAD + i * ROW,
               cy = ry + ROW / 2 + 4;
-            const c = ['fn', S ? (S.nodes.has(r.id) ? 'on' : 'dim') : '', r.prop && 'prop', r.ghost && 'ghost', sels.includes(r.id) && 'sel', connectFrom === r.id && 'from', hover === r.id && 'hov']
+            const c = ['fn', S ? (S.nodes.has(r.id) ? 'on' : 'dim') : '', r.prop && 'prop', r.ghost && 'ghost', rowCls(r.id), sels.includes(r.id) && 'sel', connectFrom === r.id && 'from', hover === r.id && 'hov']
               .filter(Boolean)
               .join(' ');
             return (
@@ -1011,7 +1012,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     const t = e.target as Element;
     const ah = t.closest('[data-area]') as HTMLElement | null;
     const s = getState();
-    if (ah) {
+    if (ah && !s.readOnly) {
       const name = ah.dataset.area!;
       const a = s.areas.find((x) => x.name === name);
       const r = disp.areas.find((x) => x.a.name === name)?.r;
@@ -1032,7 +1033,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       const id = inG ?? mh?.dataset.mod;
       const d = id ? disp.byId.get(id) : undefined;
       const at = inG ? disp.groups.find((x) => x.g.id === inG)?.r : d;
-      if (id && at && !d?.b.ghost) {
+      if (id && at && !d?.b.ghost && !s.readOnly) {
         const sh = disp.shift.get(id) ?? [0, 0];
         const grp = isGroup(id);
         drag.current = { kind: 'box', id, prop: !!d?.b.prop, grp, x: e.clientX, y: e.clientY, bx: at.x - sh[0], by: at.y - sh[1], moved: false, px: 0, py: 0 };

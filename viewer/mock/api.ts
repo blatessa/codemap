@@ -9,6 +9,7 @@ import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin, Connect } from 'vite';
 import * as TOML from 'smol-toml';
+import { handleRevs } from './revs.ts';
 
 const here = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = path.resolve(process.env.CODEMAP_MOCK_ROOT ?? path.join(here, '../../testdata/shop'));
@@ -138,6 +139,26 @@ function broadcast(event: string, files: string[]) {
   for (const c of clients) c.write(`event: ${event}\ndata: ${JSON.stringify({ files })}\n\n`);
 }
 
+const projectOf = () => ({
+  config: db.config,
+  areas: db.files.areas,
+  blocks: db.files.blocks,
+  layout: db.files.layout,
+  views: db.files.views,
+  external: db.files.external,
+  proposals: [...db.proposals.values()],
+});
+
+function sourceLines(file: string): string[] | null {
+  const full = path.resolve(ROOT, file);
+  if (!file || !full.startsWith(ROOT + path.sep)) return null;
+  try {
+    return fs.readFileSync(full, 'utf8').split('\n');
+  } catch {
+    return null;
+  }
+}
+
 const sortedLayout = (l: Obj) => Object.fromEntries(Object.keys(l).sort().map((k) => [k, l[k]]));
 
 async function handle(req: IncomingMessage, res: ServerResponse, next: () => void) {
@@ -146,6 +167,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
   const m = req.method ?? 'GET';
   const rev = url.searchParams.get('rev');
   if (m !== 'GET' && rev && rev !== 'worktree') return send(res, 405, { error: 'read-only revision' });
+  if (handleRevs(req, res, url, db.graph as never, projectOf, sourceLines)) return;
 
   if (p === '/__mock/reset' && m === 'POST') {
     db = load();
@@ -162,21 +184,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
     db = { graph: (await readBody(req)) as Obj, config: {}, files: { areas: [], blocks: [], layout: {}, views: [], external: {} }, proposals: new Map() };
     return send(res, 204);
   }
-  if (p === '/api/state' && m === 'GET') {
-    return send(res, 200, {
-      graph: db.graph,
-      project: {
-        config: db.config,
-        areas: db.files.areas,
-        blocks: db.files.blocks,
-        layout: db.files.layout,
-        views: db.files.views,
-        external: db.files.external,
-        proposals: [...db.proposals.values()],
-      },
-      versions: versions(),
-    });
-  }
+  if (p === '/api/state' && m === 'GET') return send(res, 200, { graph: db.graph, project: projectOf(), versions: versions() });
   const pf = /^\/api\/project\/(areas|blocks|layout|views|external)$/.exec(p);
   if (pf && m === 'PUT') {
     const key = pf[1] as FileKey;
