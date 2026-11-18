@@ -19,8 +19,9 @@ async function pick(page: Page, text: string) {
 
 test('a comment on a function is appended to the proposal body', async ({ page }) => {
   await pick(page, 'Service.Place');
-  await page.locator('#c-text').fill('Reserve after payment.');
-  await page.locator('#c-send').click();
+  await page.keyboard.press('c');
+  await page.keyboard.type('Reserve after payment.');
+  await page.keyboard.press('Enter');
   await expect.poll(async () => (await refunds(page)).body).toMatch(/### `[^`]*Service\.Place` · internal\/orders\/service\.go:\d+(-\d+)?\n\nReserve after payment\.\n$/);
 });
 
@@ -33,9 +34,10 @@ test('highlighting code quotes the lines', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(box.x + box.width - 4, box.y + 30);
   await page.mouse.up();
-  await expect(page.locator('#comment .about')).toContainText('of internal/orders/service.go');
-  await page.locator('#c-text').fill('This part.');
-  await page.locator('#c-send').click();
+  await expect(page.locator('#comment .about')).toContainText('service.go:');
+  await expect(page.locator('#c-text')).toBeFocused();
+  await page.keyboard.type('This part.');
+  await page.keyboard.press('Enter');
   await expect.poll(async () => (await refunds(page)).body).toContain('```go\n');
   expect((await refunds(page)).body).toMatch(/This part\.\n$/);
 });
@@ -56,4 +58,13 @@ test('dragging a function onto another module proposes moving it', async ({ page
   await page.mouse.up();
   await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id, module: 'mod:go:shop/internal/payments' });
   await expect(page.locator(`#map [data-box="mod:go:shop/internal/payments"] [data-node="${id}"]`)).toHaveClass(/\bprop\b/);
+});
+
+test('comments go to the last opened proposal from Explore too', async ({ page }) => {
+  await page.locator('#m-explore').click();
+  await pick(page, 'Service.Place');
+  await page.keyboard.press('c');
+  await page.keyboard.type('From explore.');
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => (await refunds(page)).body).toMatch(/From explore\.\n$/);
 });

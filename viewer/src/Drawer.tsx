@@ -676,6 +676,7 @@ export function Drawer() {
   const form = useStore((s) => s.form);
   const mode = useStore((s) => s.mode);
   const pslug = useStore((s) => s.pslug);
+  const readOnly = useStore((s) => s.readOnly);
   let content: ReactNode = null;
   let wide = false;
   if (form) content = <FormPanel key={form.type + form.box} m={m} />;
@@ -702,7 +703,7 @@ export function Drawer() {
       onMouseLeave={() => getState().hover && setState({ hover: null })}
     >
       {content}
-      {pslug && !form && sel.length > 0 && content && <Comment key={sel.join('\0')} m={m} ids={sel} />}
+      {!readOnly && !form && sel.length > 0 && content && <Comment key={sel.join('\0')} m={m} ids={sel} />}
     </aside>
   );
 }

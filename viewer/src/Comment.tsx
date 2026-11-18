@@ -1,9 +1,9 @@
 // Commenting on the open proposal: select something (and optionally highlight
 // code in the panel), write a note, and it is appended to the proposal's body
 // with a heading saying what it is about.
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { qn, type Model } from './model';
-import { comment, currentProposal, useStore } from './store';
+import { comment, commentTarget, setState, useStore } from './store';
 
 export interface Snip {
   file: string;
@@ -52,26 +52,49 @@ export function aboutOf(m: Model, ids: string[], snip: Snip | null): string {
   return out;
 }
 
+// Comment is pinned to the bottom of the details panel: type and press Enter.
+// Highlighting code in the panel quotes it and puts the cursor here; `c` does too.
 export function Comment({ m, ids }: { m: Model; ids: string[] }) {
-  const p = useStore(currentProposal);
+  const p = useStore(commentTarget);
+  const all = useStore((s) => s.proposals);
+  const open = all.filter((x) => x.status !== 'archived');
   const [text, setText] = useState('');
   const [snip, setSnip] = useState<Snip | null>(null);
   const [sent, setSent] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
   const key = ids.join('\0');
   useEffect(() => {
     setSnip(null);
     setSent(false);
-    // a code highlight in the panel becomes the comment's quote
     const onUp = () => {
       const s = snippetOf(window.getSelection());
-      if (s) setSnip(s);
+      if (!s) return;
+      setSnip(s);
+      ref.current?.focus({ preventScroll: true });
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const t = document.activeElement?.tagName;
+      if (e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey && t !== 'INPUT' && t !== 'TEXTAREA' && t !== 'SELECT') {
+        e.preventDefault();
+        ref.current?.focus();
+      }
     };
     document.addEventListener('mouseup', onUp);
-    return () => document.removeEventListener('mouseup', onUp);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mouseup', onUp);
+      window.removeEventListener('keydown', onKey);
+    };
   }, [key]);
-  if (!p) return null;
+  useLayoutEffect(() => {
+    const t = ref.current;
+    if (!t) return;
+    t.style.height = 'auto';
+    t.style.height = Math.min(t.scrollHeight, 160) + 'px';
+  }, [text]);
+  if (!open.length) return null;
   const send = () => {
-    if (!text.trim()) return;
+    if (!text.trim() || !p) return;
     comment(aboutOf(m, ids, snip), text);
     setText('');
     setSnip(null);
@@ -79,31 +102,44 @@ export function Comment({ m, ids }: { m: Model; ids: string[] }) {
   };
   return (
     <div className="comment" id="comment">
-      <p className="eyebrow plan">Comment on {p.name}</p>
-      {snip && (
-        <p className="about">
-          Lines {snip.from}
-          {snip.to > snip.from ? '–' + snip.to : ''} of {snip.file}{' '}
-          <button className="lnk" aria-label="Drop the quote" onClick={() => setSnip(null)}>
-            ×
-          </button>
-        </p>
-      )}
+      <div className="chead">
+        <select id="c-to" aria-label="Proposal to comment on" value={p?.slug ?? ''} onChange={(e) => setState({ cslug: e.target.value })}>
+          {!p && <option value="">Comment on…</option>}
+          {open.map((x) => (
+            <option key={x.slug} value={x.slug}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+        {snip && (
+          <span className="about">
+            {snip.file.split('/').pop()}:{snip.from}
+            {snip.to > snip.from ? '–' + snip.to : ''}
+            <button className="lnk" aria-label="Drop the quote" onClick={() => setSnip(null)}>
+              ×
+            </button>
+          </span>
+        )}
+        {sent && !text && <span className="about">Added</span>}
+      </div>
       <textarea
         id="c-text"
-        placeholder={snip ? 'Comment on these lines…' : 'Comment… (highlight code below to quote it)'}
+        ref={ref}
+        rows={1}
+        placeholder={p ? (snip ? 'Comment on these lines' : 'Comment (c) — Enter to add') : 'Pick a proposal first'}
+        disabled={!p}
         value={text}
         onChange={(e) => (setText(e.target.value), setSent(false))}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send();
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            send();
+          } else if (e.key === 'Escape') {
+            e.stopPropagation();
+            ref.current?.blur();
+          }
         }}
       />
-      <div className="btns">
-        <button className="btn primary" id="c-send" disabled={!text.trim()} onClick={send}>
-          Add to proposal
-        </button>
-        {sent && <span className="m">Added</span>}
-      </div>
     </div>
   );
 }

@@ -41,6 +41,7 @@ export interface S {
   form: Form | null;
   splitting: string | null;
   pslug: string | null;
+  cslug: string | null; // the proposal comments go to: the last one opened
   editing: boolean;
   plist: { q: string; sort: 'updated' | 'name' | 'status'; status: 'all' | 'open' | 'archived' };
   fitSeq: number; // bump to ask the map to fit
@@ -77,6 +78,7 @@ export const useStore = create<S>(() => ({
   form: null,
   splitting: null,
   pslug: null,
+  cslug: readCslug(),
   editing: false,
   plist: { q: '', sort: 'updated', status: 'all' },
   fitSeq: 0,
@@ -100,6 +102,31 @@ export function modelOf(s: S): Model {
   return memo.m!;
 }
 export const useModel = () => useStore(modelOf);
+function readCslug(): string | null {
+  try {
+    return localStorage.getItem('codemap.cslug');
+  } catch {
+    return null;
+  }
+}
+useStore.subscribe((s, prev) => {
+  if (s.pslug && s.pslug !== prev.pslug && s.pslug !== s.cslug) {
+    useStore.setState({ cslug: s.pslug });
+    try {
+      localStorage.setItem('codemap.cslug', s.pslug);
+    } catch {
+      /* per-viewer convenience only */
+    }
+  }
+});
+
+// commentTarget is the open proposal comments go to: the last one opened, or the
+// only open one.
+export function commentTarget(s: S): Proposal | null {
+  const open = s.proposals.filter((p) => p.status !== 'archived');
+  return open.find((p) => p.slug === (s.pslug ?? s.cslug)) ?? (open.length === 1 ? open[0] : null);
+}
+
 export const currentProposal = (s: S) => (s.pslug ? s.proposals.find((p) => p.slug === s.pslug) ?? null : null);
 
 // groupingOf folds big maps into folder groups (groups.ts). Modules in an area
@@ -626,7 +653,7 @@ export function moveNode(id: string, to: string) {
 
 // comment appends a note to the open proposal's body, headed by what it is about.
 export function comment(about: string, text: string) {
-  const p = currentProposal(get());
+  const p = commentTarget(get());
   if (!p || !text.trim()) return;
   const body = p.body.replace(/\s+$/, '');
   updateProposal(p.slug, { body: (body ? body + '\n\n' : '') + about.trim() + '\n\n' + text.trim() + '\n' });

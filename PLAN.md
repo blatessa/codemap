@@ -419,8 +419,9 @@ Support refunds orders by hand in the Stripe dashboard…
   when a PR merges (via `gh`) is a later addition.
 - A `[[node]]` with a real ID and a different `module` moves that node there. The viewer
   does this when a function is dragged onto another module in a proposal.
-- **Comments.** With a proposal open, select something (a node, module or several), optionally
-  highlight lines in its source, and write a comment. It's appended to the body:
+- **Comments.** Select something (a node, module or several), optionally highlight lines in
+  its source, and type in the box pinned to the bottom of the details panel (`c` focuses it,
+  Enter adds it). It goes to the last proposal opened, in any mode, and is appended to the body:
 
   ````markdown
   ### `orders.Service.Place` · internal/orders/service.go:52-55

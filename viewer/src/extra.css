@@ -34,5 +34,9 @@ body{margin:0}
 .farlabels.halo text{paint-order:stroke;stroke:var(--surface);stroke-linejoin:round}
 .hovname{paint-order:stroke;stroke:var(--bg);stroke-linejoin:round;pointer-events:none}
 .rowdrop{fill:none;stroke:var(--plan);stroke-width:2;stroke-dasharray:5 4;pointer-events:none}
-.comment textarea{width:100%;min-height:64px;resize:vertical;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:inherit}
-.comment .about{font-size:12px;color:var(--muted);margin:0 0 6px}
+.comment{position:sticky;bottom:-24px;margin:auto -18px -24px;padding:10px 18px 14px;background:var(--surface);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.comment .chead{display:flex;gap:8px;align-items:center;font-size:12px}
+.comment select{font:inherit;font-size:12px;color:var(--plan);background:none;border:0;padding:0;cursor:pointer}
+.comment .about{color:var(--muted);font-family:var(--mono);font-size:11.5px}
+.comment textarea{width:100%;resize:none;font:inherit;font-size:13px;line-height:1.4;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:inherit;box-sizing:border-box}
+.comment textarea:focus{outline:none;border-color:var(--plan)}
