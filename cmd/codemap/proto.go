@@ -67,7 +67,16 @@ type protoOut struct {
 	Externals []protoExternal `json:"externals"`
 	Common    []protoCommon   `json:"common"` // code most features pass through
 	Changes   *protoChanges   `json:"changes,omitempty"`
+	Modules   []protoModule   `json:"modules"`
 	Stats     map[string]any  `json:"stats"`
+}
+
+// protoModule is a package of the repo's own code and the modules it calls.
+type protoModule struct {
+	ID    string   `json:"id"`
+	Label string   `json:"label"`
+	Deps  []string `json:"deps"`
+	Funcs int      `json:"funcs"`
 }
 
 type protoCommon struct {
@@ -166,7 +175,46 @@ func buildProto(ix *graph.Index) protoOut {
 	sort.Slice(out.Tables, func(i, j int) bool { return out.Tables[i].Name < out.Tables[j].Name })
 	sort.Slice(out.Externals, func(i, j int) bool { return out.Externals[i].ID < out.Externals[j].ID })
 
+	out.Modules = moduleDeps(ix)
 	out.Stats["nodes"] = len(ix.G.Nodes)
+	return out
+}
+
+// moduleDeps lists the repo's code modules with the modules they call, counting
+// only calls between code that isn't support (the same edges traces show).
+func moduleDeps(ix *graph.Index) []protoModule {
+	deps := map[string]map[string]bool{}
+	funcs := map[string]int{}
+	code := func(n *graph.Node) bool {
+		return n != nil && !n.External && n.Kind != graph.KindTest && n.Module != ""
+	}
+	for _, n := range ix.G.Nodes {
+		if code(&n) {
+			funcs[n.Module]++
+		}
+	}
+	for _, e := range ix.G.Edges {
+		a, b := ix.Node[e.From], ix.Node[e.To]
+		if e.Type != graph.Calls || !code(a) || !code(b) || a.Module == b.Module || ix.Wide(&e) {
+			continue
+		}
+		if cli.RoleOf(ix, b.ID) != "" {
+			continue
+		}
+		if deps[a.Module] == nil {
+			deps[a.Module] = map[string]bool{}
+		}
+		deps[a.Module][b.Module] = true
+	}
+	var out []protoModule
+	for id, n := range funcs {
+		m := protoModule{ID: id, Label: id, Deps: sortedSet(deps[id]), Funcs: n}
+		if mod := ix.Module[id]; mod != nil {
+			m.Label = mod.Label
+		}
+		out = append(out, m)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
@@ -181,6 +229,10 @@ type protoChanges struct {
 	Columns         []protoColDelta `json:"columns"`
 	ExternalAdded   []string        `json:"externalAdded"`
 	ExternalRemoved []string        `json:"externalRemoved"`
+	ModulesAdded    []string        `json:"modulesAdded"`
+	ModulesRemoved  []string        `json:"modulesRemoved"`
+	DepsAdded       [][2]string     `json:"depsAdded"`
+	DepsRemoved     [][2]string     `json:"depsRemoved"`
 }
 
 type protoEffDelta struct {
@@ -293,7 +345,47 @@ func diffProto(a, b protoOut) protoChanges {
 			ch.ExternalRemoved = append(ch.ExternalRemoved, id)
 		}
 	}
-	for _, l := range []*[]string{&ch.FeaturesAdded, &ch.FeaturesRemoved, &ch.TablesAdded, &ch.TablesRemoved, &ch.ExternalAdded, &ch.ExternalRemoved} {
+	ma, mb := map[string]protoModule{}, map[string]protoModule{}
+	for _, m := range a.Modules {
+		ma[m.ID] = m
+	}
+	for _, m := range b.Modules {
+		mb[m.ID] = m
+		if _, ok := ma[m.ID]; !ok {
+			ch.ModulesAdded = append(ch.ModulesAdded, m.ID)
+		}
+	}
+	for id := range ma {
+		if _, ok := mb[id]; !ok {
+			ch.ModulesRemoved = append(ch.ModulesRemoved, id)
+		}
+	}
+	pairs := func(ms map[string]protoModule) map[[2]string]bool {
+		p := map[[2]string]bool{}
+		for id, m := range ms {
+			for _, d := range m.Deps {
+				p[[2]string{id, d}] = true
+			}
+		}
+		return p
+	}
+	pa, pb := pairs(ma), pairs(mb)
+	for k := range pb {
+		if !pa[k] {
+			ch.DepsAdded = append(ch.DepsAdded, k)
+		}
+	}
+	for k := range pa {
+		if !pb[k] {
+			ch.DepsRemoved = append(ch.DepsRemoved, k)
+		}
+	}
+	less := func(l [][2]string) {
+		sort.Slice(l, func(i, j int) bool { return l[i][0]+l[i][1] < l[j][0]+l[j][1] })
+	}
+	less(ch.DepsAdded)
+	less(ch.DepsRemoved)
+	for _, l := range []*[]string{&ch.ModulesAdded, &ch.ModulesRemoved, &ch.FeaturesAdded, &ch.FeaturesRemoved, &ch.TablesAdded, &ch.TablesRemoved, &ch.ExternalAdded, &ch.ExternalRemoved} {
 		sort.Strings(*l)
 	}
 	sort.Slice(ch.Effects, func(i, j int) bool { return ch.Effects[i].Feature < ch.Effects[j].Feature })
