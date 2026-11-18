@@ -20,3 +20,9 @@ go test ./...                                         # codemap
 (cd testdata/shop && go test ./...)                   # fixture server
 (cd testdata/shop/web && npm ci && npx tsc && npx vitest run)   # fixture web app
 ```
+
+## Agent skill
+
+`skills/codemap/SKILL.md` teaches a coding agent to query the map and write proposals.
+For Claude Code, copy the folder to `~/.claude/skills/codemap/` (every project) or
+`<project>/.claude/skills/codemap/` (one project). The codemap binary must be on PATH.
