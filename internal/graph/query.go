@@ -58,7 +58,10 @@ func NewIndex(g *Graph) *Index {
 		e := &g.Edges[i]
 		ix.Out[e.From] = append(ix.Out[e.From], e)
 		ix.In[e.To] = append(ix.In[e.To], e)
-		if e.Type == Calls && e.File != "" && e.Line > 0 {
+		// Only code makes wide calls: a route's, job's or subscriber's edges
+		// to its middleware and handler share the registration's position
+		// but are separate calls.
+		if from := ix.Node[e.From]; e.Type == Calls && e.File != "" && e.Line > 0 && from != nil && (from.Kind == KindFunction || from.Kind == KindComponent) {
 			k := siteKey{e.From, e.File, e.Line}
 			sites[k] = append(sites[k], e)
 		}

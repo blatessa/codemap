@@ -74,3 +74,22 @@ func TestWideCallTree(t *testing.T) {
 		t.Errorf("traces don't follow wide calls; reached %v", r.Nodes)
 	}
 }
+
+// TestRouteEdgesArentWide: a route's middleware and handler share the
+// registration's position, but they aren't one dynamic call.
+func TestRouteEdgesArentWide(t *testing.T) {
+	g := widelyUsedGraph()
+	g.Nodes = append(g.Nodes, Node{ID: "route:GET /x", Kind: KindRoute, Label: "/x", Module: "m", Entry: true})
+	for i := range 6 {
+		g.Edges = append(g.Edges, Edge{From: "route:GET /x", To: fmt.Sprintf("go:x.impl%d", i), Type: Calls, File: "r.go", Line: 7})
+	}
+	ix := NewIndex(g)
+	for _, e := range ix.Out["route:GET /x"] {
+		if ix.Wide(e) {
+			t.Fatalf("route edge %s → %s counted as a wide call", e.From, e.To)
+		}
+	}
+	if tree := ix.Tree("route:GET /x", 0); len(tree.Children) != 6 {
+		t.Errorf("want 6 rows under the route, got %d", len(tree.Children))
+	}
+}

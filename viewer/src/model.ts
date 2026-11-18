@@ -92,10 +92,14 @@ export const sharedFn = (n: GNode): boolean => n.fields?.shared === true;
 // are shown, but what they call isn't part of the trace
 export const stops = (n: GNode): boolean => roleOf(n) === 'utility' || sharedFn(n);
 
-function markWide(edges: MEdge[]) {
+const codeKind = (n?: GNode): boolean => n?.kind === 'function' || n?.kind === 'component';
+
+// markWide: only code makes wide calls; a route's, job's or subscriber's edges
+// share the registration's position but are separate calls (graph.NewIndex).
+function markWide(edges: MEdge[], node: Map<string, GNode>) {
   const sites = new Map<string, MEdge[]>();
   for (const e of edges) {
-    if (e.type !== 'calls' || e.prop || !e.file || !e.line) continue;
+    if (e.type !== 'calls' || e.prop || !e.file || !e.line || !codeKind(node.get(e.from))) continue;
     const k = e.from + '\0' + e.file + '\0' + e.line;
     (sites.get(k) ?? sites.set(k, []).get(k)!).push(e);
   }
@@ -265,7 +269,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
     }
     return { out: o, inn: n };
   };
-  markWide(edges);
+  markWide(edges, fullNode);
   const all = { edges, ...index(edges) };
   const { out, inn } = all;
   // external rows get a colour from how they're used, never from their kind
@@ -281,7 +285,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
   for (const e of gedges) {
     (fullOut.get(e.from) ?? fullOut.set(e.from, []).get(e.from)!).push(e);
     (fullInn.get(e.to) ?? fullInn.set(e.to, []).get(e.to)!).push(e);
-    if ((e.type || 'calls') === 'calls' && e.file && e.line) {
+    if ((e.type || 'calls') === 'calls' && e.file && e.line && codeKind(fullNode.get(e.from))) {
       const k = e.from + '\0' + e.file + '\0' + e.line;
       (sites.get(k) ?? sites.set(k, []).get(k)!).push(e);
     }

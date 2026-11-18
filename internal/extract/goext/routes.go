@@ -25,6 +25,10 @@ import (
 // and middleware chains are computed at the end, so Mount can attach a router
 // after routes were registered on it.
 //
+// The repo's own router types are followed too (wrappers.go): a struct holding
+// one of the routers above, or another such struct, is a router, and its
+// methods are read by the conventions these frameworks share.
+//
 // Not handled: routes whose path isn't a constant, routers passed through
 // interfaces of the repo's own, gorilla's Methods(…).Subrouter(), and handlers
 // stored in struct fields or reached through interface method values.
@@ -192,6 +196,10 @@ type declRef struct {
 
 type routeAnalyzer struct {
 	l        *load
+	wrappers map[*types.TypeName]bool // the repo's own router types
+	local    map[*ast.FuncLit]*rscope // closures called or passed on: walked where they're used; → defining scope
+	inLocal  map[*ast.FuncLit]bool
+	litDone  map[*ast.FuncLit]bool // closures walked where they were used
 	decls    map[*types.Func]declRef
 	globals  map[types.Object]*rnode // struct fields and package variables
 	memo     map[string]*rnode       // analysed function+context → returned router
@@ -227,7 +235,9 @@ func (l *load) addRoutes() {
 		l: l, decls: map[*types.Func]declRef{}, globals: map[types.Object]*rnode{},
 		memo: map[string]*rnode{}, active: map[string]bool{}, analysed: map[*types.Func]bool{},
 		fromCall: map[*types.Func]bool{}, handled: map[ast.Node]bool{}, defMux: &rnode{},
+		local: map[*ast.FuncLit]*rscope{}, inLocal: map[*ast.FuncLit]bool{}, litDone: map[*ast.FuncLit]bool{},
 	}
+	a.wrappers = l.routerWrappers()
 	var order []*types.Func
 	for _, p := range l.plain {
 		for _, f := range p.Syntax {
@@ -262,7 +272,7 @@ func (l *load) addRoutes() {
 			}
 			if _, ok := a.decls[callee.Origin()]; ok {
 				for _, arg := range call.Args {
-					if isRouterType(info.TypeOf(arg)) {
+					if a.isRouter(info.TypeOf(arg)) {
 						a.fromCall[callee.Origin()] = true
 					}
 				}
@@ -361,6 +371,13 @@ func (a *routeAnalyzer) analyse(obj *types.Func, params map[int]*rnode) *rnode {
 		}
 	}
 	a.walk(ref.decl.Body, sc)
+	// closures passed somewhere that isn't a router: walk them where defined
+	for lit, def := range a.local {
+		if def == sc && !a.litDone[lit] {
+			a.litDone[lit] = true
+			a.walk(lit.Body, &rscope{fnCtx: sc.fnCtx, parent: sc, vars: map[types.Object]*rnode{}, evals: map[ast.Expr]*rnode{}, chainP: sc.chainP})
+		}
+	}
 	a.memo[key] = sc.ret
 	return sc.ret
 }
@@ -377,6 +394,18 @@ func (a *routeAnalyzer) newScope(c *fnCtx, parent *rscope, body ast.Node) *rscop
 			if sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok {
 				sc.chainP[ast.Unparen(sel.X)] = call
 			}
+			// f() or g(…, f, …) with f := func() {…}
+			uses := call.Args
+			if len(call.Args) == 0 {
+				uses = append(uses, call.Fun)
+			}
+			for _, u := range uses {
+				if id, ok := ast.Unparen(u).(*ast.Ident); ok {
+					if lit, ok := ast.Unparen(c.exprs[c.p.TypesInfo.Uses[id]]).(*ast.FuncLit); ok && len(lit.Type.Params.List) == 0 && a.local[lit] == nil {
+						a.local[lit] = sc
+					}
+				}
+			}
 		}
 		return true
 	})
@@ -392,7 +421,7 @@ func (a *routeAnalyzer) walk(body ast.Node, sc *rscope) {
 			// walked when it's passed, with the router it receives. Other
 			// literals are walked in a child scope, so their returns aren't
 			// the function's.
-			if !a.handled[s] && !takesRouter(s, info) {
+			if !a.handled[s] && !a.takesRouter(s, info) && a.local[s] == nil {
 				a.walk(s.Body, &rscope{fnCtx: sc.fnCtx, parent: sc, vars: map[types.Object]*rnode{}, evals: map[ast.Expr]*rnode{}, chainP: sc.chainP})
 			}
 			return false
@@ -420,9 +449,28 @@ func (a *routeAnalyzer) walk(body ast.Node, sc *rscope) {
 			}
 		case *ast.CallExpr:
 			a.call(s, sc)
+			a.localCall(s, sc)
 		}
 		return true
 	})
+}
+
+// localCall walks a closure held in a local variable where it's called, so
+// the routes it registers get the group it's called in (Gitea:
+// addSettingsRoutes := func() { m.Group(…) }; m.Group("/settings", func() { addSettingsRoutes() })).
+func (a *routeAnalyzer) localCall(call *ast.CallExpr, sc *rscope) {
+	id, ok := ast.Unparen(call.Fun).(*ast.Ident)
+	if !ok || len(call.Args) > 0 {
+		return
+	}
+	lit, ok := ast.Unparen(sc.exprs[sc.p.TypesInfo.Uses[id]]).(*ast.FuncLit)
+	if !ok || a.local[lit] == nil || a.inLocal[lit] {
+		return
+	}
+	a.litDone[lit] = true
+	a.inLocal[lit] = true
+	defer delete(a.inLocal, lit)
+	a.walk(lit.Body, &rscope{fnCtx: sc.fnCtx, parent: sc, vars: map[types.Object]*rnode{}, evals: map[ast.Expr]*rnode{}, chainP: sc.chainP})
 }
 
 func (a *routeAnalyzer) bind(lhs ast.Expr, r *rnode, sc *rscope) {
@@ -478,7 +526,7 @@ func (a *routeAnalyzer) eval1(e ast.Expr, sc *rscope) *rnode {
 		if r := a.globals[o]; r != nil {
 			return r
 		}
-		if _, ok := o.(*types.Var); ok && isRouterType(o.Type()) {
+		if _, ok := o.(*types.Var); ok && a.isRouter(o.Type()) {
 			r := rootFor(o.Type())
 			if isPackageLevel(o) {
 				a.globals[o] = r
@@ -503,7 +551,7 @@ func (a *routeAnalyzer) eval1(e ast.Expr, sc *rscope) *rnode {
 		if r := a.globals[o]; r != nil {
 			return r
 		}
-		if _, ok := o.(*types.Var); ok && isRouterType(o.Type()) {
+		if _, ok := o.(*types.Var); ok && a.isRouter(o.Type()) {
 			r := rootFor(o.Type())
 			a.globals[o] = r
 			return r
@@ -525,8 +573,16 @@ func (a *routeAnalyzer) evalCall(call *ast.CallExpr, sc *rscope) *rnode {
 		fw = framework(callee.Pkg().Path())
 	}
 	if fw == "" {
-		if _, ok := a.decls[callee.Origin()]; ok && returnsRouter(callee) {
-			return a.analyse(callee, a.paramRouters(call, sc))
+		if a.wrapperMethod(callee) {
+			return a.wrapperEval(call, callee, sc)
+		}
+		if _, ok := a.decls[callee.Origin()]; ok && a.returnsRouter(callee) {
+			if r := a.analyse(callee, a.paramRouters(call, sc)); r != nil {
+				return r
+			}
+			if a.isWrapper(callee.Signature().Results().At(0).Type()) {
+				return &rnode{} // a constructor of the repo's router: a new root
+			}
 		}
 		return nil
 	}
@@ -583,25 +639,25 @@ func (a *routeAnalyzer) evalCall(call *ast.CallExpr, sc *rscope) *rnode {
 		}
 		return recv.child(str(0), mw)
 	}
-	if sig := callee.Signature(); sig.Results().Len() == 1 && isRouterType(sig.Results().At(0).Type()) {
+	if sig := callee.Signature(); sig.Results().Len() == 1 && a.isRouter(sig.Results().At(0).Type()) {
 		return recv // methods that return the same router, like gin's Use
 	}
 	return nil
 }
 
 // takesRouter reports whether a function literal has a router parameter.
-func takesRouter(lit *ast.FuncLit, info *types.Info) bool {
+func (a *routeAnalyzer) takesRouter(lit *ast.FuncLit, info *types.Info) bool {
 	for _, f := range lit.Type.Params.List {
-		if isRouterType(info.TypeOf(f.Type)) {
+		if a.isRouter(info.TypeOf(f.Type)) {
 			return true
 		}
 	}
 	return false
 }
 
-func returnsRouter(f *types.Func) bool {
+func (a *routeAnalyzer) returnsRouter(f *types.Func) bool {
 	r := f.Signature().Results()
-	return r.Len() >= 1 && isRouterType(r.At(0).Type())
+	return r.Len() >= 1 && a.isRouter(r.At(0).Type())
 }
 
 // paramRouters evaluates a call's arguments to routers by parameter index.
@@ -673,6 +729,7 @@ func (a *routeAnalyzer) callback(arg ast.Expr, r *rnode, sc *rscope) {
 	}
 	if lit, ok := ast.Unparen(arg).(*ast.FuncLit); ok {
 		a.handled[lit] = true
+		a.litDone[lit] = true
 		inner := a.newScope(sc.fnCtx, sc, lit.Body)
 		if ps := lit.Type.Params.List; len(ps) > 0 && len(ps[0].Names) > 0 {
 			if o := info.Defs[ps[0].Names[0]]; o != nil {
@@ -702,6 +759,10 @@ func (a *routeAnalyzer) call(call *ast.CallExpr, sc *rscope) {
 		fw = framework(callee.Pkg().Path())
 	}
 	if fw == "" {
+		if a.wrapperMethod(callee) {
+			a.wrapperCall(call, callee, sc)
+			return
+		}
 		if _, ok := a.decls[callee.Origin()]; ok {
 			if ps := a.paramRouters(call, sc); len(ps) > 0 {
 				a.analyse(callee, ps)
