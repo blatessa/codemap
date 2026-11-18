@@ -1,4 +1,4 @@
-// The compare control, timeline, summary panel and code diff (revs.ts).
+// The compare control, summary panel and code diff (revs.ts).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CodeBlock, highlight } from './Code';
 import {
@@ -15,7 +15,6 @@ import {
   specLabel,
   useCompare,
   view,
-  type Commit,
   type DataRef,
   type Dep,
   type DLine,
@@ -41,45 +40,17 @@ function useOutside(open: boolean, close: () => void) {
 }
 
 
-function RevSelect({ id, value, onChange, worktree, label }: { id: string; value: string; onChange: (v: string) => void; worktree: boolean; label: string }) {
-  const revs = useCompare((s) => s.revs);
-  const known = new Set<string>(['worktree', ...(revs?.branches ?? []), ...(revs?.commits ?? []).map((c) => c.sha)]);
-  return (
-    <select id={id} className="revsel" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
-      {worktree && <option value="worktree">worktree</option>}
-      {!known.has(value) && <option value={value}>{shortRev(value)}</option>}
-      {(revs?.branches ?? []).map((b) => (
-        <option key={'b' + b} value={b}>
-          {b}
-        </option>
-      ))}
-      {(revs?.commits ?? []).map((c) => (
-        <option key={c.sha} value={c.sha}>
-          {c.short} {c.subject.slice(0, 48)}
-        </option>
-      ))}
-    </select>
-  );
-}
 
 // CompareControl sits in the top bar: what's on the map, and the ways to change it.
 export function CompareControl() {
-  const { revs, spec, view: v, busy, error, changesOnly, timeline, phase } = useCompare();
+  const { revs, spec, view: v, busy, error, changesOnly, phase } = useCompare();
   const readOnly = useStore((s) => s.readOnly);
   const [open, setOpen] = useState(false);
-  const [from, setFrom] = useState('HEAD');
-  const [to, setTo] = useState('worktree');
   const close = useMemo(() => () => setOpen(false), []);
   const ref = useOutside(open, close);
   useEffect(() => {
     document.body.classList.toggle('ro', readOnly);
   }, [readOnly]);
-  useEffect(() => {
-    if (spec) {
-      setFrom(spec.from);
-      setTo(spec.to || 'worktree');
-    }
-  }, [spec]);
   const label = spec ? specLabel(spec, revs) : isWorktree(v) ? 'worktree' : shortRev(v);
   const go = (f: string, t: string) => {
     setOpen(false);
@@ -110,106 +81,7 @@ export function CompareControl() {
             <span>{p.label}</span>
           </button>
         ))}
-        <button className="res" data-preset="since" onClick={() => (setOpen(false), setCompare({ timeline: 'since' }))}>
-          <span>Since…</span>
-        </button>
-        <button className="res" id="tl-open" onClick={() => (setOpen(false), setCompare({ timeline: timeline ? false : 'compare' }))}>
-          <span>Timeline</span>
-        </button>
-        <div className="cmprow">
-          <RevSelect id="cmp-from" label="From" value={from} onChange={setFrom} worktree={false} />
-          <span className="m">→</span>
-          <RevSelect id="cmp-to" label="To" value={to} onChange={setTo} worktree />
-          <button className="btn" id="cmp-go" onClick={() => go(from, to)}>
-            Compare
-          </button>
-        </div>
-        <div className="cmprow">
-          <RevSelect id="cmp-view" label="View" value={spec ? 'worktree' : v} onChange={(x) => (setOpen(false), void view(x))} worktree />
-        </div>
       </div>
-      {timeline && <Timeline />}
-    </div>
-  );
-}
-
-function ago(date: string): string {
-  const s = (Date.now() - new Date(date).getTime()) / 1000;
-  if (!isFinite(s)) return '';
-  if (s < 60) return 'now';
-  if (s < 3600) return Math.floor(s / 60) + 'm';
-  if (s < 86400) return Math.floor(s / 3600) + 'h';
-  if (s < 86400 * 30) return Math.floor(s / 86400) + 'd';
-  if (s < 86400 * 365) return Math.floor(s / 86400 / 30) + 'mo';
-  return Math.floor(s / 86400 / 365) + 'y';
-}
-
-// Timeline lists commits. Click compares a commit with its parent; shift-click
-// two to compare them. In "since" mode a click compares that commit with the worktree.
-export function Timeline() {
-  const { revs, timeline, spec } = useCompare();
-  const [first, setFirst] = useState<string | null>(null);
-  const commits = revs?.commits ?? [];
-  const close = useMemo(() => () => setCompare({ timeline: false }), []);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [close]);
-  const pos = new Map(commits.map((c, i) => [c.sha, i]));
-  const click = (c: Commit, shift: boolean) => {
-    if (timeline === 'since') return void compare(c.sha, 'worktree');
-    if (shift) {
-      if (!first || first === c.sha) return setFirst(c.sha);
-      const [a, b] = (pos.get(first) ?? 0) > (pos.get(c.sha) ?? 0) ? [first, c.sha] : [c.sha, first];
-      setFirst(null);
-      return void compare(a, b);
-    }
-    setFirst(null);
-    if (!c.parents.length) return void view(c.sha);
-    void compare(c.parents[0], c.sha);
-  };
-  const inRange = (sha: string) => {
-    if (!spec) return false;
-    const a = commits.findIndex((c) => c.sha === spec.from || c.short === spec.from);
-    const b = isWorktree(spec.to) ? -1 : commits.findIndex((c) => c.sha === spec.to || c.short === spec.to);
-    const i = pos.get(sha) ?? -2;
-    return a >= 0 && i < a && i >= b;
-  };
-  return (
-    <div className="timeline" id="timeline" ref={ref}>
-      <div className="tlhead">
-        <span className="eyebrow">{timeline === 'since' ? 'Since…' : 'Timeline'}</span>
-        <button className="x" aria-label="Close timeline" onClick={close}>
-          ×
-        </button>
-      </div>
-      {revs?.dirty && timeline !== 'since' && (
-        <button className="tlrow wt" data-sha="worktree" onClick={() => void compare('HEAD', 'worktree')}>
-          <span className="s">Uncommitted changes</span>
-        </button>
-      )}
-      {commits.map((c) => (
-        <button
-          key={c.sha}
-          className={`tlrow${first === c.sha ? ' picked' : ''}${inRange(c.sha) ? ' inr' : ''}`}
-          data-sha={c.sha}
-          title={`${c.author} · ${new Date(c.date).toLocaleString()}`}
-          onClick={(e) => click(c, e.shiftKey)}
-        >
-          <span className="s">{c.subject}</span>
-          <span className="meta">
-            <span className="sha">{c.short}</span>
-            <span>{ago(c.date)}</span>
-            {c.refs.map((r) => (
-              <span key={r} className="ref">
-                {r}
-              </span>
-            ))}
-          </span>
-        </button>
-      ))}
     </div>
   );
 }

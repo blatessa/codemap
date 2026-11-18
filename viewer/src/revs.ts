@@ -127,7 +127,6 @@ export interface C {
   changesOnly: boolean;
   busy: boolean;
   error: string;
-  timeline: false | 'compare' | 'since';
   useCode: boolean; // archived proposals: draw over the current code instead of `base`
   phase: string; // build phase from `building` events
 }
@@ -140,7 +139,6 @@ export const useCompare = create<C>(() => ({
   changesOnly: false,
   busy: false,
   error: '',
-  timeline: false,
   useCode: false,
   phase: '',
 }));
@@ -277,7 +275,7 @@ let seq = 0;
 // compare shows from → to on the map. Both sides are read-only on the map.
 export async function compare(from: string, to: string) {
   const run = ++seq;
-  set({ spec: { from, to }, busy: true, error: '', timeline: false });
+  set({ spec: { from, to }, busy: true, error: '' });
   writeHash();
   try {
     const d = await getDiff(from, to);
@@ -297,7 +295,7 @@ export async function compare(from: string, to: string) {
 export async function view(rev: string) {
   const run = ++seq;
   idx = null;
-  set({ spec: null, diff: null, view: rev, busy: !isWorktree(rev), error: '', timeline: false, changesOnly: false });
+  set({ spec: null, diff: null, view: rev, busy: !isWorktree(rev), error: '', changesOnly: false });
   writeHash();
   setMain({ rev: isWorktree(rev) ? 'worktree' : rev, readOnly: !isWorktree(rev), sel: [], focus: false, ...(isWorktree(rev) ? {} : { mode: 'explore' }) });
   try {
@@ -322,11 +320,13 @@ export interface Preset {
 }
 
 export function presets(r: Revs | null): Preset[] {
-  const out: Preset[] = [
-    { id: 'uncommitted', label: 'Uncommitted changes', from: 'HEAD', to: 'worktree' },
-    { id: 'last', label: 'Last commit', from: 'HEAD~1', to: 'HEAD' },
-  ];
+  // What an agent changed: work not committed yet, or a branch or PR against
+  // the main branch (the current one, then the most recent others).
+  const out: Preset[] = [{ id: 'uncommitted', label: 'Uncommitted changes', from: 'HEAD', to: 'worktree' }];
   if (r?.default && r.current && r.current !== r.default) out.push({ id: 'branch', label: `This branch vs ${r.default}`, from: 'base:' + r.default, to: 'worktree' });
+  if (r?.default)
+    for (const b of (r.branches ?? []).filter((x) => x !== r.default && x !== r.current).slice(0, 8))
+      out.push({ id: 'branch:' + b, label: `${b} vs ${r.default}`, from: 'base:' + r.default, to: b });
   for (const p of r?.prs ?? []) out.push({ id: 'pr' + p.number, label: `#${p.number} ${p.title}`, from: 'pr:' + p.number, to: '' });
   return out;
 }

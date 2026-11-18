@@ -45,7 +45,7 @@ describe('code diff', () => {
 describe('presets', () => {
   const revs: Revs = {
     commits: [],
-    branches: ['feature', 'main'],
+    branches: ['feature', 'main', 'agent/fix-login'],
     current: 'feature',
     default: 'main',
     head: '',
@@ -55,8 +55,8 @@ describe('presets', () => {
   test('one click each', () => {
     expect(presets(revs).map((p) => [p.label, p.from, p.to])).toEqual([
       ['Uncommitted changes', 'HEAD', 'worktree'],
-      ['Last commit', 'HEAD~1', 'HEAD'],
       ['This branch vs main', 'base:main', 'worktree'],
+      ['agent/fix-login vs main', 'base:main', 'agent/fix-login'],
       ['#7 Refunds', 'pr:7', ''],
     ]);
   });
@@ -64,7 +64,7 @@ describe('presets', () => {
     expect(presets({ ...revs, current: 'main' }).some((p) => p.id === 'branch')).toBe(false);
   });
   test('labels', () => {
-    expect(specLabel({ from: 'HEAD~1', to: 'HEAD' }, revs)).toBe('Last commit');
+    expect(specLabel({ from: 'base:main', to: 'agent/fix-login' }, revs)).toBe('agent/fix-login vs main');
     expect(specLabel({ from: 'a'.repeat(40), to: 'worktree' }, revs)).toBe('aaaaaaa → worktree');
     expect(shortRev('main')).toBe('main');
   });
