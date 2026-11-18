@@ -527,6 +527,11 @@ func (l *load) resolve(fn *ssa.Function, depth int) []*ssa.Function {
 	if fn == nil {
 		return nil
 	}
+	// An instance of a generic function is a call to that function, not to
+	// what it calls.
+	if o := fn.Origin(); o != nil && o.Synthetic == "" {
+		return []*ssa.Function{o}
+	}
 	switch {
 	case fn.Synthetic == "" || fn.Synthetic == "from type information":
 		if o := fn.Origin(); o != nil {
@@ -572,8 +577,19 @@ func (l *load) sortedFuncs(keep func(*ssa.Function) bool) []*ssa.Function {
 // of the non-test package variants, and records resolved callees per call site.
 func (l *load) addCallEdges() {
 	fns := l.sortedFuncs(func(fn *ssa.Function) bool { return l.plainSSA[fn.Pkg] })
+	cb := l.findCallbacks(fns)
 	for _, fn := range fns {
 		from := l.idOf(fn)
+		if l.x.b.has(from) {
+			for _, pf := range cb.passed(fn) {
+				file, line := l.pos(pf.site.Common().Pos())
+				for _, t := range l.resolve(pf.fn, 0) {
+					if to := l.idOf(t); to != "" && to != from && l.repoCode(t) && !l.isTestCode(t) {
+						l.x.b.addEdge(graph.Edge{From: from, To: to, Type: graph.Calls, File: file, Line: line})
+					}
+				}
+			}
+		}
 		for _, e := range l.cg.Nodes[fn].Out {
 			var site token.Pos
 			if e.Site != nil {
@@ -583,7 +599,7 @@ func (l *load) addCallEdges() {
 			if site.IsValid() {
 				l.sites[site] = append(l.sites[site], targets...)
 			}
-			if !l.x.b.has(from) {
+			if !l.x.b.has(from) || e.Site != nil && cb.skip[e.Site] {
 				continue
 			}
 			for _, t := range targets {
