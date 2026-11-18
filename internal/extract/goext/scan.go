@@ -244,7 +244,7 @@ func (l *load) fileData(name string) []byte {
 	return d
 }
 
-// scanCalls finds SQL queries, calls to external services and configured
+// scanCalls finds SQL queries, ORM calls (orm.go), calls to external services and configured
 // job/subscriber/publisher calls in every function body.
 func (l *load) scanCalls() {
 	dbMethods := map[string]bool{}
@@ -259,12 +259,14 @@ func (l *load) scanCalls() {
 			return
 		}
 		info := c.p.TypesInfo
+		orm := map[*ast.CallExpr]bool{}
 		ast.Inspect(body, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
 				return true
 			}
 			file, line := l.pos(call.Pos())
+			l.ormCall(c, call, orm, file, line)
 			callee := staticCallee(info, call)
 			if sel, ok := ast.Unparen(call.Fun).(*ast.SelectorExpr); ok && dbMethods[sel.Sel.Name] {
 				if s, ok := info.Selections[sel]; ok && s.Kind() == types.MethodVal {
@@ -279,6 +281,7 @@ func (l *load) scanCalls() {
 		})
 	})
 	l.queryWrappers()
+	l.ormWrappers()
 }
 
 // queryWrappers follows queries passed through the repo's own helpers: when a

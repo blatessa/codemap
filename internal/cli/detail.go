@@ -37,8 +37,8 @@ func RoleOf(ix *graph.Index, id string) string {
 // Features rewrites a tree for the features detail level: a passthrough row is
 // replaced by its own children (A → passthrough → C reads A → C), rows with
 // any other role are left out and counted in their parent's Support, and a
-// shared function (widely used, with effects of its own) is shown without what
-// it calls. The root always stays.
+// shared function (widely used, with effects of its own or one call away) is
+// shown without what it calls. The root always stays.
 func Features(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
 	out := *t
 	out.Children = nil

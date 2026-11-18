@@ -341,13 +341,27 @@ func AssignRoles(g *Graph, read ReadFile) map[string]int {
 	// of Large Traces to Facilitate the Understanding of the Behaviour of a
 	// Software System", ICPC 2006): many callers, few callees. Wide call sites
 	// don't count, so a registry or a much-implemented interface can't make
-	// its targets look widely used. One that does nothing itself (WithTx,
-	// GetEngine, a logger) is a utility; one with effects of its own is
-	// marked shared: traces show it, but don't go into it.
+	// its targets look widely used. One that reaches no effects (WithTx,
+	// GetEngine, a logger) is a utility; one with effects, its own or its
+	// callees', is marked shared: traces show it, but don't go into it.
+	// Effects of direct callees count too: a service function that only
+	// orchestrates lookups isn't plumbing. Only one level: followed further,
+	// nearly everything in a big repo reaches some effect.
+	reaches := func(id string) bool {
+		if F[id].effect {
+			return true
+		}
+		for _, e := range ix.Out[id] {
+			if e.Type == Calls && !ix.Wide(e) && F[e.To] != nil && F[e.To].effect {
+				return true
+			}
+		}
+		return false
+	}
 	for _, id := range widelyUsed(ix, func(id string) bool {
 		return F[id] != nil && role[id] == "" && !entry[id]
 	}) {
-		if F[id].effect || F[id].delegates {
+		if reaches(id) || F[id].delegates {
 			setField(ix.Node[id], "shared", true)
 			continue
 		}

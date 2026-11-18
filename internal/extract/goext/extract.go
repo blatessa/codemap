@@ -151,6 +151,11 @@ type load struct {
 	files map[string][]byte // source cache
 
 	queryParams map[*types.Func]int // functions passing a parameter to a DB method → its index
+
+	ormParams  map[*types.Func][]ormWrap // ORM wrappers → the parameters naming their model
+	ormIfaces  map[*types.Interface]*ormPreset
+	ormTypes   map[*types.Named]*ormPreset // concrete types of the ORM packages imported
+	tableNames map[*types.TypeName]string
 }
 
 const loadMode = packages.NeedName | packages.NeedFiles | packages.NeedSyntax | packages.NeedTypes |
@@ -177,6 +182,9 @@ func (x *extractor) extractModule(dir string) (err error) {
 		sites:       map[token.Pos][]*ssa.Function{},
 		files:       map[string][]byte{},
 		queryParams: map[*types.Func]int{},
+		ormParams:   map[*types.Func][]ormWrap{},
+		ormIfaces:   map[*types.Interface]*ormPreset{},
+		tableNames:  map[*types.TypeName]string{},
 	}
 	var initial []*packages.Package
 	for _, p := range pkgs {

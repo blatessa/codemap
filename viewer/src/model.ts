@@ -84,7 +84,7 @@ export interface Model {
 }
 
 export const roleOf = (n: GNode): string => (typeof n.fields?.role === 'string' ? (n.fields.role as string) : '');
-// sharedFn: widely used, with effects of its own (graph.AssignRoles): traces
+// sharedFn: widely used, with effects of its own or one call away (graph.AssignRoles): traces
 // show it but don't go into it
 export const sharedFn = (n: GNode): boolean => n.fields?.shared === true;
 // stops reports whether traces stop at a node: utilities and shared functions
