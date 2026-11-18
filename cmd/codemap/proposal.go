@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -21,13 +20,7 @@ func init() {
 	commands["proposal"] = func(args []string) error { return runProposal(os.Stdout, os.Stdin, args) }
 }
 
-const proposalUsage = `proposal list
-       | new <name> [--body FILE|-]
-       | archive <slug> [--pr N]
-       | show <slug> [--status open|done|wontfix]
-       | item <slug> <id> [--status open|done|wontfix] [--reply TEXT]
-       | request <slug> --kind KIND --target ID [--file F --lines A-B] [--to X] --text TEXT
-       [--root DIR] [--json]`
+const proposalUsage = `proposal list | new <name> [--body FILE|-] | archive <slug> [--pr N]  [--root DIR] [--json]`
 
 // today and gitHead are variables so tests can fix them.
 var (
@@ -47,15 +40,6 @@ func runProposal(w io.Writer, in io.Reader, args []string) error {
 	c.Register(fs)
 	body := fs.String("body", "", "new: read the Markdown body from FILE, or - for stdin")
 	pr := fs.String("pr", "", "archive: the pull request that implemented it")
-	var f itemFlags
-	fs.StringVar(&f.status, "status", "", "show: only items with this status; item: set the status (open, done, wontfix)")
-	fs.StringVar(&f.reply, "reply", "", "item: your reply to the request")
-	fs.StringVar(&f.kind, "kind", "change", "request: change, add, remove, move, rename, test or question")
-	fs.StringVar(&f.target, "target", "", `request: a node or module ID, an edge as "from -> to", or a file path`)
-	fs.StringVar(&f.file, "file", "", "request: the file the request is about")
-	fs.StringVar(&f.lines, "lines", "", "request: a line or range in --file, as N or A-B")
-	fs.StringVar(&f.to, "to", "", "request: for move, the destination module; for rename, the new name")
-	fs.StringVar(&f.text, "text", "", "request: what to do")
 	pos, err := cli.Parse(fs, args)
 	if err != nil {
 		return err
@@ -73,14 +57,6 @@ func runProposal(w io.Writer, in io.Reader, args []string) error {
 		return proposalNew(w, in, c, strings.Join(pos[1:], " "), *body)
 	case pos[0] == "archive" && len(pos) == 2:
 		return proposalArchive(w, c, pos[1], *pr)
-	case pos[0] == "show" && len(pos) == 2:
-		return proposalShow(w, c, pos[1], f.status)
-	case pos[0] == "item" && len(pos) == 3:
-		replySet := false
-		fs.Visit(func(fl *flag.Flag) { replySet = replySet || fl.Name == "reply" })
-		return proposalItem(w, c, pos[1], pos[2], f, replySet)
-	case pos[0] == "request" && len(pos) == 2:
-		return proposalRequest(w, c, pos[1], f)
 	}
 	return cli.Usage(proposalUsage)
 }

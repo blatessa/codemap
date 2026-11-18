@@ -1,5 +1,5 @@
 // Thin client for the server API (PLAN.md §8). Production code talks only to /api/*.
-import type { Item, Proposal, Source, State } from './types';
+import type { Proposal, Source, State } from './types';
 
 export class Conflict extends Error {
   constructor(public version: string, public value: unknown) {
@@ -55,22 +55,4 @@ export async function getSource(rev: string, file: string, from: number, to: num
 
 export async function openInEditor(file: string, line: number) {
   await fetch('/api/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file, line }) }).catch(() => {});
-}
-
-export async function postItem(slug: string, item: Partial<Item>, version: string | undefined): Promise<{ version: string; item: Item }> {
-  const r = await check(
-    await fetch('/api/proposals/' + encodeURIComponent(slug) + '/items', { method: 'POST', headers: headers(version), body: JSON.stringify(item) }),
-  );
-  return r.json();
-}
-
-export async function patchItem(slug: string, id: string, patch: Partial<Item>, version: string | undefined): Promise<{ version: string; item: Item }> {
-  const r = await check(
-    await fetch('/api/proposals/' + encodeURIComponent(slug) + '/items/' + encodeURIComponent(id), {
-      method: 'PATCH',
-      headers: headers(version),
-      body: JSON.stringify(patch),
-    }),
-  );
-  return r.json();
 }

@@ -443,16 +443,6 @@ export function selectionOf(m: Model, ids: string[], areas: AreaLike[], groups?:
   const S: Sel = { nodes: new Set(), edges: new Set(), up: new Set(), down: new Set(), path: new Set() };
   let any = false;
   for (const id of ids) {
-    if (id.startsWith('edge:')) {
-      const [from, to] = id.slice(5).split(' -> ');
-      const e = m.edges.find((x) => x.from === from && x.to === to);
-      if (!e && !m.all.edges.some((x) => x.from === from && x.to === to)) continue;
-      S.nodes.add(from).add(to);
-      S.path.add(from).add(to);
-      if (e) S.edges.add(e.i);
-      any = true;
-      continue;
-    }
     if (m.node.has(id)) {
       const d = walk(m, id, true),
         u = walk(m, id, false);

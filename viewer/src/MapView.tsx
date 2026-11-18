@@ -4,11 +4,7 @@ import { GROUP_H, chain, isGroup, layoutH, type Group, type Grouping } from './g
 import { innerLayout, type LBox } from './layout';
 import { FAR, FARH, HEAD, MORE, ROW, heightOf, type Box, type MEdge, type Model, type Row, type Sel } from './model';
 import {
-  addItem,
   currentProposal,
-  itemStatus,
-  itemsOn,
-  openItem,
   dropBox,
   getState,
   groupingOf,
@@ -26,7 +22,7 @@ import {
   useStore,
   type RectOf,
 } from './store';
-import type { Area, Item } from './types';
+import type { Area } from './types';
 import { boxCls, edgeCls, groupCls, rowCls } from './revs';
 
 // Far-mode text: scaled by 1/k so it stays readable on screen, and cut to fit.
@@ -737,73 +733,6 @@ const FarLabels = memo(function FarLabels({ boxes, halo }: { boxes: DBox[]; halo
   );
 });
 
-// Pins mark things with requests on them while a proposal is shown; move
-// requests draw as dashed arrows from the function to the module.
-const Pins = memo(function Pins({ disp, on }: { disp: Disp; on: Map<string, Item[]> }) {
-  const pins: React.ReactNode[] = [],
-    moves: React.ReactNode[] = [];
-  const rowAt = (id: string): [number, number] | null => {
-    const r = disp.row.get(id);
-    if (!r) return null;
-    const { d, idx } = r;
-    return d.col || idx < 0 ? [d.x + d.w - 2, d.y + 2] : [d.x + d.w - 2, d.y + HEAD + idx * ROW + 5];
-  };
-  for (const [t, items] of on) {
-    const vis = items.filter((x) => itemStatus(x) !== 'done');
-    if (!vis.length) continue;
-    const open = vis.filter((x) => itemStatus(x) === 'open');
-    let at: [number, number] | null = null;
-    const k = t.indexOf(' -> ');
-    if (k > 0) {
-      const a = disp.row.has(t.slice(0, k)) ? anchor(disp, t.slice(0, k), 'r') : null,
-        b = disp.row.has(t.slice(k + 4)) ? anchor(disp, t.slice(k + 4), 'l') : null;
-      if (a && b) at = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    } else if (disp.row.has(t)) at = rowAt(t);
-    else if (disp.byId.has(t)) {
-      const d = disp.byId.get(t)!;
-      at = [d.x + d.w - 2, d.y + 2];
-    }
-    if (at) {
-      const n = open.length || vis.length;
-      pins.push(
-        <g key={t} className={`pin${open.length ? '' : ' dim'}`} data-pin={(open[0] ?? vis[0]).id} data-pin-target={t} transform={`translate(${at[0]},${at[1]})`}>
-          <title>{vis.map((x) => `${x.kind}: ${x.text ?? ''}`).join('\n')}</title>
-          <circle r={n > 1 ? 7.5 : 5.5} />
-          {n > 1 && (
-            <text y={3.5} textAnchor="middle">
-              {n}
-            </text>
-          )}
-        </g>,
-      );
-    }
-    for (const it of vis) {
-      if (it.kind !== 'move' || !it.to || !disp.row.has(t)) continue;
-      const b = disp.byId.get(it.to);
-      if (!b) continue;
-      const [x1, y1] = anchor(disp, t, 'r');
-      const x2 = b.x - 2,
-        y2 = b.y + HEAD / 2;
-      const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
-      moves.push(
-        <path
-          key={'mv' + it.id}
-          className={`edge prop movearrow${itemStatus(it) === 'wontfix' ? ' dim' : ''}`}
-          data-move={it.id}
-          d={`M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`}
-          markerEnd="url(#mk-p)"
-        />,
-      );
-    }
-  }
-  return (
-    <g className="pins">
-      {moves}
-      {pins}
-    </g>
-  );
-});
-
 const mk = (id: string) => (
   <marker key={id} id={id} viewBox="0 0 8 8" refX={7.5} refY={4} markerUnits="userSpaceOnUse" markerWidth={9} markerHeight={9} orient="auto">
     <path className={id} d="M0,0.5 L8,4 L0,7.5z" />
@@ -813,7 +742,6 @@ const mk = (id: string) => (
 type Drag =
   | { kind: 'pan'; x: number; y: number; vx: number; vy: number; moved: boolean }
   | { kind: 'box'; id: string; prop: boolean; grp: boolean; x: number; y: number; bx: number; by: number; moved: boolean; px: number; py: number }
-  | { kind: 'row'; id: string; x: number; y: number; moved: boolean }
   | { kind: 'area'; name: string; x: number; y: number; start: { id: string; x: number; y: number }[]; ax: number; ay: number; moved: boolean };
 
 export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
@@ -830,9 +758,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   const hover = useStore((s) => s.hover);
   const connectFrom = useStore((s) => s.connectFrom);
   const canAdd = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
-  const shownP = useStore((s) => (s.mode === 'propose' ? currentProposal(s) : null));
-  const itemsOnMap = useMemo(() => itemsOn(shownP), [shownP]);
-  const [rowDrag, setRowDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const fitSeq = useStore((s) => s.fitSeq);
   const centerOnId = useStore((s) => s.centerOn);
   const far = view.k < FAR;
@@ -1028,10 +953,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       g.moved = true;
       const v = getState().view,
         k = v.k;
-      if (g.kind === 'row') {
-        const r = svgRef.current!.getBoundingClientRect();
-        setRowDrag({ id: g.id, x: (e.clientX - r.left - v.x) / k, y: (e.clientY - r.top - v.y) / k });
-      } else if (g.kind === 'pan') setState({ view: { ...v, x: g.vx + dx, y: g.vy + dy }, touchedView: true });
+      if (g.kind === 'pan') setState({ view: { ...v, x: g.vx + dx, y: g.vy + dy }, touchedView: true });
       else if (g.kind === 'box') {
         setOver({ [g.id]: [Math.round(g.bx + dx / k), Math.round(g.by + dy / k)] });
         const r = svgRef.current!.getBoundingClientRect();
@@ -1047,15 +969,9 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
         else movePos(o);
       }
     };
-    const up = (e: PointerEvent) => {
+    const up = () => {
       const g = drag.current;
       setDragging(false);
-      if (g && g.kind === 'row') {
-        setRowDrag(null);
-        if (g.moved) dropRow(g.id, e.clientX, e.clientY);
-        setTimeout(() => (drag.current = null), 0);
-        return;
-      }
       if (g && g.moved && g.kind !== 'pan') {
         // one update: the committed state is the last drag frame
         commitDrag(g, overRef.current);
@@ -1073,18 +989,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // dropRow ends a function drag in propose mode: over another module, it
-  // records a move request (nothing moves).
-  function dropRow(id: string, cx: number, cy: number) {
-    const el = document.elementFromPoint(cx, cy)?.closest('[data-box]') as HTMLElement | null;
-    const to = el?.dataset.box;
-    const p = currentProposal(getState());
-    const from = dispRef.current.row.get(id)?.d.b.id;
-    if (!p || !to || to === from || isGroup(to)) return;
-    const nid = addItem(p.slug, { kind: 'move', target: id, to, text: '' });
-    if (nid) openItem(nid);
-  }
 
   function commitDrag(g: Drag, o: Record<string, [number, number]>) {
     if (g.kind === 'box') {
@@ -1149,11 +1053,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
         return;
       }
     }
-    const rn = t.closest('[data-node]') as HTMLElement | null;
-    if (rn && canAdd && !s.readOnly && !s.connectFrom) {
-      drag.current = { kind: 'row', id: rn.dataset.node!, x: e.clientX, y: e.clientY, moved: false };
-      return;
-    }
     drag.current = { kind: 'pan', x: e.clientX, y: e.clientY, vx: s.view.x, vy: s.view.y, moved: false };
   };
 
@@ -1161,11 +1060,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     if (drag.current?.moved) return;
     const t = e.target as Element;
     const s = getState();
-    const pin = t.closest('[data-pin]') as HTMLElement | null;
-    if (pin) {
-      openItem(pin.dataset.pin!);
-      return;
-    }
     const add = t.closest('[data-add]') as HTMLElement | null;
     if (add) {
       setState({ form: { type: 'fn', box: add.dataset.add! }, sel: [], connectFrom: null });
@@ -1207,9 +1101,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     const mh = t.closest('[data-mod]') as HTMLElement | null;
     if (mh) return pick(mh.dataset.mod!);
     if (n) return pick(n.dataset.node!);
-    const ed = t.closest('[data-edge]') as HTMLElement | null;
-    const me = ed ? disp.edges.find((x) => String(x.i) === ed.dataset.edge) : undefined;
-    if (me) return pick(`edge:${me.from} -> ${me.to}`);
     setState({ sel: [], form: null, focus: false, splitting: null });
   };
 
@@ -1266,16 +1157,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
             canAdd={canAdd}
           />
         ))}
-        {shownP && <Pins disp={disp} on={itemsOnMap} />}
-        {rowDrag && disp.row.has(rowDrag.id) && (
-          <path
-            className="edge prop movearrow live"
-            d={(() => {
-              const [x1, y1] = anchor(disp, rowDrag.id, 'r');
-              return `M${x1},${y1} L${rowDrag.x},${rowDrag.y}`;
-            })()}
-          />
-        )}
         {far && <FarLabels boxes={shown ? disp.boxes.filter((d) => shown.has(d.b.id)) : disp.boxes} halo={!!G} />}
         {hd?.far?.hid && (
           <text className="mname hovname" x={hd.x + hd.far.px} y={hd.y + hd.far.nb} style={{ fontSize: hd.far.fn, strokeWidth: hd.far.fn * 0.3 }}>

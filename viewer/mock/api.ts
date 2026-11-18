@@ -68,7 +68,7 @@ export function parseProposal(text: string): Obj {
     const rest = text.slice(text.indexOf('\n') + 1);
     const end = rest.indexOf('\n+++');
     if (end < 0) throw new Error('frontmatter is not closed with +++');
-    p = { ...p, ...renameKeys(TOML.parse(rest.slice(0, end)), { module: 'modules', node: 'nodes', edge: 'edges', item: 'items' }) };
+    p = { ...p, ...renameKeys(TOML.parse(rest.slice(0, end)), { module: 'modules', node: 'nodes', edge: 'edges' }) };
     body = rest.slice(end + 4).replace(/^\r/, '').replace(/^\n/, '');
   }
   p.body = body;
@@ -164,44 +164,6 @@ function broadcast(event: string, files: string[]) {
   for (const c of clients) c.write(`event: ${event}\ndata: ${JSON.stringify({ files })}\n\n`);
 }
 
-// anchored mirrors internal/anchor without git: the quote is looked for in the
-// current file, nearest the stored lines. anchor is computed, never stored.
-function anchorOf(it: Obj): Obj | undefined {
-  const file = typeof it.file === 'string' ? it.file : '';
-  if (!file) return undefined;
-  const l = Array.isArray(it.lines) ? (it.lines as number[]) : [];
-  const a = l[0] ?? 0,
-    b = l[l.length - 1] ?? a;
-  const src = sourceLines(file);
-  if (!src) return { file, lines: [a, b], stale: true };
-  const q = String(it.quote ?? '')
-    .split('\n')
-    .map((x) => x.trim())
-    .filter((x, i, all) => x || (i > 0 && i < all.length - 1));
-  if (!q.length) return { file, lines: [a, b] };
-  let best = -1;
-  for (let i = 0; i + q.length <= src.length; i++) {
-    const ok = q.every((ql, j) => {
-      const sl = src[i + j].trim();
-      if (q.length === 1) return sl.includes(ql);
-      return j === 0 ? sl.endsWith(ql) : j === q.length - 1 ? sl.startsWith(ql) : sl === ql;
-    });
-    if (ok && (best < 0 || Math.abs(i + 1 - a) < Math.abs(best + 1 - a))) best = i;
-  }
-  return best < 0 ? { file, lines: [a, b], stale: true } : { file, lines: [best + 1, best + q.length] };
-}
-
-function anchored(p: Obj): Obj {
-  const items = p.items as Obj[] | undefined;
-  if (!items?.length) return p;
-  return { ...p, items: items.map((it) => ({ ...it, anchor: anchorOf(it) })) };
-}
-
-const stripAnchors = (p: Obj): Obj =>
-  Array.isArray(p.items) ? { ...p, items: (p.items as Obj[]).map(({ anchor: _a, ...it }) => it) } : p;
-
-const nextId = (items: Obj[]) => 'i' + (Math.max(0, ...items.map((x) => Number(/^i(\d+)$/.exec(String(x.id))?.[1] ?? 0))) + 1);
-
 const projectOf = () => ({
   config: db.config,
   areas: db.files.areas,
@@ -210,7 +172,7 @@ const projectOf = () => ({
   views: db.files.views,
   hidden: db.files.hidden,
   external: db.files.external,
-  proposals: [...db.proposals.values()].map(anchored),
+  proposals: [...db.proposals.values()],
 });
 
 function sourceLines(file: string): string[] | null {
@@ -262,34 +224,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
     broadcast('project-changed', [`.codemap/${key}.${key === 'layout' ? 'json' : 'toml'}`]);
     return send(res, 200, { version: hash(v) });
   }
-  if (p === '/api/proposals' && m === 'GET') return send(res, 200, [...db.proposals.values()].map(anchored));
-  const pi = /^\/api\/proposals\/([^/]+)\/items(?:\/([^/]+))?$/.exec(p);
-  if (pi) {
-    const slug = decodeURIComponent(pi[1]);
-    const cur = db.proposals.get(slug);
-    if (!cur) return send(res, 404, { error: 'no proposal' });
-    const im = req.headers['if-match'];
-    if (im !== undefined && im !== hash(cur)) return send(res, 409, { version: hash(cur), value: cur });
-    const body = ((await readBody(req)) ?? {}) as Obj;
-    delete body.anchor;
-    const items = [...((cur.items as Obj[]) ?? [])];
-    let item: Obj;
-    if (m === 'POST' && !pi[2]) {
-      item = { ...body, id: nextId(items), kind: body.kind ?? 'change', status: 'open', rev: body.rev ?? '3333333' };
-      items.push(item);
-    } else if (m === 'PATCH' && pi[2]) {
-      const id = decodeURIComponent(pi[2]);
-      const i = items.findIndex((x) => x.id === id);
-      if (i < 0) return send(res, 404, { error: 'no item' });
-      item = { ...items[i] };
-      for (const [k, v] of Object.entries(body)) if (k !== 'id') v === null ? delete item[k] : (item[k] = v);
-      items[i] = item;
-    } else return send(res, 405, { error: 'method' });
-    const v: Obj = { ...cur, items, updated: new Date().toISOString().slice(0, 10) };
-    db.proposals.set(slug, v);
-    broadcast('project-changed', [`.codemap/proposals/${slug}.md`]);
-    return send(res, 200, { version: hash(v), item: { ...item, anchor: anchorOf(item) } });
-  }
+  if (p === '/api/proposals' && m === 'GET') return send(res, 200, [...db.proposals.values()]);
   const pp = /^\/api\/proposals\/([^/]+)$/.exec(p);
   if (pp) {
     const slug = decodeURIComponent(pp[1]);
@@ -302,7 +237,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
     if (m === 'PUT') {
       const im = req.headers['if-match'];
       if (cur && im !== undefined && im !== hash(cur)) return send(res, 409, { version: hash(cur), value: cur });
-      const v: Obj = stripAnchors({ ...((await readBody(req)) as Obj), slug });
+      const v: Obj = { ...((await readBody(req)) as Obj), slug };
       if (!cur && !v.base) v.base = 'HEAD';
       db.proposals.set(slug, v);
       broadcast('project-changed', [`.codemap/proposals/${slug}.md`]);

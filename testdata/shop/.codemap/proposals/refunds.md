@@ -71,36 +71,6 @@ to = 'go:shop/internal/orders.(*Repo).UpdateStatus'
 [[edge]]
 from = 'new:orders.Service.Refund'
 to = 'topic:order.placed'
-
-[[item]]
-id = 'i1'
-kind = 'change'
-target = 'go:shop/internal/orders.(*Service).Place'
-file = 'internal/orders/service.go'
-lines = [52, 55]
-quote = """
-charge, err := s.payments.Charge(ctx, u.ID, req.Total())
-if err != nil {
-return nil, fmt.Errorf("charge: %w", err)
-}"""
-rev = '3f2c9e1'
-text = "Charge after Insert so a failed insert doesn't leave a charge"
-status = 'open'
-
-[[item]]
-id = 'i2'
-kind = 'test'
-target = 'go:shop/internal/orders.(*Service).Place'
-text = 'Add a test for a failed charge: nothing is inserted'
-status = 'open'
-
-[[item]]
-id = 'i3'
-kind = 'move'
-target = 'go:shop/internal/orders.(*Service).MarkPaid'
-to = 'mod:go:shop/internal/payments'
-text = 'The webhook flow belongs with payments'
-status = 'open'
 +++
 ## Why
 Support refunds orders by hand in the Stripe dashboard, so the `orders` table never learns about it.

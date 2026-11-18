@@ -61,9 +61,7 @@ func UnmarshalList[T any](key string, b []byte, list *[]T) error {
 }
 
 // firstKeys come first, in this order, in free-form maps.
-var firstKeys = []string{"id", "name", "from", "to", "kind", "label", "module", "external", "entry",
-	// proposal items
-	"target", "file", "lines", "quote", "rev", "text", "status", "reply"}
+var firstKeys = []string{"id", "name", "from", "to", "kind", "label", "module", "external", "entry"}
 
 var anyType = reflect.TypeOf((*any)(nil)).Elem()
 

@@ -5,25 +5,12 @@ import { escapeGlob, slugify } from './blocks';
 import { layoutUnplaced, type Pos } from './layout';
 import { buildGrouping, isGroup, layoutH, topOf, type Grouping } from './groups';
 import { buildModel, selectionOf, type Model, type Sel } from './model';
-import type { Area, Block, Detail, Graph, Hide, Item, Layout, Loose, Proposal, View } from './types';
+import type { Area, Block, Detail, Graph, Hide, Layout, Loose, Proposal, View } from './types';
 
 export type Mode = 'explore' | 'propose';
 export interface Form {
   type: 'fn' | 'mod';
   box?: string;
-}
-
-// A request being written or edited (Requests.tsx). id is set when editing an item.
-export interface ReqDraft {
-  id?: string;
-  kind: string;
-  target: string;
-  file?: string;
-  lines?: [number, number];
-  quote?: string;
-  to?: string;
-  text?: string;
-  reply?: string;
 }
 
 export interface S {
@@ -58,8 +45,6 @@ export interface S {
   plist: { q: string; sort: 'updated' | 'name' | 'status'; status: 'all' | 'open' | 'archived' };
   fitSeq: number; // bump to ask the map to fit
   centerOn: string | null;
-  req: ReqDraft | null;
-  focusLines: { file: string; a: number; b: number; seq: number } | null; // code to scroll to (an item's lines)
 }
 
 const empty: Graph = { version: 1, modules: [], nodes: [], edges: [] };
@@ -96,13 +81,10 @@ export const useStore = create<S>(() => ({
   plist: { q: '', sort: 'updated', status: 'all' },
   fitSeq: 0,
   centerOn: null,
-  req: null,
-  focusLines: null,
 }));
 
 // hooks.graph post-processes every loaded graph (compare.ts merges a diff in).
-// hooks.head gives the HEAD commit (revs.ts fills it in) for new items' rev.
-export const hooks = { graph: (g: Graph) => g, head: () => '' };
+export const hooks = { graph: (g: Graph) => g };
 
 const set = useStore.setState;
 const get = useStore.getState;
@@ -649,154 +631,6 @@ export function removeProposalEdge(i: number) {
   const p = currentProposal(get());
   if (!p) return;
   updateProposal(p.slug, { edges: (p.edges ?? []).filter((_, j) => j !== i) });
-}
-
-// ---- requests (proposal items, PLAN.md §6.1) ----
-
-export const itemStatus = (it: Item) => (it.status === 'done' || it.status === 'wontfix' ? it.status : 'open');
-
-export function startRequest(d: ReqDraft) {
-  if (get().readOnly) return;
-  set({ req: d, form: null, connectFrom: null, splitting: null });
-}
-
-export function openItem(id: string) {
-  const p = currentProposal(get());
-  const it = p?.items?.find((x) => x.id === id);
-  if (!it) return;
-  const l = it.anchor?.lines ?? it.lines;
-  startRequest({
-    id: it.id,
-    kind: it.kind,
-    target: it.target ?? it.file ?? '',
-    file: it.anchor?.file ?? it.file,
-    lines: l && l.length ? [l[0], l[l.length - 1]] : undefined,
-    quote: it.quote,
-    to: it.to,
-    text: it.text,
-    reply: it.reply,
-  });
-}
-
-// createProposal starts an open proposal with this name and shows it.
-export function createProposal(name: string): string {
-  const s = get();
-  const taken = new Set(s.proposals.map((p) => p.slug));
-  const base = slugify(name) || 'proposal';
-  let slug = base,
-    i = 2;
-  while (taken.has(slug)) slug = `${base}-${i++}`;
-  const p: Proposal = { slug, name: name || 'Untitled', status: 'open', updated: today(), body: '', modules: [], nodes: [], edges: [], items: [] };
-  set({ proposals: [...s.proposals, p] });
-  persistProposal(slug, 0);
-  return slug;
-}
-
-const nextItemId = (p: Proposal) => 'i' + (Math.max(0, ...(p.items ?? []).map((x) => (/^i(\d+)$/.exec(x.id)?.[1] ? Number(/^i(\d+)$/.exec(x.id)![1]) : 0))) + 1);
-const shortSha = (s: string) => (/^[0-9a-f]{40}$/.test(s) ? s.slice(0, 7) : s);
-const onServer = (slug: string) => !!get().versions['proposals/' + slug] && !pending.has('proposals/' + slug);
-const setItems = (slug: string, f: (items: Item[]) => Item[]) =>
-  set({ proposals: get().proposals.map((p) => (p.slug === slug ? { ...p, items: f(p.items ?? []), updated: today() } : p)) });
-
-function draftFields(d: ReqDraft): Partial<Item> {
-  const it: Partial<Item> = { kind: d.kind, target: d.target, text: d.text ?? '' };
-  if (d.file) it.file = d.file;
-  if (d.lines) it.lines = d.lines;
-  if (d.quote) it.quote = d.quote;
-  if (d.to) it.to = d.to;
-  if (d.reply) it.reply = d.reply;
-  return it;
-}
-
-// addItem appends an item: through POST when the proposal is on the server,
-// else with the proposal's next PUT. It returns the item's id.
-export function addItem(slug: string, fields: Partial<Item>): string {
-  const p = get().proposals.find((x) => x.slug === slug);
-  if (!p) return '';
-  const id = nextItemId(p);
-  const head = shortSha(hooks.head());
-  const local: Item = { ...fields, id, kind: fields.kind ?? 'change', status: 'open', ...(head ? { rev: head } : {}) } as Item;
-  const key = 'proposals/' + slug;
-  if (!onServer(slug)) {
-    updateProposal(slug, { items: [...(p.items ?? []), local] });
-    return id;
-  }
-  setItems(slug, (items) => [...items, local]);
-  pending.add(key);
-  api
-    .postItem(slug, fields, undefined)
-    .then((r) => {
-      set({ versions: { ...get().versions, [key]: r.version } });
-      setItems(slug, (items) => items.map((x) => (x.id === id ? r.item : x)));
-    })
-    .catch((e) => console.error(e))
-    .finally(() => {
-      pending.delete(key);
-      void load();
-    });
-  return id;
-}
-
-export function patchItem(slug: string, id: string, patch: Partial<Item>) {
-  const key = 'proposals/' + slug;
-  setItems(slug, (items) => items.map((x) => (x.id === id ? ({ ...x, ...patch } as Item) : x)));
-  if (!onServer(slug)) {
-    persistProposal(slug);
-    return;
-  }
-  pending.add(key);
-  // null removes a key on the server
-  const body = Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v === undefined || v === '' ? null : v]));
-  api
-    .patchItem(slug, id, body as Partial<Item>, get().versions[key])
-    .then((r) => {
-      set({ versions: { ...get().versions, [key]: r.version } });
-      setItems(slug, (items) => items.map((x) => (x.id === id ? r.item : x)));
-    })
-    .catch((e) => {
-      if (!(e instanceof api.Conflict)) console.error(e);
-    })
-    .finally(() => {
-      pending.delete(key);
-      void load();
-    });
-}
-
-export function removeItem(slug: string, id: string) {
-  const p = get().proposals.find((x) => x.slug === slug);
-  if (p) updateProposal(slug, { items: (p.items ?? []).filter((x) => x.id !== id) });
-}
-
-export function moveItem(slug: string, id: string, by: number) {
-  const p = get().proposals.find((x) => x.slug === slug);
-  const items = [...(p?.items ?? [])];
-  const i = items.findIndex((x) => x.id === id),
-    j = i + by;
-  if (!p || i < 0 || j < 0 || j >= items.length) return;
-  [items[i], items[j]] = [items[j], items[i]];
-  updateProposal(slug, { items });
-}
-
-// saveRequest stores the draft in the current proposal, or in `slug`, or in a
-// new proposal named `name`, and shows that proposal.
-export function saveRequest(d: ReqDraft, to: { slug?: string; name?: string } = {}) {
-  let slug = currentProposal(get())?.slug ?? to.slug;
-  if (!slug) slug = createProposal(to.name?.trim() || 'Untitled');
-  if (d.id) patchItem(slug, d.id, { ...draftFields(d), reply: d.reply ?? '' });
-  else addItem(slug, draftFields(d));
-  set({ req: null, mode: 'propose', pslug: slug, sel: [] });
-}
-
-// itemTargets maps each target to the current proposal's items on it.
-export function itemsOn(p: Proposal | null): Map<string, Item[]> {
-  const out = new Map<string, Item[]>();
-  for (const it of p?.items ?? []) {
-    if (!it.target) continue;
-    const l = out.get(it.target) ?? [];
-    l.push(it);
-    out.set(it.target, l);
-  }
-  return out;
 }
 
 export { set as setState, get as getState };

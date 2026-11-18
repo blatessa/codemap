@@ -80,26 +80,6 @@ export interface Hide {
 
 export type Loose = Record<string, unknown>;
 
-// One [[item]] of a proposal: a change request (PLAN.md §6.1). anchor is
-// computed by the server (where the code is now) and never stored.
-export type ItemKind = 'change' | 'add' | 'remove' | 'move' | 'rename' | 'test' | 'question';
-export type ItemStatus = 'open' | 'done' | 'wontfix';
-export interface Item {
-  id: string;
-  kind: ItemKind | string;
-  target?: string;
-  file?: string;
-  lines?: number[];
-  quote?: string;
-  rev?: string;
-  to?: string;
-  text?: string;
-  status?: ItemStatus | string;
-  reply?: string;
-  anchor?: { file: string; lines: [number, number]; stale?: boolean };
-  [k: string]: unknown;
-}
-
 export interface Proposal {
   slug: string;
   name: string;
@@ -110,7 +90,6 @@ export interface Proposal {
   modules?: Loose[] | null;
   nodes?: Loose[] | null;
   edges?: Loose[] | null;
-  items?: Item[] | null;
   body: string;
 }
 

@@ -296,8 +296,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/proposals", s.handleListProposals)
 	mux.HandleFunc("PUT /api/proposals/{slug}", s.handlePutProposal)
 	mux.HandleFunc("DELETE /api/proposals/{slug}", s.handleDeleteProposal)
-	mux.HandleFunc("POST /api/proposals/{slug}/items", s.handlePostItem)
-	mux.HandleFunc("PATCH /api/proposals/{slug}/items/{id}", s.handlePatchItem)
 	mux.HandleFunc("GET /api/source", s.handleSource)
 	mux.HandleFunc("GET /api/source/diff", s.handleSourceDiff)
 	mux.HandleFunc("GET /api/revs", s.handleRevs)

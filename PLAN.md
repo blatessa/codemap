@@ -419,36 +419,6 @@ Support refunds orders by hand in the Stripe dashboard…
   when a PR merges (via `gh`) is a later addition.
 - Nothing ever validates a proposal against the code.
 
-### 6.1 Items (change requests)
-
-A proposal also holds `[[item]]` tables: requests the user attaches to things on the map or to
-selected code, for an agent to work through. Like the rest of the sketch, extra keys are allowed.
-
-```toml
-[[item]]
-id = "i3"                    # short, stable, unique within the proposal (the server assigns i<N>)
-kind = "change"              # change | add | remove | move | rename | test | question
-target = "go:shop/internal/orders.(*Service).Place"   # node ID, module ID, edge as "from -> to", or file path
-file = "internal/orders/service.go"                    # optional, for code anchors
-lines = [52, 56]                                       # optional range in that file
-quote = "charge, err := s.payments.Charge(ctx, u.ID, req.Total())"  # the selected code, trimmed
-rev = "3f2c9e1"              # commit the item was made against (HEAD when created)
-to = "mod:go:shop/internal/payments"                   # move: the destination; rename: the new name
-text = "Charge after Insert so a failed insert doesn't leave a charge"
-status = "open"              # open | done | wontfix
-reply = ""                   # the agent's (or the user's) response
-```
-
-- **Re-anchoring** (`internal/anchor`): for items with a `file`, the server maps the old range
-  through `git diff <rev>` (following renames), then looks for `quote` nearest that place in the
-  current file. The result is sent as a computed `anchor: {file, lines, stale}` and never stored.
-  `stale` means the quote can't be found (or the file is gone).
-- `codemap proposal show|item|request` (§10) read and edit items in place, keeping the file's
-  formatting, the same way `archive` does.
-- The viewer pins open items on their targets, draws `move` items as dashed purple arrows, and lists
-  items under the document as a checklist; "See changes" on a done item compares `rev` with the
-  worktree.
-
 ---
 
 ## 7. Git layer (`internal/gitrev`)
@@ -478,11 +448,9 @@ The server and viewer share this JSON contract. All bodies are JSON. Go types ar
 |---|---|---|
 | `GET /api/state?rev=` | | `{graph: Graph, project: {config, areas, blocks, layout, views, external, proposals}, versions: {areas, blocks, layout, views, external: "<hash>", "proposals/<slug>": "<hash>"}}`. The default rev is the worktree. Any other rev (commit, branch, tag, `HEAD~1`, `base:<rev>` for the merge-base with HEAD) is built through the git layer; its project comes from git and `versions` is `{}`. A build that takes longer than 90 s answers `504 {building: true}` and keeps going; retry. An unknown rev is `422`. |
 | `PUT /api/project/{areas\|blocks\|layout\|views\|external}` | the value (array or object), header `If-Match: <version>` | `{version}`. Returns `409 {version, value}` if the file changed on disk. The server writes TOML (JSON for layout) atomically. |
-| `GET /api/proposals` | | `[Proposal]`, with the body included. Items with a `file` carry a computed `anchor: {file, lines, stale}` (§6.1), here and in `/api/state`; PUTs ignore it. |
+| `GET /api/proposals` | | `[Proposal]`, with the body included |
 | `PUT /api/proposals/{slug}` | `Proposal`, `If-Match` (optional for a new proposal) | `{version}` or `409`. A new proposal gets `base` set to `HEAD`. |
 | `DELETE /api/proposals/{slug}` | | `204` |
-| `POST /api/proposals/{slug}/items` | an item (`If-Match` optional) | `{version, item}`. Appends an `[[item]]` in place; the server sets `id`, `rev` = HEAD and `status` = open. |
-| `PATCH /api/proposals/{slug}/items/{id}` | keys to set, `null` to remove (`If-Match` optional) | `{version, item}` or `409`. Edits the item's lines in place. |
 | `GET /api/source?rev=&file=&from=&to=` | | `{file, from, lines: [string]}`. At a rev, read with `git show`. |
 | `GET /api/revs?n=100` | | `{commits: [{sha, short, subject, author, date, parents, refs}], branches, current, default, head, dirty, prs: [{number, title, headRefName, baseRefName, author: {login}, updatedAt}]}`. `default` is `main`, `master` or `origin/HEAD`. `prs` is empty unless `gh` is installed, the repo has a GitHub remote and `gh pr list` works. |
 | `GET /api/diff?from=&to=` | | `GraphDiff` (`internal/graph/diff.go`): `{from, to, addedNodes, removedNodes, changed: [id], renamed: [{from, to}], addedEdges, removedEdges, addedModules, removedModules, files: [{old, new}], summary: {entriesAdded, entriesRemoved, dataAdded, dataRemoved, externalAdded, externalRemoved, depsAdded, depsRemoved, modules: [{id, label, added, removed, changed}]}}`. `from` defaults to `HEAD`, `to` to the worktree; both come back as shas (or `worktree`). `from=pr:N` compares PR N's merge-base with its head (fetched with `git fetch origin pull/N/head` when missing). `from=base:<rev>` starts at the merge-base of `<rev>` and `to`. Removed items are taken from the `from` graph so the viewer can draw them. |
@@ -574,8 +542,6 @@ codemap callers <id|label> [--depth N]
 codemap module <id|path>                    # contents, uses, depends on
 codemap search <text>
 codemap proposal list | new <name> | archive <slug> --pr N
-codemap proposal show <slug> [--status open] | item <slug> <id> --status done [--reply "…"]
-codemap proposal request <slug> --kind change --target <id> [--file f --lines a-b] [--to x] --text "…"
 ```
 
 All commands take `--json` and `--rev`. When a label is ambiguous, the command lists the

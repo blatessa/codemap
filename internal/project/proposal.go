@@ -20,7 +20,6 @@ type Proposal struct {
 	Modules []map[string]any `toml:"module,omitempty" json:"modules,omitempty"`
 	Nodes   []map[string]any `toml:"node,omitempty" json:"nodes,omitempty"`
 	Edges   []map[string]any `toml:"edge,omitempty" json:"edges,omitempty"`
-	Items   []map[string]any `toml:"item,omitempty" json:"items,omitempty"` // change requests (items.go)
 	Body    string           `toml:"-" json:"body"`
 }
 

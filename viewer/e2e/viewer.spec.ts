@@ -141,10 +141,10 @@ test("editing a proposal's body writes the proposal", async ({ page }) => {
   await openProposal(page, 'Refunds');
   // the proposal draws on the map in dashed purple
   await expect(page.locator('#map .fn.prop').first()).toBeAttached();
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit' }).click();
   const body = page.locator('#p-body');
   await body.fill('## Why\nRefund from the order page.\n');
-  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.locator('.md h2')).toHaveText('Why');
   await expect(page.locator('.md p')).toHaveText('Refund from the order page.');
   await expect

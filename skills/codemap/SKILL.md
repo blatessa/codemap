@@ -110,24 +110,6 @@ detail = "POST /v1/refunds"
 - Nodes accept any extra fields, including arrays and inline tables such as `links = [{label = "Docs", url = "https://…"}]`. The viewer displays whatever you add.
 - Leave `base` and `updated` alone. codemap sets them.
 
-## Working through a proposal
-
-A proposal can also carry change requests: the user clicks around the map and attaches `[[item]]`s to functions, modules, calls or selected lines of code. When they ask you to work on a proposal:
-
-```
-codemap proposal show refunds               # the document title, the sketch, and the items as a task list
-codemap proposal show refunds --status open --json
-codemap proposal item refunds i3 --status done --reply "Charge now runs after Insert"
-codemap proposal item refunds i4 --status wontfix --reply "Kept it: the webhook needs the order first"
-codemap proposal request refunds --kind test --target <node id> --text "…"   # to note something yourself
-```
-
-- `show` prints each item's current file and lines. Code anchors follow the quoted code as it moves; one marked `(stale)` means the quoted code is gone, so check what it was about before acting on it.
-- Kinds are `change`, `add`, `remove`, `move` (`to` is the destination module), `rename` (`to` is the new name), `test` and `question`. A question wants an answer in the reply rather than a code change.
-- Mark each item as you finish it, with a short reply saying what you did, so the user can review it from the checklist ("See changes" opens a compare from the item's commit). `wontfix` with a reason is fine when an item doesn't make sense once you're in the code.
-- When an item is unclear, ask the user instead of guessing.
-- Items are intent, not specs. Use judgement on how to do them.
-
 ## Other .codemap files
 
 These belong to the user. They edit them in the viewer, and the files are plain text if you're asked to change them:
