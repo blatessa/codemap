@@ -5,15 +5,18 @@ package main
 // page renders. See ~/.claude/plans/structured-rolling-shore.md.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/blatessa/codemap/internal/cli"
+	"github.com/blatessa/codemap/internal/gitrev"
 	"github.com/blatessa/codemap/internal/graph"
 )
 
@@ -63,6 +66,7 @@ type protoOut struct {
 	Tables    []protoTable    `json:"tables"`
 	Externals []protoExternal `json:"externals"`
 	Common    []protoCommon   `json:"common"` // code most features pass through
+	Changes   *protoChanges   `json:"changes,omitempty"`
 	Stats     map[string]any  `json:"stats"`
 }
 
@@ -74,8 +78,9 @@ type protoCommon struct {
 
 func runProto(w io.Writer, args []string) error {
 	var c cli.Common
-	fs := cli.NewFlagSet("proto", "proto [--root DIR] [--graph FILE]")
+	fs := cli.NewFlagSet("proto", "proto [--root DIR] [--graph FILE] [--since REV]")
 	c.Register(fs)
+	since := fs.String("since", "", "also describe what changed since this revision")
 	if _, err := cli.Parse(fs, args); err != nil {
 		return err
 	}
@@ -85,7 +90,34 @@ func runProto(w io.Writer, args []string) error {
 		return err
 	}
 	loaded := time.Since(t0)
-	out := protoOut{Repo: c.Root, Built: time.Now().Format(time.DateTime), Stats: map[string]any{}}
+	out := buildProto(ix)
+	out.Repo = c.Root
+	if *since != "" {
+		repo, err := gitrev.Open(c.Root)
+		if err != nil {
+			return err
+		}
+		defer repo.Close()
+		ctx := context.Background()
+		g, _, err := repo.Build(ctx, *since)
+		if err != nil {
+			return err
+		}
+		before := buildProto(graph.NewIndex(g))
+		ch := diffProto(before, out)
+		ch.Since = *since
+		if commits, err := commitsSince(ctx, c.Root, *since); err == nil {
+			ch.Commits = commits
+		}
+		out.Changes = &ch
+	}
+	out.Stats["load"] = loaded.Round(time.Millisecond).String()
+	out.Stats["total"] = time.Since(t0).Round(time.Millisecond).String()
+	return json.NewEncoder(w).Encode(out)
+}
+
+func buildProto(ix *graph.Index) protoOut {
+	out := protoOut{Built: time.Now().Format(time.DateTime), Stats: map[string]any{}}
 
 	common := commonCode(ix)
 	out.Common = []protoCommon{}
@@ -134,11 +166,152 @@ func runProto(w io.Writer, args []string) error {
 	sort.Slice(out.Tables, func(i, j int) bool { return out.Tables[i].Name < out.Tables[j].Name })
 	sort.Slice(out.Externals, func(i, j int) bool { return out.Externals[i].ID < out.Externals[j].ID })
 
-	out.Stats["load"] = loaded.Round(time.Millisecond).String()
-	out.Stats["total"] = time.Since(t0).Round(time.Millisecond).String()
 	out.Stats["nodes"] = len(ix.G.Nodes)
-	enc := json.NewEncoder(w)
-	return enc.Encode(out)
+	return out
+}
+
+type protoChanges struct {
+	Since           string          `json:"since"`
+	Commits         []string        `json:"commits"`
+	FeaturesAdded   []string        `json:"featuresAdded"`
+	FeaturesRemoved []string        `json:"featuresRemoved"`
+	Effects         []protoEffDelta `json:"effects"` // features whose effects changed
+	TablesAdded     []string        `json:"tablesAdded"`
+	TablesRemoved   []string        `json:"tablesRemoved"`
+	Columns         []protoColDelta `json:"columns"`
+	ExternalAdded   []string        `json:"externalAdded"`
+	ExternalRemoved []string        `json:"externalRemoved"`
+}
+
+type protoEffDelta struct {
+	Feature string         `json:"feature"`
+	Added   []graph.Effect `json:"added"`
+	Removed []graph.Effect `json:"removed"`
+}
+
+type protoColDelta struct {
+	Table   string   `json:"table"`
+	Added   []string `json:"added"`
+	Removed []string `json:"removed"`
+}
+
+func diffProto(a, b protoOut) protoChanges {
+	ch := protoChanges{}
+	fa := map[string]protoFeature{}
+	for _, f := range a.Features {
+		fa[f.ID] = f
+	}
+	fb := map[string]bool{}
+	for _, f := range b.Features {
+		fb[f.ID] = true
+		old, ok := fa[f.ID]
+		if !ok {
+			ch.FeaturesAdded = append(ch.FeaturesAdded, f.ID)
+			continue
+		}
+		set := func(es []graph.Effect) map[graph.Effect]bool {
+			m := map[graph.Effect]bool{}
+			for _, e := range es {
+				m[e] = true
+			}
+			return m
+		}
+		was, now := set(old.Effects), set(f.Effects)
+		d := protoEffDelta{Feature: f.ID}
+		for e := range now {
+			if !was[e] {
+				d.Added = append(d.Added, e)
+			}
+		}
+		for e := range was {
+			if !now[e] {
+				d.Removed = append(d.Removed, e)
+			}
+		}
+		if len(d.Added)+len(d.Removed) > 0 {
+			ch.Effects = append(ch.Effects, d)
+		}
+	}
+	for id := range fa {
+		if !fb[id] {
+			ch.FeaturesRemoved = append(ch.FeaturesRemoved, id)
+		}
+	}
+	ta := map[string]protoTable{}
+	for _, t := range a.Tables {
+		ta[t.ID] = t
+	}
+	tb := map[string]bool{}
+	for _, t := range b.Tables {
+		tb[t.ID] = true
+		old, ok := ta[t.ID]
+		if !ok {
+			ch.TablesAdded = append(ch.TablesAdded, t.ID)
+			continue
+		}
+		cols := func(t protoTable) map[string]bool {
+			m := map[string]bool{}
+			for _, c := range t.Columns {
+				m[fmt.Sprint(c[0])] = true
+			}
+			return m
+		}
+		was, now := cols(old), cols(t)
+		d := protoColDelta{Table: t.ID}
+		for c := range now {
+			if !was[c] {
+				d.Added = append(d.Added, c)
+			}
+		}
+		for c := range was {
+			if !now[c] {
+				d.Removed = append(d.Removed, c)
+			}
+		}
+		if len(d.Added)+len(d.Removed) > 0 {
+			ch.Columns = append(ch.Columns, d)
+		}
+	}
+	for id := range ta {
+		if !tb[id] {
+			ch.TablesRemoved = append(ch.TablesRemoved, id)
+		}
+	}
+	xa := map[string]bool{}
+	for _, x := range a.Externals {
+		xa[x.ID] = true
+	}
+	xb := map[string]bool{}
+	for _, x := range b.Externals {
+		xb[x.ID] = true
+		if !xa[x.ID] {
+			ch.ExternalAdded = append(ch.ExternalAdded, x.ID)
+		}
+	}
+	for id := range xa {
+		if !xb[id] {
+			ch.ExternalRemoved = append(ch.ExternalRemoved, id)
+		}
+	}
+	for _, l := range []*[]string{&ch.FeaturesAdded, &ch.FeaturesRemoved, &ch.TablesAdded, &ch.TablesRemoved, &ch.ExternalAdded, &ch.ExternalRemoved} {
+		sort.Strings(*l)
+	}
+	sort.Slice(ch.Effects, func(i, j int) bool { return ch.Effects[i].Feature < ch.Effects[j].Feature })
+	return ch
+}
+
+func commitsSince(ctx context.Context, root, rev string) ([]string, error) {
+	out, err := exec.CommandContext(ctx, "git", "-C", root, "log", "--format=%h %s", rev+"..HEAD").Output()
+	if err != nil {
+		return nil, err
+	}
+	var lines []string
+	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if l != "" {
+			lines = append(lines, l)
+		}
+	}
+	return lines, nil
 }
 
 // featureGroup places an entry point in the features tree: routes by path
