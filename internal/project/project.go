@@ -26,6 +26,7 @@ type Project struct {
 	Blocks    []Block     `json:"blocks"`
 	Layout    Layout      `json:"layout"`
 	Views     []View      `json:"views"`
+	Hidden    []Hide      `json:"hidden"`
 	External  External    `json:"external"`
 	Proposals []*Proposal `json:"proposals"`
 }
@@ -55,6 +56,16 @@ type View struct {
 	Focus     bool     `toml:"focus,omitempty" json:"focus,omitempty"`
 	Collapsed []string `toml:"collapsed,omitempty" json:"collapsed,omitempty"`
 	Expanded  []string `toml:"expanded,omitempty" json:"expanded,omitempty"`
+	Detail    string   `toml:"detail,omitempty" json:"detail,omitempty"` // "features" (default) or "code"
+}
+
+// Hide is one entry in hidden.toml: things the user took off the map. Either
+// ID (a node or module) or Match (a glob on node labels, optionally only in
+// Module) is set.
+type Hide struct {
+	ID     string `toml:"id,omitempty" json:"id,omitempty"`
+	Match  string `toml:"match,omitempty" json:"match,omitempty"`
+	Module string `toml:"module,omitempty" json:"module,omitempty"`
 }
 
 // External is .codemap/external.toml: declared nodes and edges (§5.6).
@@ -85,6 +96,7 @@ func LoadFS(fsys fs.FS) (*Project, error) {
 		{"areas.toml", func(b []byte) error { return UnmarshalList(AreaKey, b, &p.Areas) }},
 		{"blocks.toml", func(b []byte) error { return UnmarshalList(BlockKey, b, &p.Blocks) }},
 		{"views.toml", func(b []byte) error { return UnmarshalList(ViewKey, b, &p.Views) }},
+		{"hidden.toml", func(b []byte) error { return UnmarshalList(HideKey, b, &p.Hidden) }},
 		{"external.toml", func(b []byte) error { return UnmarshalTOML(b, &p.External) }},
 	}
 	for _, f := range files {
