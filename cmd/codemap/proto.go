@@ -38,6 +38,9 @@ type protoFeature struct {
 // protoRow is one trace row: depth, name, edge note, effects reached below.
 type protoRow struct {
 	D       int            `json:"d"`
+	ID      string         `json:"id,omitempty"`
+	M       string         `json:"m,omitempty"` // the node's module
+	Kind    string         `json:"k,omitempty"`
 	Name    string         `json:"n"`
 	Note    string         `json:"note,omitempty"`
 	More    bool           `json:"more,omitempty"`
@@ -82,10 +85,22 @@ type protoScreen struct {
 
 // protoModule is a package of the repo's own code and the modules it calls.
 type protoModule struct {
-	ID    string   `json:"id"`
-	Label string   `json:"label"`
-	Deps  []string `json:"deps"`
-	Funcs int      `json:"funcs"`
+	ID      string         `json:"id"`
+	Label   string         `json:"label"`
+	Deps    []string       `json:"deps"`
+	Funcs   int            `json:"funcs"`
+	Effects []graph.Effect `json:"effects"` // its own functions' effects
+	Inside  []protoFunc    `json:"inside"`  // its functions that aren't support code
+	Calls   [][2]string    `json:"calls"`   // calls from those functions, to its own or other modules' functions
+}
+
+type protoFunc struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Pub   bool   `json:"pub,omitempty"` // called from another module
+	Entry bool   `json:"entry,omitempty"`
+	File  string `json:"file,omitempty"`
+	Line  int    `json:"line,omitempty"`
 }
 
 type protoCommon struct {
@@ -223,9 +238,46 @@ func moduleDeps(ix *graph.Index) []protoModule {
 		}
 		deps[a.Module][b.Module] = true
 	}
+	inside := map[string][]protoFunc{}
+	effs := map[string]map[graph.Effect]bool{}
+	calls := map[string][][2]string{}
+	for _, n := range ix.G.Nodes {
+		if !code(&n) || cli.RoleOf(ix, n.ID) != "" {
+			continue
+		}
+		f := protoFunc{ID: n.ID, Label: n.Label, Entry: n.Entry, File: n.File, Line: n.Line}
+		for _, e := range ix.In[n.ID] {
+			if a := ix.Node[e.From]; code(a) && a.Module != n.Module && e.Type == graph.Calls {
+				f.Pub = true
+				break
+			}
+		}
+		inside[n.Module] = append(inside[n.Module], f)
+		for _, e := range ix.Out[n.ID] {
+			if ix.IsEffect(e) {
+				if effs[n.Module] == nil {
+					effs[n.Module] = map[graph.Effect]bool{}
+				}
+				effs[n.Module][graph.Effect{To: e.To, Type: e.Type}] = true
+				calls[n.Module] = append(calls[n.Module], [2]string{n.ID, e.To})
+				continue
+			}
+			b := ix.Node[e.To]
+			if e.Type == graph.Calls && code(b) && !ix.Wide(e) && cli.RoleOf(ix, b.ID) == "" {
+				calls[n.Module] = append(calls[n.Module], [2]string{n.ID, e.To})
+			}
+		}
+	}
 	var out []protoModule
 	for id, n := range funcs {
-		m := protoModule{ID: id, Label: id, Deps: sortedSet(deps[id]), Funcs: n}
+		m := protoModule{ID: id, Label: id, Deps: sortedSet(deps[id]), Funcs: n, Inside: inside[id], Calls: calls[id], Effects: []graph.Effect{}}
+		for e := range effs[id] {
+			m.Effects = append(m.Effects, e)
+		}
+		sort.Slice(m.Effects, func(i, j int) bool { return m.Effects[i].Type+m.Effects[i].To < m.Effects[j].Type+m.Effects[j].To })
+		if m.Inside == nil {
+			m.Inside = []protoFunc{}
+		}
 		if mod := ix.Module[id]; mod != nil {
 			m.Label = mod.Label
 		}
@@ -455,6 +507,10 @@ func flatTrace(ix *graph.Index, t *graph.TreeNode) []protoRow {
 		} else {
 			r.Name = cli.Name(ix, t.ID)
 			r.Note = cli.EdgeNote(ix, t.Via, t.ID)
+			r.ID = t.ID
+			if n := ix.Node[t.ID]; n != nil {
+				r.M, r.Kind = n.Module, n.Kind
+			}
 		}
 		if t.Seen {
 			r.Note = strings.TrimSpace(r.Note + " (see above)")
