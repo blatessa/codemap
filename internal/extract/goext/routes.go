@@ -12,7 +12,7 @@ import (
 	"github.com/blatessa/codemap/internal/graph"
 )
 
-// Route detection (PLAN.md §5.1). Supported: net/http ServeMux (Go 1.22
+// Route detection. Supported: net/http ServeMux (Go 1.22
 // patterns), chi, gorilla/mux, echo, gin, fiber, httprouter and go-pkgz/routegroup.
 //
 // Routers are tracked as a tree of rnodes: a router created by a constructor is

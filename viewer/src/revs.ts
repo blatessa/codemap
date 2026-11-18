@@ -1,4 +1,4 @@
-// Viewing past revisions and comparing two (PLAN.md §7, §8 /api/revs, /api/diff).
+// Viewing past revisions and comparing two (/api/revs, /api/diff).
 // The map draws the "to" graph with the diff's removed modules, nodes and edges
 // merged back in; MapView asks rowCls/boxCls/edgeCls how to colour each one.
 import { create } from 'zustand';
@@ -370,7 +370,7 @@ export function start(): boolean {
   const took = !!(h.compare || h.rev);
   if (started) return took;
   started = true;
-  // On a branch, the map opens on what the branch changed (PLAN.md §9), unless
+  // On a branch, the map opens on what the branch changed, unless
   // the URL says what to show.
   if (!took && !location.hash)
     void loadRevs().then(() => {
@@ -465,7 +465,7 @@ export function sliceRange(lines: DLine[], from: number, to: number, side: 'old'
   return lines.slice(first, last + 1);
 }
 
-// ---- archived proposals over their base (PLAN.md §6) ----
+// ---- archived proposals over their base ----
 
 let baseFor = '';
 // syncBase keeps store.baseGraph set to the archived proposal's base graph.

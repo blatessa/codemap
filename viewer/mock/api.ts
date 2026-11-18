@@ -1,4 +1,4 @@
-// Development-only mock of the codemap server API (PLAN.md §8), served by Vite's
+// Development-only mock of the codemap server API (internal/server), served by Vite's
 // dev and preview servers. It reads testdata/shop.expected.json and the files in
 // testdata/shop/.codemap; writes are kept in memory. Never part of the build.
 //
@@ -45,8 +45,8 @@ function readText(name: string): string | null {
 function readFile(key: FileKey): unknown {
   const t = readText(key + '.toml');
   const v: Obj = t ? TOML.parse(t) : {};
-  // TOML has no top-level arrays: lists are [[area]], [[block]] and [[view]]
-  // tables, and external.toml holds [[node]] and [[edge]] (PLAN.md §4).
+  // TOML has no top-level arrays: lists are [[area]] and [[block]] tables, and
+  // external.toml holds [[node]] and [[edge]].
   if (key === 'external') return renameKeys(v, { node: 'nodes', edge: 'edges' });
   return v[LIST_KEY[key]] ?? [];
 }

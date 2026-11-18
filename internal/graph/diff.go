@@ -13,7 +13,7 @@ type FileChange struct {
 	NewHunks [][2]int `json:"-"` // [first, last] lines in the new file
 }
 
-// GraphDiff is what changed between two graphs (PLAN.md §7).
+// GraphDiff is what changed between two graphs.
 type GraphDiff struct {
 	From string `json:"from"`
 	To   string `json:"to"`

@@ -1,4 +1,4 @@
-// JSON shapes shared with the server (PLAN.md §3, §4, §6, §8).
+// JSON shapes shared with the server.
 // Go types live in internal/graph and internal/project.
 
 export interface GModule {

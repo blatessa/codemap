@@ -1,4 +1,4 @@
-// Package server implements `codemap serve`: the HTTP API from PLAN.md §8, the
+// Package server implements `codemap serve`: the HTTP API under /api, the
 // embedded viewer, file watching and server-sent events.
 package server
 

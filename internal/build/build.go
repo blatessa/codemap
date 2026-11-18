@@ -20,8 +20,7 @@ const Version = "1"
 // Extractor produces a partial graph for the repo at root.
 type Extractor func(root string, cfg project.Config) (*graph.Graph, error)
 
-// Extractors run in order. The Go and TypeScript extractors are added here when
-// their workstreams land (PLAN.md §12).
+// Extractors run in order. cmd/codemap registers the Go and TypeScript ones.
 var Extractors []Extractor
 
 // Options controls Load.

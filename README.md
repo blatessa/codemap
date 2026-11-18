@@ -60,7 +60,7 @@ proposal".
 
 ## Development
 
-`PLAN.md` is the design. The viewer is in `viewer/` (React + Vite) and is built into
+The viewer is in `viewer/` (React + Vite) and is built into
 `internal/web/dist`, which is committed so `go install` works without Node.
 
 ```sh

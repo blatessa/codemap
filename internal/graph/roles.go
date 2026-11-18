@@ -11,7 +11,7 @@ import (
 
 // Roles mark supporting code so the viewer's Features level can show a
 // feature's spine (entry point, business logic, effects) without it. They come
-// only from heuristics over the graph and the source; see PLAN.md §3.4.
+// only from heuristics over the graph and the source; nobody annotates code.
 const (
 	RoleWiring      = "wiring"      // constructors, main and what only main reaches to set things up
 	RoleUtility     = "utility"     // widely used leaf helpers without effects

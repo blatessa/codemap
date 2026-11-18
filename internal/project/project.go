@@ -1,5 +1,5 @@
 // Package project loads and saves the user state in a repo's .codemap/ directory
-// (PLAN.md §4 and §6). Every file is optional.
+// (areas, blocks, external, config and proposals). Every file is optional.
 package project
 
 import (

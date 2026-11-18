@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-// ID helpers. Formats are described in PLAN.md §3.2. IDs must survive unrelated
-// edits, because layout, areas, blocks, views and proposals refer to them.
+// ID helpers: each function below is the format for one kind of thing. IDs must
+// survive unrelated edits, because areas, blocks and proposals refer to them.
 
 // GoFuncID returns the ID of a Go function or method. name uses go/ssa naming,
 // e.g. "Place" for a function or "(*Service).Place" for a method.

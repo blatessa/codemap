@@ -1,4 +1,4 @@
-// Package tsext runs codemap's TypeScript extractor (PLAN.md §5.2). The extractor
+// Package tsext runs codemap's TypeScript extractor. The extractor
 // is a Node program, built from extractor-ts/ and embedded here as a gzipped
 // bundle; it is written to the user cache dir and run with the system `node`.
 package tsext

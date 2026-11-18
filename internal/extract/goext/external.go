@@ -19,7 +19,7 @@ type extService struct {
 	perService bool
 }
 
-// builtinExternal is the built-in SDK table (PLAN.md §5.5). Labels are the
+// builtinExternal is the built-in SDK table. Labels are the
 // service's API host where it has one. config.external.imports extends and
 // overrides it.
 var builtinExternal = []extService{

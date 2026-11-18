@@ -1,4 +1,4 @@
-// Package gitrev is codemap's git layer (PLAN.md §7): it builds the graph at any
+// Package gitrev is codemap's git layer: it builds the graph at any
 // revision in a pooled temporary worktree, caches the result by commit, reads
 // .codemap/ and source files from git, and works out what changed between two
 // revisions.

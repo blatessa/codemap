@@ -23,7 +23,7 @@ func TestLoadFromGraphFile(t *testing.T) {
 	}
 }
 
-// Roles on the fixture (PLAN.md §3.4). Every function not listed is core.
+// Roles on the fixture (internal/graph/roles.go). Every function not listed is core.
 func TestFixtureRoles(t *testing.T) {
 	g, _, err := Load("../../testdata/shop", Options{GraphFile: "../../testdata/shop.expected.json"})
 	if err != nil {

@@ -1,6 +1,7 @@
 package project
 
-// Config is .codemap/config.toml (PLAN.md §5.7). Everything is optional; extractors
+// Config is .codemap/config.toml (documented for users in skills/codemap/SKILL.md;
+// keep the two in step). Everything is optional; extractors
 // apply their own defaults for zero values.
 type Config struct {
 	Exclude    []string       `toml:"exclude,omitempty" json:"exclude,omitempty"`

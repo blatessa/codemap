@@ -1,6 +1,6 @@
 // The TypeScript extractor: loads each TS root with its own tsconfig, finds
 // functions, components, pages, server requests and tests, and returns a partial
-// codemap graph (PLAN.md §5.2).
+// codemap graph.
 
 import ts from "typescript";
 import * as fs from "node:fs";

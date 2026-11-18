@@ -1,4 +1,4 @@
-// Renders a node's fields by what their values look like (PLAN.md §3.3).
+// Renders a node's fields by what their values look like (rules in fields.ts).
 import type { ReactNode } from 'react';
 import { CodeBlock, Where } from './Code';
 import { classify, humanize, isBlockKind } from './fields';

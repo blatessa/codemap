@@ -13,7 +13,7 @@ import (
 )
 
 // TOML has no top-level arrays, so list files keep their entries as an array of
-// tables under a singular key (PLAN.md §4).
+// tables under a singular key ([[area]], [[block]]).
 const (
 	AreaKey  = "area"
 	BlockKey = "block"

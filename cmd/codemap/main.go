@@ -1,5 +1,4 @@
 // Command codemap builds and serves an architecture map of a codebase.
-// See PLAN.md. Subcommands are added by the workstreams in §12.
 package main
 
 import (

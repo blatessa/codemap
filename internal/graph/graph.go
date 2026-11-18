@@ -1,5 +1,5 @@
 // Package graph holds codemap's data model: one module shape, one node shape and
-// one edge shape for everything. See PLAN.md §3.
+// one edge shape for everything. graph.json is a Graph encoded as JSON.
 package graph
 
 import (
@@ -33,7 +33,7 @@ type Module struct {
 
 // Node is anything on the map. Only ID, Kind, Label and Module are required.
 // Entry and External are the only flags the viewer interprets; everything else
-// lives in Fields and is rendered by what its values look like (PLAN.md §3.3).
+// lives in Fields and is rendered by what its values look like (viewer/src/fields.ts).
 type Node struct {
 	ID       string         `json:"id"`
 	Kind     string         `json:"kind"`

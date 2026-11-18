@@ -1,5 +1,5 @@
 // Package sqlext classifies SQL query strings and builds a table schema from
-// migration files (PLAN.md §5.3). It uses a small tokenizer rather than a full
+// migration files. It uses a small tokenizer rather than a full
 // parser: it understands enough of the statement shapes that matter for an
 // architecture map (which tables a query reads or writes, which columns a table
 // has) and ignores everything else.

@@ -1,4 +1,4 @@
-// Thin client for the server API (PLAN.md §8). Production code talks only to /api/*.
+// Thin client for the server API (internal/server). Production code talks only to /api/*.
 import type { Proposal, Source, State } from './types';
 
 export class Conflict extends Error {

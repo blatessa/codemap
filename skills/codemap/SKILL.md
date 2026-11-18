@@ -128,6 +128,13 @@ When the user asks you to make the map readable ("make this codebase look good i
    - Keep the frontend and its API close: name areas so a page and the routes it calls read as one story.
    - External systems (databases, queues, third-party services) can share an "External" area.
    - Every module should be in at most one area. Leaving a few out is fine.
+
+   ```toml
+   [[area]]
+   name = "Checkout"
+   modules = ["mod:go:shop/internal/orders", "mod:ts:web/src/pages/checkout", "block:handlers-billing"]
+   ```
+   List module and block IDs exactly as `codemap modules` prints them.
 3. **Split** a module that mixes unrelated jobs, or that's much larger than the rest (say 40+ functions), into blocks in `.codemap/blocks.toml`. A node goes into the first block whose rules match it; the rest stay in the module. Blocks can go in areas by their `id`.
    ```toml
    [[block]]
@@ -152,6 +159,41 @@ These belong to the user. They edit them in the viewer, and the files are plain 
 | `areas.toml` | Named groups of modules, one `[[area]]` each |
 | `blocks.toml` | A module split into blocks by pattern, one `[[block]]` each |
 | `external.toml` | External systems and their details (`[[node]]`): owner, links, setup. Also calls into the code that the code can't show, such as a webhook from Stripe (`[[edge]]`). |
-| `config.toml` | Extractor settings: job, subscriber and publisher call patterns, HTTP client wrappers, migration globs, the editor command |
+| `config.toml` | What the extractors look for (below) |
 
 Don't rewrite them unprompted.
+
+## Configuring extraction (config.toml)
+
+Edit `.codemap/config.toml` when the map is missing things the code clearly has: jobs, queue handlers, calls from the frontend to the API, external services. Everything is optional. Top-level keys must come before the first `[table]`.
+
+```toml
+exclude = ["tools/**", "**/*_gen.go"]   # globs on paths from the repo root
+migrations = ["db/migrations/*.sql"]     # default: db/migrations/*.sql, migrations/*.sql, **/migrations/*.sql
+editor = "code -g {file}:{line}"         # default: $VISUAL or $EDITOR with +line
+
+[go]
+jobs = [{ call = "(*sched.Scheduler).Every", name_arg = 1, handler_arg = 2 }]
+subscribers = [{ call = "(*events.Bus).Subscribe", topic_arg = 0, handler_arg = 1 }]
+publishers = [{ call = "(*events.Bus).Publish", topic_arg = 0, value_arg = 1 }]
+db_methods = ["Run"]                     # more methods whose first constant string argument is SQL
+
+[ts]
+roots = ["web"]                          # directories holding a tsconfig.json
+module_depth = 3
+http_clients = ["api.get", "api.post", "request"]
+base_url_prefixes = ["/api"]
+
+[external.imports]
+"github.com/acme/billing-sdk" = "ext:billing"
+```
+
+- **Globs** (`exclude`, `migrations`): `**` matches any number of directories, `*` stays within one. A pattern is matched against the whole path from the repo root, so `*.config.ts` only matches files at the top level; write `**/*.config.ts` for anywhere. `vendor`, `node_modules`, `testdata`, `third_party`, and directories starting with `.` or `_` are always skipped.
+- **Call patterns** (`jobs`, `subscribers`, `publishers`): `call` is the callee's go/types name, with the package as its full import path or just its name: `gitea.dev/modules/queue.CreateUniqueQueue`, `queue.CreateUniqueQueue`, `(*events.Bus).Publish`. Generic functions are written without type parameters. Argument indexes start at 0 and don't count the receiver. The name or topic argument must be a constant string, and the handler must resolve to a function. A call through an interface matches a pattern naming the implementation.
+- **SQL**: `Query`, `QueryRow`, `Exec`, `Get`, `Select`, `Raw` and the other database/sql, pgx, sqlx and sqlc methods are built in; `db_methods` adds to them. Only constant SQL strings count. ORM query builders (xorm, gorm, ent) aren't seen, so tables reached that way are missing from the map; say so if the project uses one.
+- **Routes** are found for net/http `ServeMux` (Go 1.22 patterns), chi, gorilla/mux, echo, gin, fiber, httprouter and go-pkgz/routegroup, with constant paths. There's no setting for other routers: a project with its own router has no route entry points on the map. Tell the user rather than trying to work around it. Frontend pages come from React Router and Next.js.
+- **TypeScript**: without `roots`, every directory with a `tsconfig.json` is a root. A root without one is loaded with default compiler options and no path aliases (codemap warns), so list directories that have their own tsconfig. Modules are directories; `module_depth` cuts module paths to that many segments.
+- **HTTP calls from the frontend**: `fetch` and `axios` are built in. `http_clients` names wrapper functions, matched on the end of the callee (`api.get` matches `this.api.get`). The HTTP method comes from the name (`get`, `post`, …), or from a constant first argument (`request("POST", url)`). A URL that starts with a variable (`${base}/orders`) drops the variable. `base_url_prefixes` strips fixed prefixes so paths match the server's routes. Calls that match no route show under "unmatched routes".
+- **External services**: calls into well-known SDKs are built in (Stripe, AWS, Postmark, Twilio, SendGrid, Slack, OpenAI, Anthropic, GitHub, Sentry, Redis, MongoDB, Kafka, NATS, RabbitMQ, Elasticsearch, Google Cloud and others). `[external.imports]` maps more import-path prefixes to an `ext:` ID.
+
+After changing it, run `codemap modules` (or `codemap show` on something you expect to see) to check the map picked it up.

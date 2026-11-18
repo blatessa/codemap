@@ -1,4 +1,4 @@
-// Package goext is codemap's Go extractor (PLAN.md §5.1, §5.3–5.5). It loads
+// Package goext is codemap's Go extractor. It loads
 // every package under each go.mod in the repo with go/packages (tests included),
 // builds SSA, and resolves calls with VTA so calls through interfaces reach their
 // implementations. On top of the call graph it finds HTTP routes, configured

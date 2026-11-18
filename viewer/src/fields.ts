@@ -1,4 +1,6 @@
-// How a field value renders, by what it looks like (PLAN.md §3.3). First match wins.
+// How a field value renders, by what it looks like. First match wins. Any
+// extractor or proposal can put any value in a node's fields; this is the only
+// place that decides how it shows.
 export type FieldKind = 'link' | 'links' | 'ref' | 'refs' | 'table' | 'code' | 'text' | 'object' | 'none';
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);

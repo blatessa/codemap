@@ -168,7 +168,7 @@ function buildDisp(
   const fn = k ? farFont(k) : 0,
     fs = k ? farSub(k) : 0;
   const top = areaTop(k ? farArea(k) : null);
-  // How much a box shows follows what the user is doing (PLAN.md §7.1):
+  // How much a box shows follows what the user is doing:
   // - at rest, the rows that say what a module is for: entry points, external
   //   systems, proposed and changed rows;
   // - a selected module shows everything in it;
