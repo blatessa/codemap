@@ -218,6 +218,7 @@ describe('traces on a big codebase', () => {
       fn('h'), fn('save', { shared: true }), fn('getEngine', { role: 'utility' }), fn('deep'), fn('step1'), fn('step2'), fn('step3'), fn('step4'), fn('step5'),
       ...errs.map((e) => fn(e)),
       { id: 'table:t', kind: 'table', label: 't', module: 'mod:sql:database', external: true },
+      { id: 'table:u', kind: 'table', label: 'u', module: 'mod:sql:database', external: true },
     ],
     edges: [
       ...errs.map((e) => ({ from: 'go:x/a.h', to: 'go:x/a.' + e, type: 'calls', file: 'a/a.go', line: 3 })),
@@ -231,7 +232,7 @@ describe('traces on a big codebase', () => {
       { from: 'go:x/a.step2', to: 'go:x/a.step3', type: 'calls', file: 'a/a.go', line: 31 },
       { from: 'go:x/a.step3', to: 'go:x/a.step4', type: 'calls', file: 'a/a.go', line: 32 },
       { from: 'go:x/a.step4', to: 'go:x/a.step5', type: 'calls', file: 'a/a.go', line: 33 },
-      { from: 'go:x/a.step5', to: 'table:t', type: 'writes', file: 'a/a.go', line: 34 },
+      { from: 'go:x/a.step5', to: 'table:u', type: 'writes', file: 'a/a.go', line: 34 },
       { from: 'go:x/a.save', to: 'table:t', type: 'writes', file: 'a/a.go', line: 10 },
     ],
   };
@@ -251,8 +252,8 @@ describe('traces on a big codebase', () => {
   test('a selection still reaches effects below the depth limit', () => {
     const S = selectionOf(m, [id('h')], [])!;
     expect(S.nodes.has(id('step5'))).toBe(false);
-    expect(S.nodes.has('table:t')).toBe(true);
-    const e = S.extra.find((x) => x.to === 'table:t' && x.from === id('step4'))!;
+    expect(S.nodes.has('table:u')).toBe(true);
+    const e = S.extra.find((x) => x.to === 'table:u' && x.from === id('step4'))!;
     expect(e).toMatchObject({ from: id('step4'), type: 'writes', synth: 'reach' });
     expect(e.i).toBeGreaterThanOrEqual(SYNTH);
     expect(S.edges.has(e.i)).toBe(true);
@@ -262,7 +263,7 @@ describe('traces on a big codebase', () => {
     const t = trace(m, id('h'));
     const rows = t.rows;
     expect(t.support).toBe(2); // getEngine, and the wide call: they lead nowhere
-    expect(rows.find((r) => r.id === id('step4'))!.reaches).toEqual([{ to: 'table:t', type: 'writes' }]);
+    expect(rows.find((r) => r.id === id('step4'))!.reaches).toEqual([{ to: 'table:u', type: 'writes' }]);
     expect(rows.filter((r) => r.targets)).toHaveLength(0);
     expect(rows.find((r) => r.id === id('save'))!.more).toBe(true);
     expect(rows.some((r) => r.id === id('deep'))).toBe(false);

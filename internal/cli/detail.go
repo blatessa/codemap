@@ -12,53 +12,57 @@ func Trace(ix *graph.Index, id string) *graph.TreeNode {
 	return Settle(Rollup(ix, Cut(Prune(ix, Features(ix, ix.Tree(id, 0))), FeatureDepth)))
 }
 
-// Prune keeps the branches of a tree that lead somewhere: to data, a service,
-// a topic, a screen or another program's API, other than what most features
-// reach (graph.CommonEffects). The rest (argument parsing, lookups of
+// Prune keeps the branches of a tree that lead somewhere new: to data, a
+// service, a topic, a screen or another program's API that the tree hasn't
+// already shown, other than what most features reach (graph.CommonEffects). The rest (argument parsing, lookups of
 // settings, error and translation helpers) is counted on the row above, and
 // rows shown higher up aren't repeated. When nothing leads anywhere, the first
 // level stays, so a tree is never empty.
 func Prune(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
 	common := ix.CommonEffects()
-	beneath := map[string]bool{}
-	distinct := func(id string) bool {
-		if v, ok := beneath[id]; ok {
-			return v
+	beneath := map[string][]graph.Effect{}
+	reach := func(id string) []graph.Effect {
+		if r, ok := beneath[id]; ok {
+			return r
 		}
-		v := false
-		for _, f := range ix.EffectsBeneath(id) {
-			if !common[f] {
-				v = true
-				break
+		r := ix.EffectsBeneath(id)
+		beneath[id] = r
+		return r
+	}
+	// Read in code order, a branch stays when it reaches something the story
+	// hasn't shown yet: repeated steps that touch the same tables fold away,
+	// and every effect still appears once.
+	shown := map[graph.Effect]bool{}
+	fresh := func(fs []graph.Effect) bool {
+		for _, f := range fs {
+			if !common[f] && !shown[f] {
+				return true
 			}
 		}
-		beneath[id] = v
-		return v
-	}
-	memo := map[*graph.TreeNode]bool{}
-	leads := func(c *graph.TreeNode) bool {
-		if v, ok := memo[c]; ok {
-			return v
-		}
-		v := false
-		switch {
-		case c.Targets != nil || c.Seen:
-		case c.Via != nil && ix.IsEffect(c.Via):
-			v = !common[graph.Effect{To: c.ID, Type: c.Via.Type}]
-		default:
-			v = distinct(c.ID) // anything it reaches, as the viewer decides it
-		}
-		memo[c] = v
-		return v
+		return false
 	}
 	var walk func(t *graph.TreeNode) *graph.TreeNode
 	walk = func(t *graph.TreeNode) *graph.TreeNode {
 		out := *t
 		out.Children = nil
 		for _, c := range t.Children {
-			if leads(c) {
+			switch {
+			case c.Targets != nil || c.Seen:
+				out.Support++
+			case c.Via != nil && ix.IsEffect(c.Via):
+				f := graph.Effect{To: c.ID, Type: c.Via.Type}
+				if common[f] || shown[f] {
+					out.Support++
+					continue
+				}
+				shown[f] = true
 				out.Children = append(out.Children, walk(c))
-			} else {
+			case fresh(reach(c.ID)):
+				out.Children = append(out.Children, walk(c))
+				for _, f := range reach(c.ID) {
+					shown[f] = true // what's left of it is listed on its row
+				}
+			default:
 				out.Support++
 			}
 		}

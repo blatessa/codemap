@@ -166,7 +166,7 @@ function CallTree({ m, id }: { m: Model; id: string }) {
                       <span key={x}>
                         {j ? ', ' : ''}
                         <button className="effn" data-node={x} onClick={() => select(x)}>
-                          {m.node.get(x)?.row.label ?? x}
+                          {((r) => (r ? (r.prefix ? r.prefix + ' ' : '') + r.label : x))(m.node.get(x)?.row)}
                         </button>
                       </span>
                     ))}

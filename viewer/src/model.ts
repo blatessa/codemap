@@ -652,14 +652,14 @@ function traceWith(m: Model, start: string, prune: boolean): Trace {
   const seen = new Set([start]);
   const common = commonEffects(m);
   const effKey = (f: Effect) => f.type + '\0' + f.to;
-  const leadsMemo = new Map<string, boolean>();
-  // a row stays when it leads somewhere: data, a service, a screen or another
-  // program's API, other than what most features reach (cli.Prune)
-  const leads = (id: string) => {
-    let v = leadsMemo.get(id);
-    if (v === undefined) leadsMemo.set(id, (v = effectsBeneath(m, id).some((f) => !common.has(effKey(f)))));
-    return v;
-  };
+  const reachMemo = new Map<string, Effect[]>();
+  const reach = (id: string) => reachMemo.get(id) ?? (reachMemo.set(id, effectsBeneath(m, id)), reachMemo.get(id)!);
+  // Read in code order, a row stays when it reaches something the story
+  // hasn't shown yet: data, a service, a screen or another program's API,
+  // other than what most features reach (cli.Prune). Every effect still
+  // appears once.
+  const shown = new Set<string>();
+  const fresh = (id: string) => reach(id).some((f) => !common.has(effKey(f)) && !shown.has(effKey(f)));
   const hasOut = (id: string) => (m.all.out.get(id)?.length ?? 0) > 0;
   type Kids = { rows: TreeRow[][]; support: number }; // each child with its subtree, preorder
   const kids = (id: string, parent: string, depth: number, hops = 0): Kids => {
@@ -703,13 +703,14 @@ function traceWith(m: Model, start: string, prune: boolean): Trace {
         continue;
       }
       if (prune && !e.prop) {
-        const keep = isEffect(m, e) ? !common.has(effKey({ to: e.to, type: e.type })) && !seen.has(e.type + '>' + e.to + '<' + id) : !seen.has(e.to) && leads(e.to);
+        const k = effKey({ to: e.to, type: e.type });
+        const keep = isEffect(m, e) ? !common.has(k) && !shown.has(k) : !seen.has(e.to) && fresh(e.to);
         if (!keep) {
           res.support++;
           continue;
         }
+        if (isEffect(m, e)) shown.add(k);
       }
-      if (isEffect(m, e)) seen.add(e.type + '>' + e.to + '<' + id);
       const r: TreeRow = { id: e.to, via: e, parent, depth, seen: seen.has(e.to), support: 0, reaches: [] };
       const sub: TreeRow[] = [r];
       res.rows.push(sub);
@@ -722,11 +723,13 @@ function traceWith(m: Model, start: string, prune: boolean): Trace {
       }
       if (stops(n) || depth + 1 >= TREE_DEPTH) {
         r.more = hasOut(e.to);
+        if (prune) for (const f of reach(e.to)) shown.add(effKey(f));
         continue;
       }
       const k = kids(e.to, e.to, depth + 1);
       r.support = k.support;
       for (const c of k.rows) sub.push(...c);
+      if (prune) for (const f of reach(e.to)) shown.add(effKey(f)); // what's left is listed on its row
     }
     return res;
   };
