@@ -30,7 +30,7 @@ function headers(version: string | undefined) {
   return h;
 }
 
-export type ProjectFile = 'areas' | 'blocks' | 'layout' | 'views' | 'external';
+export type ProjectFile = 'areas' | 'blocks' | 'layout' | 'views' | 'hidden' | 'external';
 
 export async function putProject(file: ProjectFile, value: unknown, version: string | undefined): Promise<string> {
   const r = await check(await fetch('/api/project/' + file, { method: 'PUT', headers: headers(version), body: JSON.stringify(value) }));

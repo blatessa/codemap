@@ -189,6 +189,7 @@ var projectFiles = map[string]string{
 	"blocks":   "blocks.toml",
 	"layout":   "layout.json",
 	"views":    "views.toml",
+	"hidden":   "hidden.toml",
 	"external": "external.toml",
 }
 

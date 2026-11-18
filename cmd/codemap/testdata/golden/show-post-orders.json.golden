@@ -46,24 +46,6 @@
         },
         "children": [
           {
-            "id": "go:shop/internal/auth.(*Handler).parseToken",
-            "via": {
-              "from": "go:shop/internal/auth.(*Handler).RequireUser",
-              "to": "go:shop/internal/auth.(*Handler).parseToken",
-              "type": "calls"
-            },
-            "children": [
-              {
-                "id": "go:shop/internal/auth.(*Handler).sign",
-                "via": {
-                  "from": "go:shop/internal/auth.(*Handler).parseToken",
-                  "to": "go:shop/internal/auth.(*Handler).sign",
-                  "type": "calls"
-                }
-              }
-            ]
-          },
-          {
             "id": "go:shop/internal/auth.(*Store).UserByID",
             "via": {
               "from": "go:shop/internal/auth.(*Handler).RequireUser",
@@ -81,16 +63,9 @@
                 }
               }
             ]
-          },
-          {
-            "id": "go:shop/internal/auth.withUser",
-            "via": {
-              "from": "go:shop/internal/auth.(*Handler).RequireUser",
-              "to": "go:shop/internal/auth.withUser",
-              "type": "calls"
-            }
           }
-        ]
+        ],
+        "support": 2
       },
       {
         "id": "go:shop/internal/orders.(*Handler).Create",
@@ -101,14 +76,6 @@
         },
         "children": [
           {
-            "id": "go:shop/internal/auth.CurrentUser",
-            "via": {
-              "from": "go:shop/internal/orders.(*Handler).Create",
-              "to": "go:shop/internal/auth.CurrentUser",
-              "type": "calls"
-            }
-          },
-          {
             "id": "go:shop/internal/orders.(*Service).Place",
             "via": {
               "from": "go:shop/internal/orders.(*Handler).Create",
@@ -116,24 +83,6 @@
               "type": "calls"
             },
             "children": [
-              {
-                "id": "go:shop/internal/events.(*Bus).Publish",
-                "via": {
-                  "from": "go:shop/internal/orders.(*Service).Place",
-                  "to": "go:shop/internal/events.(*Bus).Publish",
-                  "type": "calls"
-                },
-                "children": [
-                  {
-                    "id": "go:shop/cmd/server.(logConn).Publish",
-                    "via": {
-                      "from": "go:shop/internal/events.(*Bus).Publish",
-                      "to": "go:shop/cmd/server.(logConn).Publish",
-                      "type": "calls"
-                    }
-                  }
-                ]
-              },
               {
                 "id": "go:shop/internal/inventory.(*Store).Reserve",
                 "via": {
@@ -208,25 +157,11 @@
                   "detail": "order.placed"
                 }
               }
-            ]
-          },
-          {
-            "id": "go:shop/internal/orders.writeError",
-            "via": {
-              "from": "go:shop/internal/orders.(*Handler).Create",
-              "to": "go:shop/internal/orders.writeError",
-              "type": "calls"
-            }
-          },
-          {
-            "id": "go:shop/internal/orders.writeJSON",
-            "via": {
-              "from": "go:shop/internal/orders.(*Handler).Create",
-              "to": "go:shop/internal/orders.writeJSON",
-              "type": "calls"
-            }
+            ],
+            "support": 1
           }
-        ]
+        ],
+        "support": 3
       }
     ]
   }

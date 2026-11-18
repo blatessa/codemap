@@ -3,6 +3,7 @@
 // testdata/shop/.codemap; writes are kept in memory. Never part of the build.
 //
 // Env: CODEMAP_MOCK_GRAPH (graph JSON file), CODEMAP_MOCK_ROOT (repo root holding .codemap).
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +17,9 @@ const GRAPH = path.resolve(process.env.CODEMAP_MOCK_GRAPH ?? path.join(here, '..
 const DIR = path.join(ROOT, '.codemap');
 
 type Obj = Record<string, unknown>;
-const FILES = ['areas', 'blocks', 'layout', 'views', 'external'] as const;
+const FILES = ['areas', 'blocks', 'layout', 'views', 'hidden', 'external'] as const;
+// the [[key]] each list file keeps its entries under
+const LIST_KEY: Record<string, string> = { areas: 'area', blocks: 'block', views: 'view', hidden: 'hide' };
 type FileKey = (typeof FILES)[number];
 
 interface Mock {
@@ -26,6 +29,7 @@ interface Mock {
   proposals: Map<string, Obj>;
 }
 
+let rolesCache: { key: string; text: string } | null = null;
 let db: Mock = load();
 const clients = new Set<ServerResponse>();
 
@@ -47,7 +51,7 @@ function readFile(key: FileKey): unknown {
   // TOML has no top-level arrays: lists are [[area]], [[block]] and [[view]]
   // tables, and external.toml holds [[node]] and [[edge]] (PLAN.md §4).
   if (key === 'external') return renameKeys(v, { node: 'nodes', edge: 'edges' });
-  return v[key.slice(0, -1)] ?? [];
+  return v[LIST_KEY[key]] ?? [];
 }
 
 // renameKeys maps the singular TOML table keys to the JSON API's plural names.
@@ -91,12 +95,33 @@ function loadProposals(): Map<string, Obj> {
   return out;
 }
 
+// withRoles returns the graph with fields.role filled in, as `codemap build`
+// does (internal/graph/roles.go reads the source too). It runs the Go command
+// once per graph file and change; without Go the graph is served as is.
+function withRoles(): Obj {
+  const raw = fs.readFileSync(GRAPH, 'utf8');
+  const key = GRAPH + ':' + fs.statSync(GRAPH).mtimeMs;
+  if (process.env.CODEMAP_MOCK_ROLES !== '0' && rolesCache?.key !== key) {
+    try {
+      const text = execFileSync('go', ['run', './cmd/codemap', 'build', '--root', ROOT, '--graph', GRAPH], {
+        cwd: path.join(here, '../..'),
+        maxBuffer: 1 << 30,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).toString();
+      rolesCache = { key, text };
+    } catch {
+      rolesCache = { key, text: raw };
+    }
+  }
+  return JSON.parse(rolesCache?.key === key ? rolesCache.text : raw);
+}
+
 function load(): Mock {
   const files = {} as Record<FileKey, unknown>;
   for (const k of FILES) files[k] = readFile(k);
   const t = readText('config.toml');
   return {
-    graph: JSON.parse(fs.readFileSync(GRAPH, 'utf8')),
+    graph: withRoles(),
     config: t ? TOML.parse(t) : {},
     files,
     proposals: loadProposals(),
@@ -159,7 +184,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
   }
   // test hook: serve another graph with an empty .codemap (reset restores the fixture)
   if (p === '/__mock/load' && m === 'PUT') {
-    db = { graph: (await readBody(req)) as Obj, config: {}, files: { areas: [], blocks: [], layout: {}, views: [], external: {} }, proposals: new Map() };
+    db = { graph: (await readBody(req)) as Obj, config: {}, files: { areas: [], blocks: [], layout: {}, views: [], hidden: [], external: {} }, proposals: new Map() };
     return send(res, 204);
   }
   if (p === '/api/state' && m === 'GET') {
@@ -171,13 +196,14 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
         blocks: db.files.blocks,
         layout: db.files.layout,
         views: db.files.views,
+        hidden: db.files.hidden,
         external: db.files.external,
         proposals: [...db.proposals.values()],
       },
       versions: versions(),
     });
   }
-  const pf = /^\/api\/project\/(areas|blocks|layout|views|external)$/.exec(p);
+  const pf = /^\/api\/project\/(areas|blocks|layout|views|hidden|external)$/.exec(p);
   if (pf && m === 'PUT') {
     const key = pf[1] as FileKey;
     const cur = hash(db.files[key]);
@@ -251,7 +277,7 @@ function watch() {
     for (const f of files) {
       if (f === GRAPH) {
         try {
-          db.graph = JSON.parse(fs.readFileSync(GRAPH, 'utf8'));
+          db.graph = withRoles();
           graph = true;
         } catch {
           /* mid-write */

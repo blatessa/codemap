@@ -45,7 +45,8 @@ export interface DBox {
   fullH: number; // height with the rows it shows (not collapsed, not far)
   rows: Row[];
   col: boolean;
-  more: number; // internal rows: hidden behind "+N internal", or shown (open)
+  more: number; // internal and support rows: behind the "+N" row, or shown (open)
+  moreWord: string; // "internal", "support", or "more" when it's both
   open: boolean;
   lift: boolean; // drawn above the others: taller than its laid-out height, or dragged
   sub: string;
@@ -158,14 +159,24 @@ function buildDisp(
   const fn = k ? farFont(k) : 0,
     fs = k ? farSub(k) : 0;
   const top = areaTop(k ? farArea(k) : null);
-  const visible = (b: Box): { rows: Row[]; more: number; open: boolean } => {
-    if (focusOn) return { rows: b.rows.filter((r) => S.nodes.has(r.id)), more: 0, open: false };
-    const more = b.rows.length - b.pub;
-    if (!more) return { rows: b.rows, more: 0, open: false };
-    if (expanded.has(b.id)) return { rows: b.rows, more, open: true };
-    const rows = b.rows.filter((r) => r.pub || S?.path.has(r.id));
-    return { rows, more: b.rows.length - rows.length, open: false };
+  // hidden rows only draw on a selected path; support rows (Features) and
+  // internal rows wait behind one "+N" row
+  const visible = (b: Box): { rows: Row[]; more: number; moreWord: string; open: boolean } => {
+    if (focusOn) return { rows: b.rows.filter((r) => S.nodes.has(r.id)), more: 0, moreWord: '', open: false };
+    const all = b.shown === b.rows.length ? b.rows : b.rows.filter((r) => !r.hidden || S?.path.has(r.id));
+    const word = (rest: Row[]) => {
+      const sup = rest.filter((r) => r.support).length;
+      return sup === rest.length ? 'support' : sup ? 'more' : 'internal';
+    };
+    const behind = all.filter((r) => !r.pub);
+    if (!behind.length) return { rows: all, more: 0, moreWord: '', open: false };
+    if (expanded.has(b.id)) return { rows: all, more: behind.length, moreWord: word(behind), open: true };
+    const rows = all.filter((r) => r.pub || S?.path.has(r.id));
+    const rest = all.filter((r) => !r.pub && !S?.path.has(r.id));
+    return { rows, more: rest.length, moreWord: word(rest), open: false };
   };
+  // a box whose rows are all hidden doesn't draw, unless the selected path runs through it
+  const gone = (b: Box) => b.rows.length > 0 && b.shown === 0 && !b.rows.some((r) => S?.path.has(r.id));
 
   // Folded groups open when the user opens them, or for the selection: the
   // groups holding what's selected and, for a traced path, every box on it.
@@ -315,6 +326,7 @@ function buildDisp(
     };
   }
   function add(b: Box, p: [number, number], inG?: string) {
+    if (gone(b)) return;
     const v = visible(b);
     if (focusOn && !v.rows.length) return;
     const fh = heightOf(v.rows.length, v.more > 0);
@@ -332,6 +344,7 @@ function buildDisp(
       rows: v.rows,
       col: !!k || collapsed.has(b.id),
       more: v.more,
+      moreWord: v.moreWord,
       open: v.open,
       lift: dragBox?.id === b.id || (!k && h > (G ? layoutH(b) : b.defH)),
       sub,
@@ -349,7 +362,7 @@ function buildDisp(
     let h = GROUP_NEAR;
     let far: FarText | undefined;
     if (k) ({ h, far } = farText(b, b.sub, GROUP_H - 20, 0.9));
-    const d: DBox = { b, x: p[0], y: p[1], w: b.w, h, fullH: GROUP_NEAR, rows: [], col: true, more: 0, open: false, lift: false, sub: b.sub, far, inG };
+    const d: DBox = { b, x: p[0], y: p[1], w: b.w, h, fullH: GROUP_NEAR, rows: [], col: true, more: 0, moreWord: '', open: false, lift: false, sub: b.sub, far, inG };
     boxes.push(d);
     byId.set(b.id, d);
     for (const r of b.rows) row.set(r.id, { d, idx: -1 });
@@ -660,7 +673,7 @@ const BoxG = memo(function BoxG({ d, S, selKey, hover, connectFrom, canAdd }: Bo
           {d.rows.map((r, i) => {
             const ry = y + HEAD + i * ROW,
               cy = ry + ROW / 2 + 4;
-            const c = ['fn', S ? (S.nodes.has(r.id) ? 'on' : 'dim') : '', r.prop && 'prop', r.ghost && 'ghost', sels.includes(r.id) && 'sel', connectFrom === r.id && 'from', hover === r.id && 'hov']
+            const c = ['fn', S ? (S.nodes.has(r.id) ? 'on' : 'dim') : '', r.hidden && 'hid', r.prop && 'prop', r.ghost && 'ghost', sels.includes(r.id) && 'sel', connectFrom === r.id && 'from', hover === r.id && 'hov']
               .filter(Boolean)
               .join(' ');
             return (
@@ -687,7 +700,7 @@ const BoxG = memo(function BoxG({ d, S, selKey, hover, connectFrom, canAdd }: Bo
             <g className="more" data-more={b.id}>
               <rect className="hit" x={x + 4} y={moreY + 1} width={w - 8} height={MORE - 2} rx={5} />
               <text x={x + 22} y={moreY + MORE / 2 + 4}>
-                {d.open ? `− ${d.more} internal` : `+${d.more} internal`}
+                {d.open ? `− ${d.more} ${d.moreWord}` : `+${d.more} ${d.moreWord}`}
               </text>
             </g>
           )}
@@ -1176,7 +1189,7 @@ export function useAreaRect(): RectOf {
       const byId = new Map<string, DBox>();
       for (const b of m.boxes) {
         const p = pos[b.id];
-        if (p) byId.set(b.id, { b, x: p[0], y: p[1], w: b.w, h: b.defH, fullH: b.defH, rows: b.rows, col: false, more: 0, open: false, lift: false, sub: b.sub });
+        if (p) byId.set(b.id, { b, x: p[0], y: p[1], w: b.w, h: b.defH, fullH: b.defH, rows: b.rows, col: false, more: 0, moreWord: '', open: false, lift: false, sub: b.sub });
       }
       return areaRect(a, byId, pos);
     },

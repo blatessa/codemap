@@ -1,8 +1,8 @@
 // Turns graph.json + .codemap state into what the map draws: boxes (modules,
 // blocks, proposed modules) holding rows (nodes), and the edges between rows.
 // Also the walks behind selection, call trees and test reach (graph/query.go).
-import { blockFor } from './blocks';
-import type { Block, GEdge, GModule, GNode, Graph, Loose, Proposal } from './types';
+import { blockFor, pathMatch } from './blocks';
+import type { Block, Detail, GEdge, GModule, GNode, Graph, Hide, Loose, Proposal } from './types';
 
 export const ROW = 28,
   HEAD = 36,
@@ -24,6 +24,9 @@ export interface Row {
   prop: boolean; // added by the open proposal
   ghost: boolean; // referenced by the proposal but not in the code
   pub: boolean; // shown by default: entry, external, or an edge crosses the box
+  role: string; // fields.role: wiring, utility, passthrough, … ('' is core)
+  support: boolean; // has a role and the level is Features: behind the box's expander
+  hidden: boolean; // in .codemap/hidden.toml: drawn only on a selected path, dimmed
 }
 
 export interface Box {
@@ -43,7 +46,8 @@ export interface Box {
   propPos?: [number, number];
   propArea?: string;
   pub: number; // public rows
-  defH: number; // height with only public rows showing (what layout uses)
+  shown: number; // rows not hidden
+  defH: number; // height with only public rows showing at the Code level (what layout uses)
   shared: boolean; // used by most other modules; laid out along the bottom
   usedBy: number; // modules with edges into this one
   group?: string; // set on a folder group's box (groups.ts)
@@ -60,6 +64,7 @@ export interface MEdge {
   net: boolean;
   file?: string;
   line?: number;
+  via?: string[]; // passthroughs collapsed into this edge (Features)
 }
 
 export interface Model {
@@ -71,6 +76,27 @@ export interface Model {
   inn: Map<string, MEdge[]>;
   tests: GNode[];
   full: { out: Map<string, GEdge[]>; node: Map<string, GNode> };
+  // every edge, with no passthrough collapsed: the details panel's lists and call tree
+  all: { edges: MEdge[]; out: Map<string, MEdge[]>; inn: Map<string, MEdge[]> };
+  detail: Detail;
+}
+
+export interface ModelOpts {
+  detail?: Detail;
+  hidden?: Hide[];
+}
+
+export const roleOf = (n: GNode): string => (typeof n.fields?.role === 'string' ? (n.fields.role as string) : '');
+
+// hiddenBy returns the hidden.toml entry that hides n, if any. An id hides a
+// node or a whole module; a match is a glob on the label, optionally in one
+// module (by id or label).
+export function hiddenBy(rules: Hide[], n: GNode, moduleLabel?: string): Hide | undefined {
+  return rules.find(
+    (r) =>
+      (r.id && (r.id === n.id || r.id === n.module)) ||
+      (r.match && pathMatch(r.match, n.label) && (!r.module || r.module === n.module || r.module === moduleLabel)),
+  );
 }
 
 const ENTRY_PREFIX: Record<string, string> = { subscriber: 'SUB', function: 'MAIN', component: 'COMP' };
@@ -107,7 +133,20 @@ function widthOf(b: Box): number {
 const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v));
 
 function rowFor(n: GNode, prop: boolean, ghost: boolean): Row {
-  return { id: n.id, label: n.label || n.id, prefix: prefixOf(n), tag: n.external ? n.kind : '', tagClass: '', node: n, prop, ghost, pub: false };
+  return {
+    id: n.id,
+    label: n.label || n.id,
+    prefix: prefixOf(n),
+    tag: n.external ? n.kind : '',
+    tagClass: '',
+    node: n,
+    prop,
+    ghost,
+    pub: false,
+    role: prop || ghost ? '' : roleOf(n),
+    support: false,
+    hidden: false,
+  };
 }
 
 const sortRows = (a: Row, b: Row) =>
@@ -119,13 +158,17 @@ const sortRows = (a: Row, b: Row) =>
 export const isTest = (n: GNode) => n.kind === 'test';
 
 // buildModel derives the map. `proposal` is drawn over the graph when set.
-export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null): Model {
+// At the Features level, rows with a role are support rows, and edges through
+// passthroughs are drawn straight to where they lead (A → C for A → P → C).
+export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null, opts: ModelOpts = {}): Model {
+  const detail = opts.detail ?? 'code';
+  const hideRules = opts.hidden ?? [];
   const mods = g.modules ?? [];
   const nodes = g.nodes ?? [];
   const gedges = g.edges ?? [];
   const box = new Map<string, Box>();
   const mkBox = (id: string, label: string, extra: Partial<Box> = {}): Box => {
-    const b: Box = { id, label, sub: '', external: false, prop: false, ghost: false, rows: [], w: 0, hasEntry: false, pub: 0, defH: 0, shared: false, usedBy: 0, ...extra };
+    const b: Box = { id, label, sub: '', external: false, prop: false, ghost: false, rows: [], w: 0, hasEntry: false, pub: 0, shown: 0, defH: 0, shared: false, usedBy: 0, ...extra };
     box.set(id, b);
     return b;
   };
@@ -200,12 +243,22 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
     }
   }
 
-  const out = new Map<string, MEdge[]>(),
-    inn = new Map<string, MEdge[]>();
-  for (const e of edges) {
-    (out.get(e.from) ?? out.set(e.from, []).get(e.from)!).push(e);
-    (inn.get(e.to) ?? inn.set(e.to, []).get(e.to)!).push(e);
+  const index = (list: MEdge[]) => {
+    const o = new Map<string, MEdge[]>(),
+      n = new Map<string, MEdge[]>();
+    for (const e of list) {
+      (o.get(e.from) ?? o.set(e.from, []).get(e.from)!).push(e);
+      (n.get(e.to) ?? n.set(e.to, []).get(e.to)!).push(e);
+    }
+    return { out: o, inn: n };
+  };
+  const all = { edges, ...index(edges) };
+  for (const { row, box: b } of node.values()) {
+    row.support = detail === 'features' && !!row.role;
+    row.hidden = !row.prop && !row.ghost && !!hideRules.length && !!hiddenBy(hideRules, row.node, b.module?.label);
   }
+  const shown = detail === 'features' ? collapse(edges, all.out, (id) => node.get(id)?.row.role === 'passthrough') : edges;
+  const { out, inn } = shown === edges ? all : index(shown);
   // external rows get a colour from how they're used, never from their kind
   for (const { row } of node.values()) {
     if (!row.tag) continue;
@@ -216,27 +269,66 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
   const fullOut = new Map<string, GEdge[]>();
   for (const e of gedges) (fullOut.get(e.from) ?? fullOut.set(e.from, []).get(e.from)!).push(e);
 
-  // public rows: entry points, external nodes, and anything with an edge leaving its box
-  for (const e of edges) {
+  // public rows: entry points, external nodes, and anything with an edge leaving
+  // its box; never support or hidden rows
+  for (const e of shown) {
     const a = node.get(e.from)!,
       b = node.get(e.to)!;
     if (a.box !== b.box) a.row.pub = b.row.pub = true;
+  }
+  // Layout sizes boxes for the Code level, so switching levels never makes
+  // boxes overlap: these rows would be public there.
+  const codePub = new Set<string>();
+  for (const e of edges) {
+    const a = node.get(e.from)!,
+      b = node.get(e.to)!;
+    if (a.box !== b.box) codePub.add(a.row.id).add(b.row.id);
   }
 
   const boxes: Box[] = [];
   for (const b of box.values()) {
     if (!b.rows.length && !b.prop && !b.block) continue; // modules with only tests, or nothing
     b.rows.sort((x, y) => Number(x.prop || x.ghost) - Number(y.prop || y.ghost) || sortRows(x, y));
-    for (const r of b.rows) if (r.node.entry || r.node.external || r.prop || r.ghost) r.pub = true;
+    for (const r of b.rows) {
+      if (r.node.entry || r.node.external || r.prop || r.ghost) r.pub = true;
+      if (r.support || r.hidden) r.pub = false;
+    }
     b.pub = b.rows.filter((r) => r.pub).length;
-    b.defH = heightOf(b.pub, b.pub < b.rows.length);
+    b.shown = b.rows.filter((r) => !r.hidden).length;
+    const lp = b.rows.filter((r) => !r.hidden && (codePub.has(r.id) || r.node.entry || r.node.external || r.prop || r.ghost)).length;
+    b.defH = heightOf(lp, lp < b.shown);
     b.hasEntry = b.rows.some((r) => r.node.entry);
     b.sub = subOf(b.rows, b.prop);
     b.w = widthOf(b);
     boxes.push(b);
   }
   markShared(boxes, box, node, gedges, fullNode, blocks);
-  return { boxes, box, node, edges, out, inn, tests, full: { out: fullOut, node: fullNode } };
+  return { boxes, box, node, edges: shown, out, inn, tests, full: { out: fullOut, node: fullNode }, all, detail };
+}
+
+// collapse redraws edges through passthroughs: A → P → C becomes A → C, with
+// the type and detail of the last hop. Edges out of passthroughs are dropped.
+function collapse(edges: MEdge[], out: Map<string, MEdge[]>, isPass: (id: string) => boolean): MEdge[] {
+  const res: MEdge[] = [];
+  const seen = new Set<string>();
+  const add = (e: MEdge, from: string, via: string[]) => {
+    const k = from + '\0' + e.to + '\0' + e.type;
+    if (seen.has(k) || from === e.to) return;
+    seen.add(k);
+    res.push({ ...e, i: res.length, from, ...(via.length ? { via } : {}) });
+  };
+  const follow = (e: MEdge, from: string, via: string[]) => {
+    if (!isPass(e.to) || e.prop) return add(e, from, via);
+    if (via.includes(e.to) || via.length > 8) return;
+    const next = out.get(e.to) ?? [];
+    if (!next.length) return add(e, from, via);
+    for (const n of next) follow(n, from, [...via, e.to]);
+  };
+  for (const e of edges) {
+    if (isPass(e.from) && !e.prop) continue;
+    follow(e, e.from, []);
+  }
+  return res;
 }
 
 // markShared finds modules that most others depend on (a graph package, a config
@@ -425,12 +517,13 @@ export interface TreeRow {
   seen: boolean;
 }
 
-// callTree ports graph.Index.Tree: each node expands once, external nodes are leaves.
+// callTree ports graph.Index.Tree: each node expands once, external nodes are
+// leaves. It walks every edge, passthroughs included; the panel dims support rows.
 export function callTree(m: Model, start: string, max = 400): TreeRow[] {
   const seen = new Set([start]);
   const out: TreeRow[] = [];
   const rec = (id: string, depth: number) => {
-    for (const e of m.out.get(id) ?? []) {
+    for (const e of m.all.out.get(id) ?? []) {
       if (out.length >= max) return;
       const again = seen.has(e.to);
       out.push({ id: e.to, via: e, depth, seen: again });

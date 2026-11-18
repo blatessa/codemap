@@ -155,7 +155,8 @@ type TreeOptions struct {
 
 // WriteTree prints a call tree with two spaces of indent per level. A row that
 // was already expanded higher up ends in "(see above)"; a row whose children
-// were cut off by a depth limit ends in "...".
+// were cut off by a depth limit ends in "..."; a row with support rows left
+// out (Features) notes how many, "(+2 support)".
 func WriteTree(w io.Writer, ix *graph.Index, t *graph.TreeNode, opt TreeOptions) {
 	var walk func(t *graph.TreeNode, depth int)
 	walk = func(t *graph.TreeNode, depth int) {
@@ -163,9 +164,12 @@ func WriteTree(w io.Writer, ix *graph.Index, t *graph.TreeNode, opt TreeOptions)
 		if note := EdgeNote(ix, t.Via, t.ID); note != "" {
 			row += "  " + note
 		}
+		if t.Support > 0 {
+			row += fmt.Sprintf("  (+%d support)", t.Support)
+		}
 		if t.Seen {
 			row += "  (see above)"
-		} else if depth > 0 && len(t.Children) == 0 && hasMore(ix, t.ID, opt.Up) {
+		} else if depth > 0 && len(t.Children) == 0 && t.Support == 0 && hasMore(ix, t.ID, opt.Up) {
 			row += "  ..."
 		}
 		fmt.Fprintln(w, row)

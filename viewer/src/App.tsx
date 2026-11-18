@@ -13,8 +13,10 @@ import {
   saveView,
   select,
   setMode,
+  setDetail,
   setState,
   subscribe,
+  unhide,
   useModel,
   useStore,
 } from './store';
@@ -117,8 +119,19 @@ function Search() {
   );
 }
 
+// hideName is how a hidden.toml entry reads in the list.
+function hideName(m: ReturnType<typeof useModel>, h: { id?: string; match?: string; module?: string }) {
+  if (h.match) return h.module ? `${h.match} in ${m.box.get(h.module)?.label ?? h.module}` : h.match;
+  const id = h.id ?? '';
+  if (m.node.has(id)) return qn(m, id);
+  return m.box.get(id)?.label ?? id;
+}
+
 function Views() {
+  const m = useModel();
   const views = useStore((s) => s.views);
+  const hidden = useStore((s) => s.hidden);
+  const [showHidden, setShowHidden] = useState(false);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -161,6 +174,22 @@ function Views() {
             </button>
           </div>
         ))}
+        {hidden.length > 0 && (
+          <>
+            <button className="res" id="hiddenbtn" aria-expanded={showHidden} onClick={() => setShowHidden(!showHidden)}>
+              <span>Hidden ({hidden.length})</span>
+            </button>
+            {showHidden &&
+              hidden.map((h, i) => (
+                <div className="vrow hrow" key={i} data-hidden={h.id ?? h.match}>
+                  <span className="hname">{hideName(m, h)}</span>
+                  <button className="del" aria-label="Unhide" onClick={() => unhide(i)}>
+                    Unhide
+                  </button>
+                </div>
+              ))}
+          </>
+        )}
         <div className="vsave">
           <input id="v-name" placeholder="Save current as…" autoComplete="off" aria-label="View name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} />
           <button onClick={save}>Save</button>
@@ -253,6 +282,20 @@ function RevPicker() {
   );
 }
 
+function DetailPick() {
+  const detail = useStore((s) => s.detail);
+  return (
+    <div className="seg" id="detail" role="group" aria-label="Detail">
+      <button id="d-features" aria-pressed={detail === 'features'} onClick={() => setDetail('features')}>
+        Features
+      </button>
+      <button id="d-code" aria-pressed={detail === 'code'} onClick={() => setDetail('code')}>
+        Code
+      </button>
+    </div>
+  );
+}
+
 export function App() {
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
@@ -279,7 +322,8 @@ export function App() {
       <header className="top">
         <h1>codemap</h1>
         <RevPicker />
-        <div className="seg" role="group" aria-label="Mode">
+        <DetailPick />
+        <div className="seg mode" role="group" aria-label="Mode">
           <button id="m-explore" aria-pressed={mode === 'explore'} onClick={() => setMode('explore')}>
             Explore
           </button>

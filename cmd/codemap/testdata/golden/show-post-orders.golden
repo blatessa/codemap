@@ -5,17 +5,11 @@ file:   cmd/server/routes.go:13
 method: POST
 
 POST /orders
-  auth.Handler.RequireUser
-    auth.Handler.parseToken
-      auth.Handler.sign
+  auth.Handler.RequireUser  (+2 support)
     auth.Store.UserByID
       users [table]  reads: SELECT id, email FROM users WHERE id = $1
-    auth.withUser
-  orders.Handler.Create
-    auth.CurrentUser
-    orders.Service.Place
-      events.Bus.Publish
-        server.logConn.Publish
+  orders.Handler.Create  (+3 support)
+    orders.Service.Place  (+1 support)
       inventory.Store.Reserve
         stock [table]  writes: UPDATE stock SET reserved = reserved + $2 WHERE sku = $1 AND on_hand - reserved >= $2
       orders.Repo.Insert
@@ -24,8 +18,6 @@ POST /orders
       payments.Client.Charge
         api.stripe.com [service]  PaymentIntents.New
       order.placed [topic]  publishes
-    orders.writeError
-    orders.writeJSON
 
 Tests:
   test:go:shop/internal/auth.TestLogin_WrongPassword  internal/auth/login_test.go:23

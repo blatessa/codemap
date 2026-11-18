@@ -12,6 +12,8 @@ func TestLoadFSAndProposals(t *testing.T) {
 	fsys := fstest.MapFS{
 		"areas.toml":  {Data: []byte("[[area]]\nname = \"Commerce\"\nmodules = [\"mod:go:shop/internal/orders\"]\n")},
 		"layout.json": {Data: []byte(`{"mod:go:shop/internal/orders":[1200,80]}`)},
+		"hidden.toml": {Data: []byte("[[hide]]\nid = \"go:shop/internal/orders.writeJSON\"\n\n[[hide]]\nmatch = \"*.String\"\n")},
+		"views.toml":  {Data: []byte("[[view]]\nname = \"Code\"\ndetail = \"code\"\n")},
 		"external.toml": {Data: []byte(`[[node]]
 id = "ext:stripe"
 owner = "Payments team"
@@ -39,6 +41,12 @@ detail = "sends events"
 	}
 	if p.Layout["mod:go:shop/internal/orders"] != [2]float64{1200, 80} {
 		t.Errorf("layout: %+v", p.Layout)
+	}
+	if want := []Hide{{ID: "go:shop/internal/orders.writeJSON"}, {Match: "*.String"}}; !reflect.DeepEqual(p.Hidden, want) {
+		t.Errorf("hidden: %+v", p.Hidden)
+	}
+	if len(p.Views) != 1 || p.Views[0].Detail != "code" {
+		t.Errorf("views: %+v", p.Views)
 	}
 	if len(p.Proposals) != 2 {
 		t.Fatalf("proposals: %d", len(p.Proposals))

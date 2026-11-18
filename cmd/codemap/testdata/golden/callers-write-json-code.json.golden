@@ -1,0 +1,165 @@
+{
+  "node": {
+    "id": "go:shop/internal/orders.writeJSON",
+    "kind": "function",
+    "label": "writeJSON",
+    "module": "mod:go:shop/internal/orders",
+    "file": "internal/orders/handler.go",
+    "line": 48,
+    "endLine": 51,
+    "fields": {
+      "role": "utility"
+    }
+  },
+  "tree": {
+    "id": "go:shop/internal/orders.writeJSON",
+    "children": [
+      {
+        "id": "go:shop/internal/orders.(*Handler).Create",
+        "via": {
+          "from": "go:shop/internal/orders.(*Handler).Create",
+          "to": "go:shop/internal/orders.writeJSON",
+          "type": "calls"
+        },
+        "children": [
+          {
+            "id": "route:POST /orders",
+            "via": {
+              "from": "route:POST /orders",
+              "to": "go:shop/internal/orders.(*Handler).Create",
+              "type": "calls"
+            },
+            "children": [
+              {
+                "id": "ts:web/src/api/orders.ts#createOrder",
+                "via": {
+                  "from": "ts:web/src/api/orders.ts#createOrder",
+                  "to": "route:POST /orders",
+                  "type": "fetches",
+                  "detail": "POST /orders"
+                },
+                "children": [
+                  {
+                    "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+                    "via": {
+                      "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+                      "to": "ts:web/src/api/orders.ts#createOrder",
+                      "type": "calls"
+                    },
+                    "children": [
+                      {
+                        "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+                        "via": {
+                          "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+                          "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+                          "type": "calls"
+                        },
+                        "children": [
+                          {
+                            "id": "test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order",
+                            "via": {
+                              "from": "test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order",
+                              "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+                              "type": "renders"
+                            }
+                          },
+                          {
+                            "id": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+                            "via": {
+                              "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+                              "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+                              "type": "renders"
+                            },
+                            "children": [
+                              {
+                                "id": "page:/checkout",
+                                "via": {
+                                  "from": "page:/checkout",
+                                  "to": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+                                  "type": "renders"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "go:shop/internal/orders.(*Handler).Get",
+        "via": {
+          "from": "go:shop/internal/orders.(*Handler).Get",
+          "to": "go:shop/internal/orders.writeJSON",
+          "type": "calls"
+        },
+        "children": [
+          {
+            "id": "route:GET /orders/:id",
+            "via": {
+              "from": "route:GET /orders/:id",
+              "to": "go:shop/internal/orders.(*Handler).Get",
+              "type": "calls"
+            },
+            "children": [
+              {
+                "id": "ts:web/src/api/orders.ts#getOrder",
+                "via": {
+                  "from": "ts:web/src/api/orders.ts#getOrder",
+                  "to": "route:GET /orders/:id",
+                  "type": "fetches",
+                  "detail": "GET /orders/:id"
+                },
+                "children": [
+                  {
+                    "id": "ts:web/src/components/OrderStatus.tsx#useOrder",
+                    "via": {
+                      "from": "ts:web/src/components/OrderStatus.tsx#useOrder",
+                      "to": "ts:web/src/api/orders.ts#getOrder",
+                      "type": "calls"
+                    },
+                    "children": [
+                      {
+                        "id": "ts:web/src/components/OrderStatus.tsx#OrderStatus",
+                        "via": {
+                          "from": "ts:web/src/components/OrderStatus.tsx#OrderStatus",
+                          "to": "ts:web/src/components/OrderStatus.tsx#useOrder",
+                          "type": "calls"
+                        },
+                        "children": [
+                          {
+                            "id": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+                            "via": {
+                              "from": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+                              "to": "ts:web/src/components/OrderStatus.tsx#OrderStatus",
+                              "type": "renders"
+                            },
+                            "children": [
+                              {
+                                "id": "page:/orders/:id",
+                                "via": {
+                                  "from": "page:/orders/:id",
+                                  "to": "ts:web/src/pages/OrderPage.tsx#OrderPage",
+                                  "type": "renders"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -103,6 +103,9 @@ type TreeNode struct {
 	Via      *Edge       `json:"via,omitempty"`
 	Seen     bool        `json:"seen,omitempty"` // already shown higher up; not expanded again
 	Children []*TreeNode `json:"children,omitempty"`
+	// Support counts the support rows left out below this one at the
+	// features detail level (cli.Features).
+	Support int `json:"support,omitempty"`
 }
 
 // Tree builds the call tree below start, the way the viewer's details panel shows it:

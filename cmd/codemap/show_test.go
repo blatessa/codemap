@@ -70,6 +70,8 @@ func TestQueryGolden(t *testing.T) {
 		code int
 	}{
 		{"show-post-orders", runShow, []string{"POST /orders"}, 0},
+		{"show-post-orders-code", runShow, []string{"POST /orders", "--detail", "code"}, 0},
+		{"show-bad-detail", runShow, []string{"POST /orders", "--detail", "all"}, 2},
 		{"show-get-order-brace", runShow, []string{"GET /orders/{id}", "--depth", "1"}, 0},
 		{"show-checkout-depth3", runShow, []string{"page:/checkout", "--depth", "3"}, 0},
 		{"show-page-path", runShow, []string{"/login", "--depth", "1"}, 0},
@@ -79,6 +81,7 @@ func TestQueryGolden(t *testing.T) {
 		{"show-no-match", runShow, []string{"nothing-like-this"}, 1},
 		{"callers-update-status", runCallers, []string{"Repo.UpdateStatus"}, 0},
 		{"callers-place-depth1", runCallers, []string{"--depth", "1", "Service.Place"}, 0},
+		{"callers-write-json-code", runCallers, []string{"writeJSON", "--detail", "code"}, 0},
 		{"callers-route", runCallers, []string{"route:POST /orders"}, 0},
 		{"callers-none", runCallers, []string{"server.main"}, 0},
 		{"module-orders", runModule, []string{"internal/orders"}, 0},

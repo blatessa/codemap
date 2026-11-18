@@ -133,6 +133,7 @@ function groupBox(g: Group, box: Map<string, Box>): Box {
     w: Math.round(Math.min(440, Math.max(190, g.path.length * CH + 60))),
     hasEntry: ms.some((b) => b.hasEntry),
     pub: 0,
+    shown: rows.length,
     defH: GROUP_H,
     shared: false,
     usedBy: 0,
