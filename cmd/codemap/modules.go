@@ -1,0 +1,188 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"sort"
+	"strings"
+	"text/tabwriter"
+
+	"codemap/internal/cli"
+	"codemap/internal/graph"
+	"codemap/internal/project"
+)
+
+func init() {
+	commands["modules"] = func(args []string) error { return runModules(os.Stdout, args) }
+}
+
+const modulesUsage = `modules [--root DIR] [--graph FILE] [--rev worktree] [--json]`
+
+// moduleRow is one module in the overview: enough to decide how to organise the map.
+type moduleRow struct {
+	ID        string       `json:"id"`
+	Label     string       `json:"label"`
+	External  bool         `json:"external,omitempty"`
+	Functions int          `json:"functions"`
+	Entries   int          `json:"entries"`
+	Area      string       `json:"area,omitempty"`
+	Blocks    []string     `json:"blocks,omitempty"`
+	DependsOn []moduleLink `json:"dependsOn"`
+	UsedBy    int          `json:"usedBy"` // modules that call into this one
+}
+
+// runModules prints every module with its size, area and dependencies, then the
+// areas and anything in areas.toml or blocks.toml that doesn't match the code.
+// It's the overview an agent needs to organise the map (skills/codemap).
+func runModules(w io.Writer, args []string) error {
+	var c cli.Common
+	fs := cli.NewFlagSet("modules", modulesUsage)
+	c.Register(fs)
+	pos, err := cli.Parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 0 {
+		return cli.Usage(modulesUsage)
+	}
+	ix, proj, err := c.Load()
+	if err != nil {
+		return err
+	}
+	if proj == nil {
+		proj = &project.Project{}
+	}
+
+	areaOf := map[string]string{}
+	var problems []string
+	for _, a := range proj.Areas {
+		for _, m := range a.Modules {
+			if ix.Module[m] == nil && !isBlock(proj, m) {
+				problems = append(problems, fmt.Sprintf("area %q lists %s, which isn't a module or block", a.Name, m))
+				continue
+			}
+			if prev, ok := areaOf[m]; ok {
+				problems = append(problems, fmt.Sprintf("%s is in two areas: %q and %q", m, prev, a.Name))
+				continue
+			}
+			areaOf[m] = a.Name
+		}
+	}
+	blocksOf := map[string][]string{}
+	for _, b := range proj.Blocks {
+		if ix.Module[b.From] == nil {
+			problems = append(problems, fmt.Sprintf("block %q splits %s, which isn't a module", b.Name, b.From))
+			continue
+		}
+		if b.ID == "" {
+			problems = append(problems, fmt.Sprintf("block %q has no id (use \"block:%s\")", b.Name, project.Slugify(b.Name)))
+		}
+		blocksOf[b.From] = append(blocksOf[b.From], b.Name)
+	}
+
+	rows := map[string]*moduleRow{}
+	for _, m := range ix.G.Modules {
+		rows[m.ID] = &moduleRow{ID: m.ID, Label: m.Label, External: m.External, Area: areaOf[m.ID], Blocks: blocksOf[m.ID], DependsOn: []moduleLink{}}
+	}
+	for _, n := range ix.G.Nodes {
+		r := rows[n.Module]
+		if r == nil || n.Kind == graph.KindTest {
+			continue
+		}
+		r.Functions++
+		if n.Entry {
+			r.Entries++
+		}
+	}
+	deps := map[string]map[string]int{}
+	users := map[string]map[string]bool{}
+	for _, e := range ix.G.Edges {
+		from, to := ix.Node[e.From], ix.Node[e.To]
+		if from == nil || to == nil || from.Module == to.Module || from.Kind == graph.KindTest {
+			continue
+		}
+		if deps[from.Module] == nil {
+			deps[from.Module] = map[string]int{}
+		}
+		deps[from.Module][to.Module]++
+		if users[to.Module] == nil {
+			users[to.Module] = map[string]bool{}
+		}
+		users[to.Module][from.Module] = true
+	}
+	list := make([]*moduleRow, 0, len(rows))
+	for id, r := range rows {
+		if r.Functions == 0 {
+			continue // modules with only tests don't show on the map
+		}
+		r.DependsOn = links(ix, deps[id])
+		r.UsedBy = len(users[id])
+		list = append(list, r)
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
+
+	if c.JSON {
+		areas := proj.Areas
+		if areas == nil {
+			areas = []project.Area{}
+		}
+		return cli.WriteJSON(w, map[string]any{"modules": list, "areas": areas, "blocks": nonNilBlocks(proj.Blocks), "problems": nonNilStrings(problems)})
+	}
+
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "MODULE ID\tFNS\tENTRIES\tUSED BY\tAREA\tDEPENDS ON")
+	unplaced := 0
+	for _, r := range list {
+		area := r.Area
+		if area == "" {
+			area = "-"
+			unplaced++
+		}
+		var ds []string
+		for i, d := range r.DependsOn {
+			if i == 4 {
+				ds = append(ds, fmt.Sprintf("+%d more", len(r.DependsOn)-4))
+				break
+			}
+			ds = append(ds, d.Label)
+		}
+		label := r.ID
+		if len(r.Blocks) > 0 {
+			label += " (blocks: " + strings.Join(r.Blocks, ", ") + ")"
+		}
+		fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\t%s\n", label, r.Functions, r.Entries, r.UsedBy, area, strings.Join(ds, ", "))
+	}
+	tw.Flush()
+	fmt.Fprintf(w, "\n%d modules, %d areas, %d not in an area.\n", len(list), len(proj.Areas), unplaced)
+	if len(problems) > 0 {
+		fmt.Fprintln(w, "\nProblems:")
+		for _, p := range problems {
+			fmt.Fprintln(w, "  "+p)
+		}
+	}
+	return nil
+}
+
+func isBlock(p *project.Project, id string) bool {
+	for _, b := range p.Blocks {
+		if b.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func nonNilBlocks(b []project.Block) []project.Block {
+	if b == nil {
+		return []project.Block{}
+	}
+	return b
+}
+
+func nonNilStrings(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}

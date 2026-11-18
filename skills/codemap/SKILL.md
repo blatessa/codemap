@@ -1,6 +1,6 @@
 ---
 name: codemap
-description: Use codemap to understand a project's architecture (entry points, call paths, modules, tables, external services) and to write architecture proposals the user reviews in the codemap viewer. Use when the project has a .codemap/ directory, when the user mentions codemap or a proposal, or before structural changes where knowing what calls what would help.
+description: Use codemap to understand a project's architecture (entry points, call paths, modules, tables, external services) and to write architecture proposals the user reviews in the codemap viewer, and to organise the map (areas, blocks) so it reads well. Use when the project has a .codemap/ directory, when the user mentions codemap or a proposal, asks to organise or tidy the map, or before structural changes where knowing what calls what would help.
 ---
 
 # codemap
@@ -18,6 +18,7 @@ codemap show "POST /orders"          # call tree below an entry point or functio
 codemap show orders.Service.Place --depth 3
 codemap callers Repo.UpdateStatus    # what reaches this, up to the entry points
 codemap module internal/orders       # contents, what it depends on, what uses it
+codemap modules                      # every module at once, with its area and dependencies
 codemap search refund                # labels, files and doc comments
 ```
 
@@ -111,6 +112,36 @@ detail = "POST /v1/refunds"
 - Leave `base` and `updated` alone. codemap sets them.
 - To move an existing function to another module, list it with its real ID and the new module: `[[node]]` with `id = "go:shop/internal/orders.(*Service).MarkPaid"` and `module = "mod:go:shop/internal/payments"`.
 - The user comments on a proposal from the viewer. Each comment is appended to the body under a `###` heading naming what it's about (a function, a module, or `file:lines` with the highlighted code quoted below). When asked to work through a proposal, read its body and treat those comments as the things to address.
+
+## Organising the map
+
+When the user asks you to make the map readable ("make this codebase look good in codemap", "organise the map"), you shape how it's grouped. You don't change code. The user reads the map at three levels: areas (named regions), the modules inside them, and the functions inside a module, which only show in full when they select it. Aim for a first screen that explains the system in a few seconds.
+
+1. Get the whole picture:
+   ```sh
+   codemap modules            # every module: size, entry points, area, what it depends on; then problems
+   codemap module internal/orders   # a closer look where a module is unclear or very large
+   ```
+2. Group modules into **areas** in `.codemap/areas.toml`, by what they do for the product, not by folder: "Checkout", "Accounts", "Background jobs", "Web app", "Platform". Some rules of thumb:
+   - About 3 to 8 areas. Each one should be explainable in a sentence.
+   - Put modules that call each other a lot together. Modules many others use (config, logging, db helpers) go in one "Platform" or "Shared" area.
+   - Keep the frontend and its API close: name areas so a page and the routes it calls read as one story.
+   - External systems (databases, queues, third-party services) can share an "External" area.
+   - Every module should be in at most one area. Leaving a few out is fine.
+3. **Split** a module that mixes unrelated jobs, or that's much larger than the rest (say 40+ functions), into blocks in `.codemap/blocks.toml`. A node goes into the first block whose rules match it; the rest stay in the module. Blocks can go in areas by their `id`.
+   ```toml
+   [[block]]
+   id = "block:handlers-billing"            # "block:" + a slug of the name
+   name = "handlers · billing"
+   from = "mod:go:app/internal/handlers"
+   match = ["Billing*", "*Invoice*"]        # globs on function labels
+   files = ["internal/handlers/billing*"]   # and/or globs on file paths
+   ```
+4. **Describe** modules in the doc comments that already exist: the viewer shows a module's package doc comment (Go) or file doc comment. If they're missing and the user agrees, adding them is the best way to explain a module.
+5. Delete `.codemap/layout.json` after changing areas or blocks, so codemap lays everything out again with each area's modules together. If the viewer is open, it redraws on its own.
+6. Run `codemap modules` again and fix anything under "Problems" (unknown IDs, a module in two areas, a block without an id). Then tell the user what you grouped and why in a few lines, and suggest they look at it in `codemap serve`.
+
+Areas, blocks and layout are the user's to adjust afterwards. Don't redo their changes later unless they ask.
 
 ## Other .codemap files
 

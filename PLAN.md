@@ -558,6 +558,7 @@ codemap show <id|label|"POST /orders">      # call tree as indented text, with S
 codemap callers <id|label> [--depth N]
                                             # show/callers: --detail features (default) | code
 codemap module <id|path>                    # contents, uses, depends on
+codemap modules                             # every module: size, entries, area, deps; area/block problems
 codemap search <text>
 codemap proposal list | new <name> | archive <slug> --pr N
 ```

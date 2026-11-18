@@ -167,7 +167,10 @@ export async function load() {
     else next.versions!.blocks = s.versions.blocks;
     if (!keep('layout')) {
       const l = pr.layout ?? {};
-      next.pos = first ? { ...l } : { ...s.pos, ...l };
+      // layout.json deleted (say, by an agent that reorganised the areas): lay
+      // everything out again, so each area's modules come together
+      const removed = !first && v.layout === 'missing' && !!s.versions.layout && s.versions.layout !== 'missing';
+      next.pos = first || removed ? { ...l } : { ...s.pos, ...l };
       next.layoutSaved = Object.keys(l).length > 0;
     } else next.versions!.layout = s.versions.layout;
     // proposals: take the server's copy unless we're mid-edit on it
