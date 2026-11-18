@@ -31,7 +31,7 @@ func setup(t *testing.T) (*Server, *httptest.Server, string) {
 		t.Fatal(err)
 	}
 	// Viewer state from trying the fixture locally isn't part of it.
-	for _, f := range []string{"layout.json", "blocks.toml"} {
+	for _, f := range []string{"blocks.toml"} {
 		os.Remove(filepath.Join(root, ".codemap", f))
 	}
 	b, err := os.ReadFile("../../testdata/shop.expected.json")
@@ -132,13 +132,12 @@ func TestState(t *testing.T) {
 	if len(st.Project.Areas) != 5 || len(st.Project.Proposals) != 2 || st.Project.Proposals[1].Body == "" {
 		t.Errorf("project: %+v", st.Project)
 	}
-	if st.Project.Blocks == nil || st.Project.Layout == nil {
+	if st.Project.Blocks == nil {
 		t.Error("empty lists should be [] / {}, not null")
 	}
 	want := map[string]string{
 		"areas":                  diskVersion(t, root, "areas.toml"),
 		"blocks":                 Missing,
-		"layout":                 Missing,
 		"external":               diskVersion(t, root, "external.toml"),
 		"proposals/refunds":      diskVersion(t, root, "proposals/refunds.md"),
 		"proposals/order-search": diskVersion(t, root, "proposals/order-search.md"),
@@ -169,9 +168,6 @@ func TestProjectRoundTrip(t *testing.T) {
 		{"blocks", "blocks.toml",
 			[]project.Block{{ID: "block:pages-checkout", Name: "pages · checkout", From: "mod:ts:web/src/pages", Match: []string{"/checkout*"}}},
 			func(p *project.Project) any { return p.Blocks }},
-		{"layout", "layout.json",
-			project.Layout{"mod:go:shop/internal/orders": {1200, 80}, "area:Commerce": {10, 20.5}},
-			func(p *project.Project) any { return p.Layout }},
 		{"external", "external.toml",
 			project.External{
 				Nodes: []map[string]any{{"id": "ext:stripe", "owner": "Someone else"}},
@@ -202,12 +198,6 @@ func TestProjectRoundTrip(t *testing.T) {
 			}
 			if !reflect.DeepEqual(c.want(disk), c.value) {
 				t.Errorf("on disk: %#v\nwant %#v", c.want(disk), c.value)
-			}
-			if c.name == "layout" {
-				b, _ := os.ReadFile(filepath.Join(root, ".codemap", c.file))
-				if want, _ := project.MarshalLayout(c.value.(project.Layout)); !bytes.Equal(b, want) {
-					t.Errorf("layout bytes: %s", b)
-				}
 			}
 			st := getState(t, ts)
 			if st.Versions[c.name] != v.Version {

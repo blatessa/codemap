@@ -55,7 +55,6 @@ export interface Block {
   files?: string[] | null;
 }
 
-export type Layout = Record<string, [number, number]>;
 
 
 export type Loose = Record<string, unknown>;
@@ -77,7 +76,6 @@ export interface Project {
   config: unknown;
   areas: Area[] | null;
   blocks: Block[] | null;
-  layout: Layout | null;
   external: unknown;
   proposals: Proposal[] | null;
 }

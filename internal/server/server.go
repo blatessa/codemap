@@ -201,7 +201,6 @@ func (s *Server) reloadProject() error {
 var projectFiles = map[string]string{
 	"areas":    "areas.toml",
 	"blocks":   "blocks.toml",
-	"layout":   "layout.json",
 	"external": "external.toml",
 }
 

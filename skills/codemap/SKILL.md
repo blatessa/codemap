@@ -138,10 +138,10 @@ When the user asks you to make the map readable ("make this codebase look good i
    files = ["internal/handlers/billing*"]   # and/or globs on file paths
    ```
 4. **Describe** modules in the doc comments that already exist: the viewer shows a module's package doc comment (Go) or file doc comment. If they're missing and the user agrees, adding them is the best way to explain a module.
-5. Delete `.codemap/layout.json` after changing areas or blocks, so codemap lays everything out again with each area's modules together. If the viewer is open, it redraws on its own.
+5. Positions aren't stored: codemap lays the map out from the areas and blocks every time, and an open viewer redraws as soon as you save the files. (An old `.codemap/layout.json` is ignored and can be deleted.)
 6. Run `codemap modules` again and fix anything under "Problems" (unknown IDs, a module in two areas, a block without an id). Then tell the user what you grouped and why in a few lines, and suggest they look at it in `codemap serve`.
 
-Areas, blocks and layout are the user's to adjust afterwards. Don't redo their changes later unless they ask.
+Areas and blocks are the user's to adjust afterwards. Don't redo their changes later unless they ask.
 
 ## Other .codemap files
 
@@ -151,7 +151,6 @@ These belong to the user. They edit them in the viewer, and the files are plain 
 |---|---|
 | `areas.toml` | Named groups of modules, one `[[area]]` each |
 | `blocks.toml` | A module split into blocks by pattern, one `[[block]]` each |
-| `layout.json` | Box positions |
 | `external.toml` | External systems and their details (`[[node]]`): owner, links, setup. Also calls into the code that the code can't show, such as a webhook from Stripe (`[[edge]]`). |
 | `config.toml` | Extractor settings: job, subscriber and publisher call patterns, HTTP client wrappers, migration globs, the editor command |
 

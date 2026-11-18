@@ -10,11 +10,11 @@ import {
   currentProposal,
   getState,
   load,
-  resetLayout,
   select,
   setMode,
   setState,
   subscribe,
+  tidyLayout,
   useModel,
   useStore,
   type RectOf,
@@ -60,7 +60,6 @@ function useMapCommands(): Cmd[] {
   const ro = useStore((s) => s.readOnly);
   const showAll = useStore((s) => s.showAll);
   const collapsed = useStore((s) => s.collapsed.size > 0);
-  const layoutSaved = useStore((s) => s.layoutSaved);
   const revs = useCompare((c) => c.revs);
   const spec = useCompare((c) => c.spec);
   const propose = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
@@ -70,7 +69,7 @@ function useMapCommands(): Cmd[] {
     { id: 'fit', label: 'Fit map to screen', hint: '0', run: fit },
     { id: 'collapse', label: collapsed ? 'Expand all modules' : 'Collapse all modules', run: () => collapseAll(m) },
     { id: 'area', label: 'New area', run: () => newAreaAt(m, rectOf, []), off: ro },
-    { id: 'reset', label: 'Reset layout', run: resetLayout, off: ro || !layoutSaved },
+    { id: 'tidy', label: 'Tidy layout', run: tidyLayout },
     { id: 'proposals', label: 'Proposals', run: () => setMode('propose') },
     ...presets(revs).map((p) => ({ id: 'cmp-' + p.id, label: 'Compare: ' + p.label, run: () => void compare(p.from, p.to) })),
     { id: 'cmp-off', label: 'Stop comparing', run: () => void viewRev('worktree'), off: !spec },

@@ -18,7 +18,7 @@ const GRAPH = path.resolve(process.env.CODEMAP_MOCK_GRAPH ?? path.join(here, '..
 const DIR = path.join(ROOT, '.codemap');
 
 type Obj = Record<string, unknown>;
-const FILES = ['areas', 'blocks', 'layout', 'external'] as const;
+const FILES = ['areas', 'blocks', 'external'] as const;
 // the [[key]] each list file keeps its entries under
 const LIST_KEY: Record<string, string> = { areas: 'area', blocks: 'block' };
 type FileKey = (typeof FILES)[number];
@@ -43,10 +43,6 @@ function readText(name: string): string | null {
 }
 
 function readFile(key: FileKey): unknown {
-  if (key === 'layout') {
-    const t = readText('layout.json');
-    return t ? JSON.parse(t) : {};
-  }
   const t = readText(key + '.toml');
   const v: Obj = t ? TOML.parse(t) : {};
   // TOML has no top-level arrays: lists are [[area]], [[block]] and [[view]]
@@ -168,7 +164,6 @@ const projectOf = () => ({
   config: db.config,
   areas: db.files.areas,
   blocks: db.files.blocks,
-  layout: db.files.layout,
   external: db.files.external,
   proposals: [...db.proposals.values()],
 });
@@ -183,7 +178,6 @@ function sourceLines(file: string): string[] | null {
   }
 }
 
-const sortedLayout = (l: Obj) => Object.fromEntries(Object.keys(l).sort().map((k) => [k, l[k]]));
 
 async function handle(req: IncomingMessage, res: ServerResponse, next: () => void) {
   const url = new URL(req.url ?? '/', 'http://x');
@@ -205,21 +199,20 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
   }
   // test hook: serve another graph with an empty .codemap (reset restores the fixture)
   if (p === '/__mock/load' && m === 'PUT') {
-    db = { graph: (await readBody(req)) as Obj, config: {}, files: { areas: [], blocks: [], layout: {}, external: {} }, proposals: new Map() };
+    db = { graph: (await readBody(req)) as Obj, config: {}, files: { areas: [], blocks: [], external: {} }, proposals: new Map() };
     return send(res, 204);
   }
   if (p === '/api/state' && m === 'GET') return send(res, 200, { graph: db.graph, project: projectOf(), versions: versions() });
-  const pf = /^\/api\/project\/(areas|blocks|layout|external)$/.exec(p);
+  const pf = /^\/api\/project\/(areas|blocks|external)$/.exec(p);
   if (pf && m === 'PUT') {
     const key = pf[1] as FileKey;
     const cur = hash(db.files[key]);
     const im = req.headers['if-match'];
     if (im !== undefined && im !== cur) return send(res, 409, { version: cur, value: db.files[key] });
     let v = await readBody(req);
-    if (key === 'layout') v = sortedLayout((v ?? {}) as Obj);
     db.files[key] = v;
     // like the real server's file watcher, which also sees our own writes
-    broadcast('project-changed', [`.codemap/${key}.${key === 'layout' ? 'json' : 'toml'}`]);
+    broadcast('project-changed', [`.codemap/${key}.toml`]);
     return send(res, 200, { version: hash(v) });
   }
   if (p === '/api/proposals' && m === 'GET') return send(res, 200, [...db.proposals.values()]);

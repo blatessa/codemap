@@ -226,7 +226,11 @@ async function layoutFlow(
     }),
   );
   const [pt, pl, pb, pr] = [44, 20, 20, 20]; // AREA_PAD
-  const top = children.map((c) => (groups.has(c.id) ? { id: c.id, width: inner.get(c.id)!.w + pl + pr, height: inner.get(c.id)!.h + pt + pb } : c));
+  // an area is at least as wide as its title (MapView's AreaG draws it that way)
+  const titleW = (id: string) => (id.length - 'area:'.length) * 13 * 0.56 + 32;
+  const top = children.map((c) =>
+    groups.has(c.id) ? { id: c.id, width: Math.max(inner.get(c.id)!.w + pl + pr, titleW(c.id)), height: inner.get(c.id)!.h + pt + pb } : c,
+  );
   const at = (id: string) => parent.get(id) ?? id;
   const seen = new Set<string>();
   const topEdges: ElkExtendedEdge[] = [];

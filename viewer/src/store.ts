@@ -5,7 +5,7 @@ import { escapeGlob, slugify } from './blocks';
 import { layoutUnplaced, type Pos } from './layout';
 import { buildGrouping, isGroup, layoutH, topOf, type Grouping } from './groups';
 import { buildModel, selectionOf, type Model, type Sel } from './model';
-import type { Area, Block, Graph, Layout, Loose, Proposal } from './types';
+import type { Area, Block, Graph, Loose, Proposal } from './types';
 
 export type Mode = 'explore' | 'propose';
 export interface Form {
@@ -24,8 +24,7 @@ export interface S {
   blocks: Block[];
   proposals: Proposal[];
   versions: Record<string, string>;
-  pos: Pos; // box and empty-area positions; mirrors layout.json once anything is dragged
-  layoutSaved: boolean; // layout.json has positions
+  pos: Pos; // box and empty-area positions for this session: laid out automatically, then dragged
   mode: Mode;
   sel: string[];
   hover: string | null;
@@ -60,7 +59,6 @@ export const useStore = create<S>(() => ({
   proposals: [],
   versions: {},
   pos: {},
-  layoutSaved: false,
   mode: 'explore',
   sel: [],
   hover: null,
@@ -165,14 +163,10 @@ export async function load() {
     else next.versions!.areas = s.versions.areas;
     if (!keep('blocks')) next.blocks = pr.blocks ?? [];
     else next.versions!.blocks = s.versions.blocks;
-    if (!keep('layout')) {
-      const l = pr.layout ?? {};
-      // layout.json deleted (say, by an agent that reorganised the areas): lay
-      // everything out again, so each area's modules come together
-      const removed = !first && v.layout === 'missing' && !!s.versions.layout && s.versions.layout !== 'missing';
-      next.pos = first || removed ? { ...l } : { ...s.pos, ...l };
-      next.layoutSaved = Object.keys(l).length > 0;
-    } else next.versions!.layout = s.versions.layout;
+    // Positions aren't stored: the map is laid out on load, and again when the
+    // areas or blocks change on disk (say, an agent reorganised them), so each
+    // area's modules come together. Drags hold for the session.
+    if (first || !keep('areas') || !keep('blocks')) next.pos = {};
     // proposals: take the server's copy unless we're mid-edit on it
     const server = pr.proposals ?? [];
     next.proposals = server.map((p) => {
@@ -248,9 +242,9 @@ export async function ensureLayout() {
   if (!hadAny) set({ fitSeq: get().fitSeq + 1 });
 }
 
-export function resetLayout() {
-  set({ pos: {}, layoutSaved: false });
-  persist('layout', {});
+// tidyLayout drops this session's drags and lays the map out again.
+export function tidyLayout() {
+  set({ pos: {} });
   void ensureLayout().then(() => set({ fitSeq: get().fitSeq + 1 }));
 }
 
@@ -276,20 +270,7 @@ function valueOf(file: api.ProjectFile): unknown {
   const s = get();
   if (file === 'areas') return s.areas;
   if (file === 'blocks') return s.blocks;
-  if (file === 'layout') return layoutValue(s);
   return null;
-}
-
-// layoutValue is everything placed: once one box is dragged, all positions are
-// written so later runs (and new modules) don't shuffle the rest.
-function layoutValue(s: S): Layout {
-  const m = modelOf({ ...s, mode: 'explore' });
-  const out: Layout = {};
-  for (const b of m.boxes) if (!b.prop && !b.ghost && s.pos[b.id]) out[b.id] = s.pos[b.id];
-  for (const a of s.areas) if (s.pos['area:' + a.name]) out['area:' + a.name] = s.pos['area:' + a.name];
-  const G = groupingFor(m, s.areas);
-  if (G) for (const id of G.groups.keys()) if (s.pos[id]) out[id] = s.pos[id];
-  return out;
 }
 
 export function persist(file: api.ProjectFile, explicit?: unknown, ms = 300) {
@@ -300,7 +281,7 @@ export function persist(file: api.ProjectFile, explicit?: unknown, ms = 300) {
       const value = explicit ?? valueOf(file);
       try {
         const v = await api.putProject(file, value, get().versions[file]);
-        set({ versions: { ...get().versions, [file]: v }, ...(file === 'layout' ? { layoutSaved: Object.keys(value as object).length > 0 } : {}) });
+        set({ versions: { ...get().versions, [file]: v } });
       } catch (e) {
         if (e instanceof api.Conflict) applyConflict(file, e);
         else console.error(e);
@@ -315,7 +296,6 @@ function applyConflict(file: api.ProjectFile, c: api.Conflict) {
   const versions = { ...s.versions, [file]: c.version };
   if (file === 'areas') set({ areas: (c.value as Area[]) ?? [], versions });
   else if (file === 'blocks') set({ blocks: (c.value as Block[]) ?? [], versions });
-  else if (file === 'layout') set({ pos: { ...s.pos, ...((c.value as Layout) ?? {}) }, versions });
   else set({ versions });
 }
 
@@ -395,7 +375,6 @@ export function addArea(mods: string[], rectOf: RectOf, at?: [number, number]) {
   if (!mods.length && at) pos['area:' + name] = at;
   set({ areas: [...left.areas, { name, modules: mods }], pos, sel: ['area:' + name], form: null, splitting: null });
   persist('areas');
-  persist('layout');
   return name;
 }
 
@@ -413,7 +392,6 @@ export function renameArea(old: string, name: string) {
     sel: s.sel.map((x) => (x === 'area:' + old ? 'area:' + name : x)),
   });
   persist('areas', undefined, 500);
-  persist('layout', undefined, 500);
   return true;
 }
 
@@ -423,7 +401,6 @@ export function deleteArea(name: string) {
   delete pos['area:' + name];
   set({ areas: s.areas.filter((a) => a.name !== name), pos, sel: s.sel.filter((x) => x !== 'area:' + name) });
   persist('areas');
-  persist('layout');
 }
 
 export function removeFromArea(name: string, id: string, rectOf: RectOf) {
@@ -437,7 +414,6 @@ export function removeFromArea(name: string, id: string, rectOf: RectOf) {
   }
   set({ areas: s.areas.map((x) => (x.name === name ? { ...x, modules: (x.modules ?? []).filter((m) => m !== id) } : x)), pos });
   persist('areas');
-  persist('layout');
 }
 
 // dropBox ends a box drag in one update: the box moves to `at` and joins `target`
@@ -453,7 +429,6 @@ export function dropBox(id: string, at: [number, number], target: string | null,
     set({ areas, pos: { ...left.pos, [id]: at } });
     persist('areas');
   }
-  persist('layout');
 }
 
 // ---- positions ----
@@ -467,10 +442,6 @@ export function toggleExpanded(id: string) {
 
 export function movePos(updates: Pos) {
   set({ pos: { ...get().pos, ...updates } });
-}
-
-export function savePositions() {
-  persist('layout');
 }
 
 export function moveProposalModule(id: string, at: [number, number]) {
@@ -492,7 +463,6 @@ export function splitBlock(from: string, labels: string[], name: string, at: [nu
   set({ blocks: [...s.blocks, block], areas, pos: { ...s.pos, [id]: at }, sel: [id], splitting: null, form: null });
   persist('blocks');
   persist('areas');
-  persist('layout');
   return id;
 }
 
@@ -510,7 +480,6 @@ export function mergeBlock(id: string) {
   set({ blocks: s.blocks.filter((x) => x.id !== id), areas: without(s.areas, [id]), pos, sel: [b.from] });
   persist('blocks');
   persist('areas');
-  persist('layout');
 }
 
 

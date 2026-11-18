@@ -12,7 +12,6 @@ import {
   movePos,
   moveProposalModule,
   proposeEdge,
-  savePositions,
   select,
   setState,
   toggleExpanded,
@@ -320,9 +319,9 @@ function buildDisp(
     const room = !!subT && withSub <= cap;
     const h = room ? Math.max(FARH, withSub) : Math.max(FARH, Math.min(cap, py * 2 + fn * 1.2));
     let name = fitText(b.label, tw, fn, MONO, true);
-    // big maps: a name that doesn't fit runs past its box rather than being cut;
-    // names that would collide are hidden by declutter
-    if (!name || (name.endsWith('…') && (G || name.length < 8))) name = b.label.split('/').pop() || b.label;
+    // a cut name hides what tells boxes apart: show the last path segment whole,
+    // past the box if need be (declutter hides names that would collide)
+    if (!name || name.endsWith('…')) name = b.label.split('/').pop() || b.label;
     return {
       h,
       far: { name, sub: room ? subT : '', fn, fs, px: px + nx * fn, nb: (room ? py : (h - fn * 1.2) / 2) + fn * 0.95, sb: py + fn * 1.2 + fs },
@@ -1051,7 +1050,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       }
       if (g.grp) {
         movePos({ [g.id]: p });
-        savePositions();
         return;
       }
       // the drop target is the area under the pointer, as highlighted
@@ -1067,7 +1065,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
         else if (b && !b.ghost) real[id] = p;
       }
       movePos(real);
-      savePositions();
     }
   }
 

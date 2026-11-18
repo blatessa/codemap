@@ -10,8 +10,7 @@ import (
 
 func TestLoadFSAndProposals(t *testing.T) {
 	fsys := fstest.MapFS{
-		"areas.toml":  {Data: []byte("[[area]]\nname = \"Commerce\"\nmodules = [\"mod:go:shop/internal/orders\"]\n")},
-		"layout.json": {Data: []byte(`{"mod:go:shop/internal/orders":[1200,80]}`)},
+		"areas.toml": {Data: []byte("[[area]]\nname = \"Commerce\"\nmodules = [\"mod:go:shop/internal/orders\"]\n")},
 		"external.toml": {Data: []byte(`[[node]]
 id = "ext:stripe"
 owner = "Payments team"
@@ -36,9 +35,6 @@ detail = "sends events"
 	}
 	if len(p.Areas) != 1 || p.Areas[0].Name != "Commerce" {
 		t.Errorf("areas: %+v", p.Areas)
-	}
-	if p.Layout["mod:go:shop/internal/orders"] != [2]float64{1200, 80} {
-		t.Errorf("layout: %+v", p.Layout)
 	}
 	if len(p.Proposals) != 2 {
 		t.Fatalf("proposals: %d", len(p.Proposals))

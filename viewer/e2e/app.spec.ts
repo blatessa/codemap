@@ -133,3 +133,19 @@ test('a big map folds folders into groups, and a trace opens the ones it runs th
   await expect(box(page, 'mod:go:big/internal/plugins/p5')).toHaveCount(0);
 });
 
+
+test('when an agent changes areas.toml, the open map lays out again with the new areas', async ({ page }) => {
+  await open(page);
+  const st = await (await page.request.get('/api/state')).json();
+  const areas = (st.project.areas as { name: string; modules: string[] }[]).map((a) => ({
+    ...a,
+    modules: a.name === 'Web app' ? [...a.modules, 'mod:go:shop/internal/sched'] : a.modules.filter((m) => m !== 'mod:go:shop/internal/sched'),
+  }));
+  await page.request.put('/api/project/areas', { data: areas, headers: { 'If-Match': st.versions.areas } });
+  const inside = async () => {
+    const a = await page.locator('#map [data-area-box="Web app"] .arect').boundingBox();
+    const b = await page.locator('#map [data-box="mod:go:shop/internal/sched"]').first().boundingBox();
+    return !!a && !!b && b.x >= a.x && b.y >= a.y && b.x + b.width <= a.x + a.width + 1 && b.y + b.height <= a.y + a.height + 1;
+  };
+  await expect.poll(inside).toBe(true);
+});

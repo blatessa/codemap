@@ -206,7 +206,6 @@ array of tables under a singular key (`[[area]]`, `[[block]]`, `[[view]]`).
 | `config.toml` | Extractor settings (§5.7). Optional; everything has defaults. |
 | `areas.toml` | `[[area]]` / `name = "Commerce"` / `modules = ["mod:…", "block:…"]`. Any number of areas. |
 | `blocks.toml` | Splits of a module into named blocks, as **rules** so new code lands automatically (§4.1). |
-| `layout.json` | Positions written by the viewer: `{ "<module or block id>": [x, y], "area:<name>": [x, y] }`. Machine-written, sorted keys. |
 | `external.toml` | Declared nodes and edges, plus extra fields merged into extracted nodes (§5.6). |
 | `proposals/<slug>.md` | One proposal per file (§6). |
 
@@ -495,9 +494,13 @@ and wording.
   pass. Use React for the panel and controls. For the map, plain SVG strings or memoised
   components are fine. It must stay responsive at about 3,000 functions and 300 modules (zoomed
   out, only module boxes render).
-- **Layout:** ELK.js, `layered` algorithm, left to right, in a Web Worker. Saved positions from
-  `layout.json` are fixed, and ELK places only modules that don't have a position yet. Dragging
-  writes to `layout.json` (debounced). Layout stays stable between runs.
+- **Layout:** automatic, never stored. ELK.js `layered`, left to right, in a Web Worker, in two
+  passes: each area's modules on their own (so an area is compact and at least as wide as its
+  title), then the areas and loose boxes together, with calls between areas counted once per
+  pair. Boxes are sized for what they show at rest. The same code and areas give the same map
+  every time. Drags last for the session; "Tidy layout" drops them. When `areas.toml` or
+  `blocks.toml` change on disk, the open map lays out again. Areas, not positions, are how the
+  user (or an agent) organises the map.
 - **Map features:**
   - modules and blocks with function rows
   - user-defined areas: create, rename, delete, drag modules in and out, drag an area to move
@@ -538,10 +541,10 @@ and wording.
   default one, the map opens on "this branch vs <default>"; `#rev=worktree` opens the plain map. It shows one rev (worktree by default, read-only otherwise) or compares two, with one-click presets (uncommitted changes, last commit, this branch vs the default branch, since a commit, open PRs) and a timeline of commits (click: compare with the parent; shift-click two: compare them). Comparing colours added nodes and edges green, removed ones as faded red outlines from the `from` graph, changed functions amber, and marks boxes and folder groups holding changes. "Changes only" trims the map to changes plus one hop. With nothing selected the drawer shows the summary; a changed node's source shows as a diff. The URL hash keeps the state (`#compare=HEAD~1..HEAD`, `#rev=main`).
 - **Top bar and controls:** the compare control (left), one search box that also runs
   commands (`/` or ⌘K/Ctrl K: functions, modules, and commands such as "show all", "new
-  area", "reset layout", compare presets), and Proposals (right). Zoom, Fit and Show all float
+  area", "tidy layout", compare presets), and Proposals (right). Zoom, Fit and Show all float
   bottom-left. Right-click menus on functions (show only this path, comment, open in editor,
   copy ID), modules (show what's inside, comment, collapse, new area) and the
-  canvas (show all, fit, collapse all, new area, reset layout). Keys: `A` show all, `0` fit,
+  canvas (show all, fit, collapse all, new area, tidy layout). Keys: `A` show all, `0` fit,
   `F` focus, `C` comment, Esc back out. The URL keeps the comparison (`#compare=…`), not the
   selection.
 - **Copy:** minimal text, no explanatory paragraphs, no per-row status badges. Both light and

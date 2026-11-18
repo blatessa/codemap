@@ -65,9 +65,6 @@ func projectJSON(p *project.Project) project.Project {
 	if c.Blocks == nil {
 		c.Blocks = []project.Block{}
 	}
-	if c.Layout == nil {
-		c.Layout = project.Layout{}
-	}
 	if c.Proposals == nil {
 		c.Proposals = []*project.Proposal{}
 	}
@@ -143,16 +140,6 @@ var kinds = map[string]fileKind{
 		}
 	}),
 	"external": tomlKind(project.External{}, nil),
-	"layout": {
-		zero:    func() any { return &project.Layout{} },
-		marshal: func(v any) ([]byte, error) { return project.MarshalLayout(*v.(*project.Layout)) },
-		parse:   func(b []byte, v any) error { return json.Unmarshal(b, v) },
-		fix: func(v any) {
-			if l := v.(*project.Layout); *l == nil {
-				*l = project.Layout{}
-			}
-		},
-	},
 }
 
 // currentValue parses the bytes of a project file for a 409 body. A missing

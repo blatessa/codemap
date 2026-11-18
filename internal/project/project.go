@@ -3,7 +3,6 @@
 package project
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -24,7 +23,6 @@ type Project struct {
 	Config    Config      `json:"config"`
 	Areas     []Area      `json:"areas"`
 	Blocks    []Block     `json:"blocks"`
-	Layout    Layout      `json:"layout"`
 	External  External    `json:"external"`
 	Proposals []*Proposal `json:"proposals"`
 }
@@ -43,9 +41,6 @@ type Block struct {
 	Match []string `toml:"match,omitempty" json:"match,omitempty"` // globs on node label
 	Files []string `toml:"files,omitempty" json:"files,omitempty"` // globs on node file
 }
-
-// Layout maps module, block and "area:<name>" IDs to [x, y] positions.
-type Layout map[string][2]float64
 
 // External is .codemap/external.toml: declared nodes and edges (§5.6).
 // Node entries are free-form maps; see ToGraph.
@@ -66,7 +61,7 @@ func Load(root string) (*Project, error) { return LoadFS(os.DirFS(filepath.Join(
 
 // LoadFS reads a .codemap directory from any fs.FS (for example a git revision).
 func LoadFS(fsys fs.FS) (*Project, error) {
-	p := &Project{Layout: Layout{}}
+	p := &Project{}
 	files := []struct {
 		name  string
 		parse func([]byte) error
@@ -80,13 +75,6 @@ func LoadFS(fsys fs.FS) (*Project, error) {
 		if err := readFile(fsys, f.name, f.parse); err != nil {
 			return nil, err
 		}
-	}
-	if b, err := fs.ReadFile(fsys, "layout.json"); err == nil {
-		if err := json.Unmarshal(b, &p.Layout); err != nil {
-			return nil, fmt.Errorf("layout.json: %w", err)
-		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return nil, err
 	}
 	entries, err := fs.ReadDir(fsys, "proposals")
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -145,15 +133,6 @@ func WriteFile(root, name string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), full)
-}
-
-// MarshalLayout encodes a layout as JSON with sorted keys, one entry per line.
-func MarshalLayout(l Layout) ([]byte, error) {
-	b, err := json.MarshalIndent(l, "", "  ") // encoding/json sorts map keys
-	if err != nil {
-		return nil, err
-	}
-	return append(b, '\n'), nil
 }
 
 // BlockFor returns the ID of the first block that n falls into, or "" if none.

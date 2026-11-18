@@ -261,14 +261,6 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
       b = node.get(e.to)!;
     if (a.box !== b.box) a.row.pub = b.row.pub = true;
   }
-  // Layout sizes boxes for the Code level, so switching levels never makes
-  // boxes overlap: these rows would be public there.
-  const codePub = new Set<string>();
-  for (const e of edges) {
-    const a = node.get(e.from)!,
-      b = node.get(e.to)!;
-    if (a.box !== b.box) codePub.add(a.row.id).add(b.row.id);
-  }
 
   const boxes: Box[] = [];
   for (const b of box.values()) {
@@ -279,7 +271,9 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
       if (shownRows.has(r.id)) r.pub = true;
     }
     b.pub = b.rows.filter((r) => r.pub).length;
-    const lp = b.rows.filter((r) => (codePub.has(r.id) || r.node.entry || r.node.external || r.prop || r.ghost)).length;
+    // layout sizes a box for what it shows at rest (MapView's visible): a box
+    // that shows more for a selection is drawn above its neighbours
+    const lp = b.rows.filter((r) => r.node.entry || r.node.external || r.prop || r.ghost).length;
     b.defH = heightOf(lp, lp < b.rows.length);
     b.hasEntry = b.rows.some((r) => r.node.entry);
     b.sub = subOf(b.rows, b.prop);
