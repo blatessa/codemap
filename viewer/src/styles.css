@@ -72,8 +72,9 @@ body.ro .mhead{cursor:pointer}
 /* compare popover and changes */
 .cs{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .clist{display:flex;flex-direction:column}
-.ccommit{all:unset;cursor:pointer;display:flex;justify-content:space-between;gap:10px;padding:4px 6px;border-radius:5px;font-size:12.5px}
+.ccommit{all:unset;box-sizing:border-box;cursor:pointer;display:flex;justify-content:space-between;gap:10px;padding:4px 6px;border-radius:5px;font-size:12.5px}
 .ccommit:hover{background:var(--bg)}
+.ccommit.static{cursor:default}.ccommit.static:hover{background:none}
 .ccommit .m{color:var(--muted);font-family:var(--mono);font-size:11px;flex:none}
 .kind.chg{color:var(--diff-chg)}.kind.chg i{background:var(--diff-chg)}
 .kind.d-add{color:var(--diff-add)}.kind.d-add i{background:var(--diff-add)}

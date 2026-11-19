@@ -226,14 +226,26 @@ export function SummaryPanel() {
       {diff && diff.commits.length > 0 && (
         <Section title="Commits" count={diff.commits.length}>
           <div className="clist">
-            {diff.commits.map((c) => (
-              <button key={c.sha} className="ccommit" title={c.author} onClick={() => void compare(c.sha + '^', c.sha)}>
-                <span className="cs">{c.subject}</span>
-                <span className="m">
-                  {c.short} · {when(c.date)}
-                </span>
-              </button>
-            ))}
+            {diff.commits.map((c) => {
+              const body = (
+                <>
+                  <span className="cs">{c.subject}</span>
+                  <span className="m">
+                    {c.short} · {when(c.date)}
+                  </span>
+                </>
+              );
+              // a range of one commit is that commit: nothing to narrow to
+              return diff.commits.length === 1 ? (
+                <div key={c.sha} className="ccommit static" title={c.author}>
+                  {body}
+                </div>
+              ) : (
+                <button key={c.sha} className="ccommit" title={c.author} onClick={() => void compare(c.sha + '^', c.sha)}>
+                  {body}
+                </button>
+              );
+            })}
           </div>
         </Section>
       )}
