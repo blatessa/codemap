@@ -13,6 +13,7 @@ import {
   isWorktree,
   parseDiff,
   presets,
+  type Preset,
   shortRev,
   sliceRange,
   sourceRev,
@@ -58,7 +59,6 @@ export function CompareControl() {
     setOpen(false);
     void compare(f, t);
   };
-  const ps = presets(revs);
   return (
     <div className="cmp" ref={ref}>
       <button id="cmp" className={`cmpbtn${spec ? ' on' : ''}${busy ? ' busy' : ''}`} aria-expanded={open} title={error || (busy && phase) || undefined} onClick={() => setOpen(!open)}>
@@ -73,54 +73,49 @@ export function CompareControl() {
         </button>
       )}
       <div className="pop cmppop" id="cmp-pop" hidden={!open}>
-        {ps.map((p) => (
-          <button key={p.id} className="res" data-preset={p.id} onClick={() => go(p.from, p.to)}>
-            <span>{p.label}</span>
-          </button>
-        ))}
-        {open && <More go={go} />}
+        {open && <Menu go={go} />}
       </div>
     </div>
   );
 }
 
-const ago = (iso: string) => {
-  const d = Math.max(0, Date.now() - Date.parse(iso)) / 36e5;
-  return d < 1 ? 'now' : d < 24 ? `${Math.floor(d)}h` : d < 24 * 30 ? `${Math.floor(d / 24)}d` : `${Math.floor(d / 24 / 30)}mo`;
-};
-
-// Branches (what each added since it left the main branch) and recent
-// commits (what each changed), one click each.
-function More({ go }: { go: (f: string, t: string) => void }) {
-  const revs = useCompare((c) => c.revs);
+// Menu is what the picker offers, in groups: this work, pull requests, other
+// branches, releases. The comparison on the map is marked.
+function Menu({ go }: { go: (f: string, t: string) => void }) {
+  const { revs, spec } = useCompare();
   if (!revs) return null;
+  const ps = presets(revs);
+  const on = (f: string, t: string) => !!spec && spec.from === f && spec.to === t;
   const base = revs.default;
   const branches = base ? revs.branches.filter((b) => b !== base && b !== revs.current).slice(0, 6) : [];
-  const commits = revs.commits.slice(0, 8);
+  const item = (p: Preset) => (
+    <button key={p.id} className={`cmpi${on(p.from, p.to) ? ' on' : ''}`} data-preset={p.id} onClick={() => go(p.from, p.to)}>
+      <span className="t">{p.label}</span>
+      <span className="s">{p.sub}</span>
+    </button>
+  );
+  const group = (title: string, items: React.ReactNode) => (
+    <div className="cmpg">
+      <div className="cmph">{title}</div>
+      {items}
+    </div>
+  );
+  const of = (g: Preset['group']) => ps.filter((p) => p.group === g);
   return (
     <>
-      {branches.length > 0 && (
-        <>
-          <div className="rhead">Branches</div>
-          {branches.map((b) => (
-            <button key={b} className="res" data-branch={b} onClick={() => go('base:' + base, b)}>
-              <span className="cs">{b}</span>
-              <span className="m">vs {base}</span>
+      <div className="cmpg">{of('main').map(item)}</div>
+      {of('pr').length > 0 && group('Pull requests', of('pr').map(item))}
+      {branches.length > 0 &&
+        group(
+          'Branches',
+          branches.map((b) => (
+            <button key={b} className={`cmpi row${on('base:' + base, b) ? ' on' : ''}`} data-branch={b} onClick={() => go('base:' + base, b)}>
+              <span className="t">{b}</span>
+              <span className="s">vs {base}</span>
             </button>
-          ))}
-        </>
-      )}
-      {commits.length > 0 && (
-        <>
-          <div className="rhead">Commits</div>
-          {commits.map((c) => (
-            <button key={c.sha} className="res" data-commit={c.short} title={c.author} onClick={() => go(c.sha + '^', c.sha)}>
-              <span className="cs">{c.subject}</span>
-              <span className="m">{ago(c.date)}</span>
-            </button>
-          ))}
-        </>
-      )}
+          )),
+        )}
+      {of('tag').length > 0 && group('Releases', of('tag').map(item))}
     </>
   );
 }

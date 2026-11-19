@@ -28,6 +28,7 @@ export interface PR {
 export interface Revs {
   commits: Commit[];
   branches: string[];
+  tags?: string[];
   current: string;
   default: string;
   head: string;
@@ -303,17 +304,30 @@ export async function stopCompare() {
 export interface Preset {
   id: string;
   label: string;
+  sub: string; // one line saying what it shows
   from: string;
   to: string;
+  group: 'main' | 'pr' | 'tag';
+}
+
+// ago is a time as "now", "3h", "2d", "4mo".
+export function ago(iso: string): string {
+  const h = Math.max(0, Date.now() - Date.parse(iso)) / 36e5;
+  if (isNaN(h)) return '';
+  return h < 1 ? 'now' : h < 24 ? `${Math.floor(h)}h` : h < 24 * 30 ? `${Math.floor(h / 24)}d` : `${Math.floor(h / 24 / 30)}mo`;
 }
 
 // presets are the comparisons most workflows start from: work not committed
-// yet, the last commit, the branch against the main branch, open PRs.
+// yet, the last commit, the branch against the main branch, open PRs, and
+// everything since a release.
 export function presets(r: Revs | null): Preset[] {
-  const out: Preset[] = [{ id: 'uncommitted', label: 'Uncommitted changes', from: 'HEAD', to: 'worktree' }];
-  if (r?.commits?.length) out.push({ id: 'last', label: 'Last commit', from: 'HEAD^', to: 'HEAD' });
-  if (r?.default && r.current && r.current !== r.default) out.push({ id: 'branch', label: `This branch vs ${r.default}`, from: 'base:' + r.default, to: 'worktree' });
-  for (const p of r?.prs ?? []) out.push({ id: 'pr' + p.number, label: `#${p.number} ${p.title}`, from: 'pr:' + p.number, to: '' });
+  const out: Preset[] = [{ id: 'uncommitted', label: 'Uncommitted changes', sub: r?.dirty === false ? 'Nothing uncommitted right now' : 'Edits not committed yet', from: 'HEAD', to: 'worktree', group: 'main' }];
+  const head = r?.commits.find((c) => c.sha === r.head) ?? r?.commits[0];
+  if (head) out.push({ id: 'last', label: 'Last commit', sub: `${head.subject} · ${ago(head.date)}`, from: 'HEAD^', to: 'HEAD', group: 'main' });
+  if (r?.default && r.current && r.current !== r.default)
+    out.push({ id: 'branch', label: `This branch vs ${r.default}`, sub: `${r.current}, from where it left ${r.default}`, from: 'base:' + r.default, to: 'worktree', group: 'main' });
+  for (const p of r?.prs ?? []) out.push({ id: 'pr' + p.number, label: `#${p.number} ${p.title}`, sub: `${p.author.login} · ${ago(p.updatedAt)}`, from: 'pr:' + p.number, to: '', group: 'pr' });
+  for (const t of (r?.tags ?? []).slice(0, 3)) out.push({ id: 'tag:' + t, label: `Since ${t}`, sub: 'Everything after that release', from: t, to: 'worktree', group: 'tag' });
   return out;
 }
 

@@ -108,6 +108,7 @@ func (s *Server) handleRevSource(w http.ResponseWriter, r *http.Request, rel str
 type revsResponse struct {
 	Commits  []gitrev.Commit `json:"commits"`
 	Branches []string        `json:"branches"`
+	Tags     []string        `json:"tags"`
 	Current  string          `json:"current"` // "" when detached
 	Default  string          `json:"default"`
 	Head     string          `json:"head"`
@@ -117,7 +118,7 @@ type revsResponse struct {
 
 func (s *Server) handleRevs(w http.ResponseWriter, r *http.Request) {
 	if s.repo == nil {
-		writeJSON(w, http.StatusOK, revsResponse{Commits: []gitrev.Commit{}, Branches: []string{}, PRs: []gitrev.PR{}})
+		writeJSON(w, http.StatusOK, revsResponse{Commits: []gitrev.Commit{}, Branches: []string{}, Tags: []string{}, PRs: []gitrev.PR{}})
 		return
 	}
 	ctx := r.Context()
@@ -136,6 +137,9 @@ func (s *Server) handleRevs(w http.ResponseWriter, r *http.Request) {
 	if res.Branches, err = s.repo.Branches(ctx); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if res.Tags = s.repo.Tags(ctx, 5); res.Tags == nil {
+		res.Tags = []string{}
 	}
 	res.Current = s.repo.CurrentBranch(ctx)
 	res.Default = s.repo.DefaultBranch(ctx)

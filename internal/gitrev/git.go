@@ -194,6 +194,21 @@ func (r *Repo) LogRange(ctx context.Context, from, to string, n int) ([]Commit, 
 	return cs, nil
 }
 
+// Tags lists the n most recent tags, newest first.
+func (r *Repo) Tags(ctx context.Context, n int) []string {
+	out, err := git(ctx, r.Root, "tag", "--sort=-creatordate", "--merged", "HEAD")
+	if err != nil {
+		return nil
+	}
+	var ts []string
+	for _, t := range strings.Fields(string(out)) {
+		if ts = append(ts, t); len(ts) == n {
+			break
+		}
+	}
+	return ts
+}
+
 // Branches lists local branches, most recently committed first.
 func (r *Repo) Branches(ctx context.Context) ([]string, error) {
 	out, err := git(ctx, r.Root, "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads/")
