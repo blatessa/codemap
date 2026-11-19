@@ -13,9 +13,10 @@ const nm = +M,
   nf = +F;
 for (let i = 0; i < nm; i++) {
   const id = `mod:go:big/pkg${i}`;
-  modules.push({ id, label: `internal/pkg${i}`, lang: 'go', path: `internal/pkg${i}`, doc: `Package pkg${i} does thing ${i}.` });
+  const dir = `internal/area${i % 12}/pkg${i}`; // packages in a dozen areas, as real repos group them
+  modules.push({ id, label: dir, lang: "go", path: dir, doc: `Package pkg${i} does thing ${i}.` });
   for (let j = 0; j < nf; j++)
-    nodes.push({ id: `go:big/pkg${i}.F${j}`, kind: 'function', label: `Type${j % 3}.Func${j}`, module: id, file: `internal/pkg${i}/f.go`, line: 10 + j * 10, endLine: 18 + j * 10 });
+    nodes.push({ id: `go:big/pkg${i}.F${j}`, kind: 'function', label: `Type${j % 3}.Func${j}`, module: id, file: `internal/area${i % 12}/pkg${i}/f.go`, line: 10 + j * 10, endLine: 18 + j * 10 });
 }
 for (let i = 0; i < 20; i++) nodes.push({ id: `route:GET /r${i}`, kind: 'route', label: `/r${i}`, module: 'mod:go:big/pkg0', entry: true, fields: { method: 'GET' } });
 modules.push({ id: 'mod:sql:database', label: 'database', external: true });

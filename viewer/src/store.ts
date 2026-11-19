@@ -2,6 +2,7 @@
 import { create } from 'zustand';
 import * as api from './api';
 import { buildModel, selectionOf, type Model, type Sel } from './model';
+import { partsOf, type Parts } from './parts';
 import type { Graph, Loose, Proposal } from './types';
 
 export type Mode = 'explore' | 'propose';
@@ -20,7 +21,8 @@ export interface S {
   proposals: Proposal[];
   versions: Record<string, string>;
   mode: Mode;
-  sel: string | null; // the selected node or part
+  sel: string | null; // the selected node, part or folder
+  open: string[]; // folders opened on the map (parts.foldItems)
   hover: string | null;
   story: string | null; // the feature on the map; clicking its steps keeps it there
   view: { x: number; y: number; k: number };
@@ -47,6 +49,7 @@ export const useStore = create<S>(() => ({
   versions: {},
   mode: 'explore',
   sel: null,
+  open: [],
   hover: null,
   story: null,
   view: { x: 0, y: 0, k: 1 },
@@ -76,6 +79,20 @@ export function modelOf(s: S): Model {
   return memo.m!;
 }
 export const useModel = () => useStore(modelOf);
+
+// partsOfState is the map's layout: the model, with the folders that are open.
+let openMemo: { open?: string[]; set?: Set<string> } = {};
+export function partsOfState(s: S): Parts {
+  if (openMemo.open !== s.open) openMemo = { open: s.open, set: new Set(s.open) };
+  return partsOf(modelOf(s), openMemo.set!);
+}
+export const useParts = () => useStore(partsOfState);
+
+// toggleFolder opens a folder on the map, or folds it again.
+export function toggleFolder(id: string) {
+  const open = get().open;
+  set({ open: open.includes(id) ? open.filter((x) => x !== id) : [...open, id] });
+}
 function readCslug(): string | null {
   try {
     return localStorage.getItem('codemap.cslug');

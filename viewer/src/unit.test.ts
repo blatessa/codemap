@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { classify, humanize } from './fields';
-import { atRest, linksOf, partSub, partsOf } from './parts';
+import { MAX_PARTS, atRest, foldItems, linksOf, partSub, partsOf } from './parts';
+import type { Box } from './model';
 import { SYNTH, buildModel, selectionOf, testsReaching, trace } from './model';
 import type { Graph } from './types';
 
@@ -213,5 +214,29 @@ describe('the part map', () => {
     const before = JSON.stringify([...P.at]);
     selectionOf(m, 'route:POST /orders');
     expect(JSON.stringify([...partsOf(m).at])).toBe(before);
+  });
+});
+
+describe('folding a big program by folder', () => {
+  const box = (label: string): Box => ({ id: 'mod:' + label, label, external: false, prop: false, ghost: false, rows: [], hasEntry: false });
+  const many = [...Array(60)].map((_, i) => box(`internal/area${i % 3}/pkg${i}`)).concat(box('cmd/server'), box('internal/area0'));
+
+  test('a small program draws every part', () => {
+    const few = many.slice(0, MAX_PARTS);
+    expect(foldItems('p', few, new Set()).every((it) => it.box)).toBe(true);
+  });
+
+  test('a big one folds folders of three or more, opening the biggest while it fits', () => {
+    const items = foldItems('p', many, new Set());
+    expect(items.map((it) => it.label).sort()).toEqual(['cmd/server', 'internal/area0/', 'internal/area1/', 'internal/area2/']);
+    const a0 = items.find((it) => it.label === 'internal/area0/')!;
+    expect(a0.parts!.length).toBe(21); // its twenty packages and the area0 package itself
+    expect(a0.sub).toBe('21 parts');
+  });
+
+  test('an open folder draws its parts', () => {
+    const items = foldItems('p', many, new Set(['folder:p:internal/area1']));
+    expect(items.filter((it) => it.box && it.label.startsWith('internal/area1/')).length).toBe(20);
+    expect(items.some((it) => it.label === 'internal/area1/')).toBe(false);
   });
 });

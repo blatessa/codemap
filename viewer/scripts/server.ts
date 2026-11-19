@@ -58,9 +58,12 @@ export function codemapServer(): Plugin {
       if (env.command !== 'serve' || child) return;
       const root = process.env.CODEMAP_ROOT ?? fixtureRoot(port);
       if (!process.env.CODEMAP_ROOT) makeFixture(root);
-      const args = ['run', './cmd/codemap', 'serve', '--no-open', '--port', String(api), '--root', root];
+      // built, then run: `go run` wouldn't pass a kill on to the server
+      const bin = path.join(os.tmpdir(), `codemap-dev-${api}`);
+      execFileSync('go', ['build', '-o', bin, './cmd/codemap'], { cwd: repo, stdio: 'inherit' });
+      const args = ['serve', '--no-open', '--port', String(api), '--root', root];
       if (process.env.CODEMAP_GRAPH) args.push('--graph', path.resolve(process.env.CODEMAP_GRAPH));
-      child = spawn('go', args, { cwd: repo, stdio: ['ignore', 'inherit', 'inherit'] });
+      child = spawn(bin, args, { cwd: repo, stdio: ['ignore', 'inherit', 'inherit'] });
       const stop = () => child?.kill();
       process.on('exit', stop);
       process.on('SIGINT', () => process.exit());

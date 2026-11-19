@@ -101,6 +101,9 @@ test('a part: what uses it and what it depends on', async ({ page }) => {
   await expect(d.locator('h2')).toHaveText('internal/orders');
   await expect(d.locator('.cols').first()).toContainText('cmd/server');
   await expect(d.locator('.cols').first()).toContainText('internal/inventory');
+  // tables and topics by name, not their group
+  await expect(d.locator('.cols').first()).not.toContainText('database');
+  await expect(d.locator('.cols').first()).toContainText('order.placed');
   await d.locator('.lnk', { hasText: 'Service.Place' }).click();
   await expect(d.locator('h2')).toHaveText('Service.Place');
 });

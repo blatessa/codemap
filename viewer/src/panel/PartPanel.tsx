@@ -7,12 +7,13 @@ export function BoxPanel({ m, id }: { m: Model; id: string }) {
   const b = m.box.get(id)!;
   const use = new Map<string, string>(),
     dep = new Map<string, string>();
+  // a table, topic or service is named itself, not its group ("database")
   for (const e of m.edges) {
-    const a = m.node.get(e.from)!.box,
-      c = m.node.get(e.to)!.box;
-    if (a === c) continue;
-    if (a.id === id) dep.set(c.id, c.label);
-    if (c.id === id) use.set(a.id, a.label);
+    const a = m.node.get(e.from)!,
+      c = m.node.get(e.to)!;
+    if (a.box === c.box) continue;
+    if (a.box.id === id) c.box.external ? dep.set(c.row.id, c.row.label) : dep.set(c.box.id, c.box.label);
+    if (c.box.id === id) a.box.external ? use.set(a.row.id, a.row.label) : use.set(a.box.id, a.box.label);
   }
   const mlist = (map: Map<string, string>) =>
     map.size ? (

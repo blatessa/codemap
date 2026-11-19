@@ -33,12 +33,9 @@ export function CallTree({ m, id }: { m: Model; id: string }) {
   return (
     <Section title="Call tree">
       <div className="tree">
-        {(t.support > 0 || t.reaches.length > 0) && (
+        {t.reaches.length > 0 && (
           <div className="trow sup">
-            <span className="l">
-              {t.support > 0 && <span className="seen">+{t.support}</span>}
-              {t.reaches.length > 0 && <span className="reach">→ {effectSummary(m, t.reaches)}</span>}
-            </span>
+            <span className="reach">→ {effectSummary(m, t.reaches)}</span>
           </div>
         )}
         {items(m, t.rows).map((it, i) => {
@@ -86,8 +83,8 @@ export function CallTree({ m, id }: { m: Model; id: string }) {
                   <span className="m">{shortMod(m, r.id)}</span>
                   {x.row.prefix ? x.row.prefix + ' ' + x.row.label : x.row.label}
                 </span>
-                {r.support > 0 && <span className="seen">+{r.support}</span>}
-                {r.more && <span className="seen">…</span>}
+                {r.support > 0 && <span className="seen" title={`${r.support} helper call${r.support === 1 ? '' : 's'} not shown`}>+{r.support}</span>}
+                {r.more && <span className="seen" title="Calls more: select it to see">…</span>}
               </span>
               {r.reaches.length > 0 && <span className="reach">→ {effectSummary(m, r.reaches)}</span>}
             </button>

@@ -3,9 +3,9 @@
 // only change what's lit and which lines draw, so nothing moves under you.
 // Functions never draw here; the panel has them.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { linksOf, partSub, partsOf, atRest, type Link, type Rect } from './parts';
+import { linksOf, atRest, isFolder, type Item, type Link, type Parts, type Rect } from './parts';
 import type { Model, Sel } from './model';
-import { getState, select, setState, storyOf, useModel, useSel, useStore } from './store';
+import { getState, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
 import { boxCls, rowCls } from './revs';
 
 // what's lit: the selection's things and lines, or the hovered thing's
@@ -14,7 +14,7 @@ interface Lit {
   links: Link[];
 }
 
-function litFor(m: Model, S: Sel | null, P: ReturnType<typeof partsOf>, hover: string | null): Lit | null {
+function litFor(m: Model, S: Sel | null, P: Parts, hover: string | null): Lit | null {
   if (S) {
     const things = new Set<string>();
     for (const n of S.nodes) {
@@ -24,7 +24,7 @@ function litFor(m: Model, S: Sel | null, P: ReturnType<typeof partsOf>, hover: s
     const on = P.links.filter((l) => l.edges.some((i) => S.edges.has(i)));
     // calls through skipped code, and effects reached below what the trace shows
     const have = new Set(on.map((l) => l.key));
-    for (const l of linksOf(m, S.extra)) if (!have.has(l.key)) on.push(l);
+    for (const l of linksOf(m, S.extra, P.thingOf)) if (!have.has(l.key)) on.push(l);
     return { things, links: on };
   }
   if (hover) {
@@ -35,9 +35,28 @@ function litFor(m: Model, S: Sel | null, P: ReturnType<typeof partsOf>, hover: s
   return null;
 }
 
-function linePath(a: Rect, b: Rect): string {
+// linePath draws a link; `down` (to or from a table, topic or service, in the
+// row below) goes out of the bottom and into the top.
+function linePath(a: Rect, b: Rect, down = false): string {
   const ay = a.y + a.h / 2,
     by = b.y + b.h / 2;
+  // below it (a table under the code): out of the bottom, into the top
+  if (down && b.y >= a.y + a.h) {
+    const x1 = a.x + a.w / 2,
+      y1 = a.y + a.h,
+      x2 = b.x + b.w / 2,
+      y2 = b.y,
+      dy = Math.max(30, (y2 - y1) / 2);
+    return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
+  }
+  if (down && a.y >= b.y + b.h) {
+    const x1 = a.x + a.w / 2,
+      y1 = a.y,
+      x2 = b.x + b.w / 2,
+      y2 = b.y + b.h,
+      dy = Math.max(30, (y1 - y2) / 2);
+    return `M${x1},${y1} C${x1},${y1 - dy} ${x2},${y2 + dy} ${x2},${y2}`;
+  }
   if (b.x >= a.x + a.w) {
     const x1 = a.x + a.w,
       x2 = b.x,
@@ -57,12 +76,18 @@ function linePath(a: Rect, b: Rect): string {
   return `M${x1},${ay} C${x1 + bulge},${ay} ${x2 + bulge},${by} ${x2},${by}`;
 }
 
+// itemDiff marks a part or folder by what a comparison changed in it.
+const itemDiff = (it: Item) => (it.box ? boxCls(it.box) : it.parts!.some((b) => boxCls(b)) ? 'd-has' : '');
+
+// READABLE is the smallest zoom a selection is framed at: names stay legible.
+const READABLE = 0.65;
+
 const VERB: Record<Link['kind'], string> = { calls: 'calls', http: 'HTTP', event: 'event', reads: 'reads', writes: 'writes', shows: 'shows' };
 
 export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   const m = useModel();
   const S = useSel();
-  const P = partsOf(m);
+  const P = useParts();
   const view = useStore((s) => s.view);
   const sel = useStore((s) => s.sel);
   const story = useStore(storyOf);
@@ -74,8 +99,9 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
   const [dragging, setDragging] = useState(false);
 
-  const lit = useMemo(() => litFor(m, S, P, hover), [m, S, P, hover]);
-  const selThings = useMemo(() => new Set(sel ? [P.thingOf(sel) ?? sel] : []), [sel, P]);
+  // a selected folder lights like a hovered thing: its connections
+  const lit = useMemo(() => litFor(m, S, P, hover ?? (sel && isFolder(sel) ? sel : null)), [m, S, P, hover, sel]);
+  const selThings = useMemo(() => new Set(sel ? [P.itemOf(sel)] : []), [sel, P]);
 
   // ---- camera ----
   // the map's visible width: the panel covers its right side when it's open
@@ -84,24 +110,68 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
     const dw = document.getElementById('drawer')?.offsetWidth ?? 0;
     return { r, W: r.width - (r.width > 900 ? dw : 0) };
   };
+  // fitTo frames rs. With minK, it never zooms out further than that: what
+  // doesn't fit stays off screen, and `keep` (the selected thing) stays on it.
   const fitTo = useCallback(
-    (rs: Rect[], maxK: number) => {
+    (rs: Rect[], maxK: number, minK = 0.05, keep?: Rect) => {
       if (!svgRef.current || !rs.length) return;
       const { r, W } = size();
       const x0 = Math.min(...rs.map((q) => q.x)) - 30,
         y0 = Math.min(...rs.map((q) => q.y)) - 30,
         x1 = Math.max(...rs.map((q) => q.x + q.w)) + 30,
         y1 = Math.max(...rs.map((q) => q.y + q.h)) + 30;
-      const k = Math.max(0.05, Math.min((W - 40) / (x1 - x0), (r.height - 70) / (y1 - y0), maxK));
-      setState({ view: { k, x: (W - (x1 - x0) * k) / 2 - x0 * k, y: 58 + (r.height - 70 - (y1 - y0) * k) / 2 - y0 * k } });
+      const k = Math.max(minK, Math.min((W - 40) / (x1 - x0), (r.height - 70) / (y1 - y0), maxK));
+      let x = (W - (x1 - x0) * k) / 2 - x0 * k,
+        y = 58 + (r.height - 70 - (y1 - y0) * k) / 2 - y0 * k;
+      if (keep) {
+        // shift the least that brings it fully into view
+        const kx0 = keep.x * k + x,
+          kx1 = (keep.x + keep.w) * k + x,
+          ky0 = keep.y * k + y,
+          ky1 = (keep.y + keep.h) * k + y;
+        if (kx0 < 30) x += 30 - kx0;
+        else if (kx1 > W - 30) x -= kx1 - (W - 30);
+        if (ky0 < 70) y += 70 - ky0;
+        else if (ky1 > r.height - 30) y -= ky1 - (r.height - 30);
+      }
+      setState({ view: { k, x, y } });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [drawerOpen],
   );
+  // the whole map is fitted when asked (on load, Fit); the layout changing
+  // (a folder opening, a proposal growing) doesn't move the camera
+  const fitted = useRef(0);
   useLayoutEffect(() => {
-    if (fitSeq) fitTo(P.frames, 1.3);
+    if (!fitSeq || fitted.current === fitSeq || !P.frames.length) return;
+    fitted.current = fitSeq;
+    fitTo(P.frames, 1.3);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitSeq, P]);
+  // opening a proposal frames the parts it changes, beside its panel
+  const pslug = useStore((s) => s.pslug);
+  useEffect(() => {
+    if (!pslug) return;
+    const raf = requestAnimationFrame(() => {
+      const changed = P.items.filter((it) => (it.box ? it.box.prop || it.box.rows.some((r) => r.prop || r.moved) : it.sub.includes('proposed')));
+      const rs = (changed.length ? changed : P.frames).map((it) => P.at.get(it.id) ?? (it as Rect));
+      fitTo(rs, 1.3, changed.length ? READABLE : 0.05);
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pslug]);
+  // a folder that opens is framed, so its parts are readable
+  const open = useStore((s) => s.open);
+  const lastOpen = useRef(open);
+  useEffect(() => {
+    const added = open.find((x) => !lastOpen.current.includes(x));
+    lastOpen.current = open;
+    if (!added) return;
+    const path = added.split(':').slice(2).join(':') + '/';
+    const rs = P.items.filter((it) => it.label.startsWith(path)).map((it) => P.at.get(it.id)!);
+    if (rs.length) fitTo(rs, 1.3, READABLE);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, P]);
   // The camera moves only when something new is selected and what it lights
   // isn't all on screen: then it frames it, beside the panel. A story's
   // steps, hovering and the rest never move it.
@@ -116,7 +186,9 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
       const { r, W } = size(),
         v = getState().view;
       const off = rs.some((q) => q.x * v.k + v.x < 0 || (q.x + q.w) * v.k + v.x > W || q.y * v.k + v.y < 50 || (q.y + q.h) * v.k + v.y > r.height);
-      if (off) fitTo(rs, Math.max(v.k, 0.6));
+      // too small to read, unless the user zoomed out on purpose
+      const small = v.k < READABLE && !getState().touchedView;
+      if (off || small) fitTo(rs, Math.max(v.k, READABLE), READABLE, P.at.get(P.itemOf(focusKey)));
     });
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -182,7 +254,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   const onPointerOver = (e: React.PointerEvent) => {
     if (drag.current?.moved) return;
     const id = target(e.target as Element);
-    const t = id ? (P.thingOf(id) ?? id) : null;
+    const t = id ? P.itemOf(id) : null;
     if (t !== hover) setHover(t);
   };
 
@@ -204,6 +276,10 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
       onPointerOver={onPointerOver}
       onPointerLeave={() => setHover(null)}
       onClick={onClick}
+      onDoubleClick={(e) => {
+        const id = target(e.target as Element);
+        if (id && isFolder(id)) toggleFolder(id);
+      }}
       data-zoom={view.k.toFixed(3)}
       data-hover={hover ?? ''}
     >
@@ -229,30 +305,30 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
               b = P.at.get(l.to);
             if (!a || !b) return null;
             return (
-              <path key={l.key} className={lineCls(l)} d={linePath(a, b)} data-link={l.key} style={{ strokeWidth: 1.2 + Math.log2(l.edges.length) * 0.8 + 'px' }} markerEnd={`url(#${l.prop ? 'mk-p' : lit ? 'mk-h' : 'mk-n'})`}>
+              <path key={l.key} className={lineCls(l)} d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} style={{ strokeWidth: 1.2 + Math.log2(l.edges.length) * 0.8 + 'px' }} markerEnd={`url(#${l.prop ? 'mk-p' : lit ? 'mk-h' : 'mk-n'})`}>
                 <title>{`${VERB[l.kind]} · ${l.edges.length}`}</title>
               </path>
             );
           })}
         </g>
-        {m.boxes
-          .filter((b) => !b.external)
-          .map((b) => {
-            const q = P.at.get(b.id);
+        {P.items.map((it) => {
+            const q = P.at.get(it.id);
             if (!q) return null;
-            const cls = ['mod', b.prop && 'prop', !b.prop && b.rows.some((r) => r.prop || r.moved) && 'pchg', b.ghost && 'ghost', boxCls(b), selThings.has(b.id) && 'msel', hover === b.id && 'hov', dimOf(b.id)].filter(Boolean).join(' ');
+            const b = it.box;
+            const cls = ['mod', !b && 'folder', ...(b ? [b.prop && 'prop', !b.prop && b.rows.some((r) => r.prop || r.moved) && 'pchg', b.ghost && 'ghost'] : []), itemDiff(it), selThings.has(it.id) && 'msel', hover === it.id && 'hov', dimOf(it.id)].filter(Boolean).join(' ');
             return (
-              <g key={b.id} className={cls} data-box={b.id}>
+              <g key={it.id} className={cls} data-box={it.id}>
+                {!b && <rect className="stack" x={q.x + 4} y={q.y - 4} width={q.w} height={q.h} rx={8} />}
                 <rect className="box" x={q.x} y={q.y} width={q.w} height={q.h} rx={8} />
-                <g className="mhead" data-mod={b.id}>
+                <g className="mhead" data-mod={it.id}>
                   <text className="mname" x={q.x + 14} y={q.y + 19}>
-                    {b.label}
+                    {it.label}
                   </text>
                   <text className="msub" x={q.x + 14} y={q.y + 34}>
-                    {partSub(b)}
+                    {it.sub}
                   </text>
                 </g>
-                {canAdd && !b.ghost && (
+                {canAdd && b && !b.ghost && (
                   <g className="add" data-add={b.id}>
                     <rect x={q.x + q.w - 28} y={q.y + 12} width={20} height={20} rx={5} />
                     <text x={q.x + q.w - 18} y={q.y + 27} textAnchor="middle">

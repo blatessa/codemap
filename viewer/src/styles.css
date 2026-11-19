@@ -236,6 +236,9 @@ details.test .code{border:0;border-top:1px solid var(--line);border-radius:0}
 .archrow input{flex:1;min-width:0;font-family:var(--mono);font-size:12.5px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
 
 .box{fill:var(--surface);stroke:var(--line);stroke-width:1}
+.mod .stack{fill:var(--surface);stroke:var(--line);stroke-width:1}
+.mod.dim .stack{opacity:.55}
+.mod.touched .stack,.mod.msel .stack{stroke:var(--accent)}
 
 .mod.prop .box{stroke:var(--plan);stroke-dasharray:6 4;fill:var(--plan-soft)}
 .mod.touched .box{stroke:var(--accent);stroke-width:1.5}
