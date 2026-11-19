@@ -84,6 +84,27 @@ test('the map is parts and how they talk; selecting lights things where they are
   await expect(box(page, ORDERS)).toHaveClass(/\btouched\b/);
 });
 
+test('a route: its call tree ends in what it touches, with the tests along the way', async ({ page }) => {
+  await open(page);
+  await search(page, 'POST /orders');
+  const d = page.locator('#drawer');
+  await expect(d.locator('h2')).toHaveText('POST /orders');
+  for (const t of ['writes stock', 'calls api.stripe.com', 'writes orders', 'publishes order.placed']) await expect(d.locator('.tree')).toContainText(t);
+  await expect(d.getByText('TestPlace_ChargesAndInserts')).toBeVisible();
+  await expect(node(page, 'ext:stripe')).toHaveClass(/\btouched\b/);
+});
+
+test('a part: what uses it and what it depends on', async ({ page }) => {
+  await open(page);
+  await box(page, ORDERS).click();
+  const d = page.locator('#drawer');
+  await expect(d.locator('h2')).toHaveText('internal/orders');
+  await expect(d.locator('.cols').first()).toContainText('cmd/server');
+  await expect(d.locator('.cols').first()).toContainText('internal/inventory');
+  await d.locator('.lnk', { hasText: 'Service.Place' }).click();
+  await expect(d.locator('h2')).toHaveText('Service.Place');
+});
+
 test('search runs commands; switching selections keeps one panel', async ({ page }) => {
   await open(page);
   for (const q of ['web/src/api', 'internal/auth', 'Handler.Login']) await search(page, q);

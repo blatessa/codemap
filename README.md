@@ -35,11 +35,18 @@ codemap shows how a system's parts work together, not every function in it.
 - **Entry points**, where work starts from outside: a route, a screen, a command, a job, a
   subscriber.
 
-The map draws programs and parts and how they connect. Selecting something shows it on the
-same map: an entry point, its path through the system; a part, its connections; a table or
-service, who reads, writes or calls it. Functions appear only on a selected path, and in
-the panel beside the map. Supporting code (helpers, forwarding functions, a screen's own
-components) is left out of paths and counted.
+The map draws programs, their parts, and the tables, topics and services they use, and how
+they connect. It never draws functions. Selecting something lights it up on the same map,
+and the panel beside the map shows the detail:
+
+- an entry point: the parts its path goes through, and in the panel its call tree, ending in
+  what it reads, writes, publishes and calls, with the tests along the way;
+- a part: what it uses and what uses it, and the functions used from outside it;
+- a table, topic or service: what reads, writes, publishes or calls it.
+
+Supporting code (helpers, forwarding functions, a screen's own components) is left out of
+call trees and counted. The call trees in the viewer and in `codemap show` come from the same
+Go code.
 
 ## Use
 
@@ -48,7 +55,8 @@ cd your-repo
 codemap serve          # opens the map in your browser
 ```
 
-- Click a module to see what's inside, a function to see its path through the code.
+- Click a part or a table to see its connections; search for a route, page, job or function
+  to see its path through the code.
 - `Ctrl/⌘ K` searches and runs commands; right-click for more.
 - On a branch, the map opens on what changed since `main`.
 - **Proposals** sketch a change on the map; select anything and press `C` to comment.
