@@ -3,7 +3,7 @@
 // only change what's lit and which lines draw, so nothing moves under you.
 // Functions never draw here; the panel has them.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { linksOf, isFolder, type Item, type Link, type Parts, type Rect } from './parts';
+import { addLabel, linksOf, isFolder, type Item, type Link, type Parts, type Rect } from './parts';
 import type { Model, Sel } from './model';
 import { getState, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
 import { boxCls, rowCls } from './revs';
@@ -330,6 +330,19 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
                     {it.sub}
                   </text>
                 </g>
+                {it.adds.map((r) => {
+                  const a = P.at.get(r.id);
+                  if (!a) return null;
+                  const c = ['padd', r.moved && 'moved', selThings.has(r.id) && 'sel', hov === r.id && 'hov', dimOf(r.id)].filter(Boolean).join(' ');
+                  return (
+                    <g key={r.id} className={c} data-node={r.id}>
+                      <rect x={a.x} y={a.y} width={a.w} height={a.h} rx={4} />
+                      <text x={a.x + 8} y={a.y + 12.5}>
+                        <tspan className="pplus">{r.moved ? '↳' : '+'}</tspan> {addLabel(r)}
+                      </text>
+                    </g>
+                  );
+                })}
                 {canAdd && b && !b.ghost && (
                   <g className="add" data-add={b.id}>
                     <rect x={q.x + q.w - 28} y={q.y + 12} width={20} height={20} rx={5} />

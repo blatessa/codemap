@@ -162,6 +162,13 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
   await page.locator('#pick-q').press('Enter');
   await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Cancel', module: ORDERS });
   await expect.poll(async () => ((await refunds(page)) as P & { edges?: { from: string; to: string }[] }).edges).toContainEqual({ from: 'new:Service.Cancel', to: INSERT });
+  // it's drawn inside its part, and listed under it in the proposal's changes
+  await expect(page.locator('#map .padd[data-node="new:Service.Cancel"]')).toBeVisible();
+  await page.locator('#drawer .pback').click();
+  await expect(page.locator('#drawer .pchange', { hasText: 'Service.Cancel' })).toContainText('orders.Repo.Insert');
+  await page.locator('#drawer .pchange .iname', { hasText: 'Service.Cancel' }).click();
+  await expect(page.locator('#drawer h2')).toHaveText('Service.Cancel');
+  await page.locator('#drawer .pback').click();
   // move a real function to another part
   await search(page, 'Repo.Insert');
   await page.locator('#move-to').selectOption('mod:go:shop/internal/payments');

@@ -2,8 +2,9 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { qn, type Model } from './model';
-import { currentProposal, newProposal, removeProposalEdge, removeProposalModule, removeProposalNode, setState, updateProposal, useStore } from './store';
+import { qn, type MEdge, type Model, type Row } from './model';
+import { currentProposal, newProposal, removeProposalEdge, removeProposalModule, removeProposalNode, select, setState, updateProposal, useStore } from './store';
+import { Section } from './panel/common';
 import type { Proposal } from './types';
 
 const fmtDate = (s?: string) => {
@@ -83,6 +84,9 @@ function Markdown({ text }: { text: string }) {
 
 const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v));
 
+// ProposalView is one proposal, shaped like the other panels: what it is, then
+// its document, its changes grouped by the part they go in (as the map shows
+// them), and archiving it. Every name opens its own panel.
 export function ProposalView({ m }: { m: Model }) {
   const p = useStore(currentProposal);
   const editing = useStore((s) => s.editing);
@@ -97,39 +101,37 @@ export function ProposalView({ m }: { m: Model }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p?.slug]);
   if (!p) return null;
-  const name = (id: string) => (m.node.has(id) ? qn(m, id) : id.replace(/^new:/, ''));
-  const items = [
-    ...(p.modules ?? []).map((x) => ({ kind: 'module', label: str(x.label) || str(x.id), rm: () => removeProposalModule(str(x.id)) })),
-    ...(p.nodes ?? []).map((x) => ({
-      kind: x.entry ? 'entry' : x.external ? 'external' : 'function',
-      label: name(str(x.id)),
-      rm: () => removeProposalNode(str(x.id)),
-    })),
-    ...(p.edges ?? []).map((x, i) => ({ kind: 'call', label: `${name(str(x.from))} → ${name(str(x.to))}`, rm: () => removeProposalEdge(i) })),
-  ];
+  const groups = changeGroups(m);
+  const count = changes(p);
+  // the proposal's own index of an edge, to remove it
+  const edgeIndex = (e: MEdge) => (p.edges ?? []).findIndex((x) => str(x.from) === e.from && str(x.to) === e.to && (str(x.type) || 'calls') === e.type);
   return (
     <>
-      <button className="back" onClick={() => setState({ pslug: null, editing: false })}>
-        ← Proposals
-      </button>
-      <input
-        className="ptitle"
-        id="p-name"
-        ref={title}
-        value={p.name}
-        autoComplete="off"
-        aria-label="Proposal name"
-        onChange={(e) => updateProposal(p.slug, { name: e.target.value })}
-        onBlur={(e) => !e.target.value.trim() && updateProposal(p.slug, { name: 'Untitled' })}
-      />
-      <div className="meta">
-        <span className={`pill ${p.status}`}>{p.status}</span>
-        {p.pr && <span>{p.pr}</span>}
-        {p.updated && <span>Updated {fmtDate(p.updated)}</span>}
+      <div className="dhead">
+        <div>
+          <div className="kind plan">
+            <i />
+            Proposal · {p.status}
+            {p.pr && ` · ${p.pr}`}
+            {p.updated && ` · ${fmtDate(p.updated)}`}
+          </div>
+          <input
+            className="ptitle"
+            id="p-name"
+            ref={title}
+            value={p.name}
+            autoComplete="off"
+            aria-label="Proposal name"
+            onChange={(e) => updateProposal(p.slug, { name: e.target.value })}
+            onBlur={(e) => !e.target.value.trim() && updateProposal(p.slug, { name: 'Untitled' })}
+          />
+        </div>
+        <button className="x" aria-label="Back to the proposals" title="Back to the proposals" onClick={() => setState({ pslug: null, editing: false })}>
+          ×
+        </button>
       </div>
-      <div>
-        <div className="dochead">
-          <p className="eyebrow">Document</p>
+      <Section title="Document">
+        <div className="docbar">
           <button
             className="btn sm"
             onClick={() => {
@@ -153,31 +155,70 @@ export function ProposalView({ m }: { m: Model }) {
         ) : (
           <Markdown text={p.body} />
         )}
-      </div>
-      <div>
-        <p className="eyebrow">Changes · {items.length}</p>
-        <div className="items">
-          {items.map((it, i) => (
-            <div className="item" key={i}>
-              <span className="kind">{it.kind}</span>
-              <span>{it.label}</span>
-              <button aria-label="Remove" onClick={it.rm}>
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+      </Section>
+      <Section title="Changes" count={count || undefined}>
+        {groups.length ? (
+          <div className="pgroups">
+            {groups.map((g) => (
+              <div key={g.id} className="pgroup">
+                <div className="pghead">
+                  <button className={`iname ${g.prop ? 'plan' : ''}`} data-node={g.id} onClick={() => (g.ghost ? null : select(g.id))}>
+                    {g.label}
+                  </button>
+                  {g.prop && <span className="ptag">new part</span>}
+                  {g.ghost && <span className="ptag">not in the code</span>}
+                  {g.prop && (
+                    <button className="prm" aria-label="Remove" title="Remove from the proposal" onClick={() => removeProposalModule(g.id)}>
+                      ×
+                    </button>
+                  )}
+                </div>
+                {g.rows.map(({ row, calls }) => (
+                  <div key={row.id} className="pchange">
+                    <div className="pcrow">
+                      <span className="pmark">{row.prop ? '+' : row.moved ? '↳' : '·'}</span>
+                      <button className={`iname ${row.prop || row.moved ? 'plan' : ''} ${row.tagClass}`} data-node={row.id} onClick={() => select(row.id)}>
+                        {(row.prefix ? row.prefix + ' ' : '') + row.label}
+                      </button>
+                      {row.moved && <span className="ptag">from {row.moved}</span>}
+                      {(row.prop || row.moved) && (
+                        <button className="prm" aria-label="Remove" title={row.moved ? 'Undo the move' : 'Remove from the proposal'} onClick={() => removeProposalNode(row.id)}>
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    {calls.map((e) => (
+                      <div key={e.i} className="pcall">
+                        <span className="dv">{e.type === 'calls' ? '→' : e.type}</span>
+                        <button className="lnk" data-node={e.to} onClick={() => select(e.to)}>
+                          {qn(m, e.to)}
+                        </button>
+                        {e.detail && <span className="q">{e.detail}</span>}
+                        <button className="prm" aria-label="Remove" title="Remove from the proposal" onClick={() => edgeIndex(e) >= 0 && removeProposalEdge(edgeIndex(e))}>
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="none">Nothing yet. Open a part on the map and add to it with +.</p>
+        )}
+      </Section>
       {p.status === 'archived' ? (
-        <div className="btns">
-          <span className="arch">Closed by {p.pr || '—'}</span>
-          <button className="btn" onClick={() => updateProposal(p.slug, { status: 'open' })}>
-            Reopen
-          </button>
-        </div>
+        <Section title="Archive">
+          <div className="btns">
+            <span className="arch">Closed by {p.pr || '—'}</span>
+            <button className="btn" onClick={() => updateProposal(p.slug, { status: 'open' })}>
+              Reopen
+            </button>
+          </div>
+        </Section>
       ) : (
-        <div>
-          <p className="eyebrow">Archive</p>
+        <Section title="Archive">
           <div className="archrow">
             <input id="p-pr" placeholder="PR #" autoComplete="off" aria-label="Pull request" value={pr} onChange={(e) => setPr(e.target.value)} />
             <button
@@ -190,8 +231,32 @@ export function ProposalView({ m }: { m: Model }) {
               Archive
             </button>
           </div>
-        </div>
+        </Section>
       )}
     </>
   );
+}
+
+interface Group {
+  id: string;
+  label: string;
+  prop: boolean;
+  ghost: boolean;
+  rows: { row: Row; calls: MEdge[] }[];
+}
+
+// changeGroups is what the open proposal changes, by the part (or group of
+// tables, topics, services) it lands in, in the map's order: proposed and
+// moved things, and existing code that gains a call, each with its new calls.
+function changeGroups(m: Model): Group[] {
+  const out: Group[] = [];
+  for (const b of m.boxes) {
+    const rows = b.rows
+      .map((row) => ({ row, calls: (m.all.out.get(row.id) ?? []).filter((e) => e.prop) }))
+      .filter(({ row, calls }) => row.prop || row.moved || calls.length > 0);
+    // a proposed table, topic or service with nothing of its own still shows
+    if (rows.length || b.prop) out.push({ id: b.id, label: b.label, prop: b.prop, ghost: b.ghost && b.id === 'missing:', rows });
+  }
+  // resources last, as on the map
+  return out.sort((a, b) => Number(!!m.box.get(a.id)?.external) - Number(!!m.box.get(b.id)?.external));
 }

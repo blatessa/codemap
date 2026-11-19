@@ -485,3 +485,33 @@ details.test .code{margin:4px 0 8px}
 @media (max-width:700px){.dresize{display:none}}
 @media (max-width:700px){.drawer{width:auto!important}}
 .drawer{box-sizing:border-box}
+
+/* a proposal's additions, inside the parts they go in */
+.padd rect{fill:var(--plan-soft);stroke:var(--plan);stroke-width:1;stroke-dasharray:3 2;cursor:pointer}
+.padd text{font-family:var(--mono);font-size:10.5px;fill:var(--plan);pointer-events:none}
+.padd .pplus{font-weight:700}
+.padd.moved rect{stroke-dasharray:none;fill:var(--surface)}
+.padd:hover rect,.padd.hov rect,.padd.sel rect{stroke-width:1.6;stroke-dasharray:none}
+.padd.dim{opacity:.4}
+
+/* the proposal panel */
+.ptitle{display:block;width:100%;font-family:var(--mono);font-size:15px;font-weight:600;color:var(--ink)}
+.docbar{display:flex;justify-content:flex-end;margin:-28px 0 6px}
+.pgroups{display:flex;flex-direction:column;gap:12px}
+.pghead{display:flex;align-items:baseline;gap:8px}
+.pghead .iname{font-weight:600}
+.iname.plan{color:var(--plan)}
+.iname.db{color:var(--db)}.iname.http{color:var(--http)}.iname.queue{color:var(--queue)}
+.ptag{font-size:11px;color:var(--muted)}
+.pchange{padding:2px 0 2px 2px}
+.pcrow{display:flex;align-items:baseline;gap:6px}
+.pmark{width:10px;color:var(--plan);font-family:var(--mono);font-weight:700;font-size:12px}
+.pcall{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;padding-left:28px;font-family:var(--mono);font-size:12px}
+.pcall .lnk{padding:1px 2px}
+.pcall .dv{color:var(--muted);font-family:var(--sans);font-size:11px}
+.pcall .q{flex:1 1 100%;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prm{all:unset;cursor:pointer;color:var(--muted);padding:0 5px;border-radius:4px;visibility:hidden;margin-left:auto}
+.pghead:hover .prm,.pcrow:hover .prm,.pcall:hover .prm{visibility:visible}
+.prm:hover{color:var(--warn);background:var(--bg)}
+.pback{all:unset;cursor:pointer;font-size:12px;color:var(--plan);margin-bottom:-6px}
+.pback:hover{text-decoration:underline}

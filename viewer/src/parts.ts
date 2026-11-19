@@ -3,9 +3,10 @@
 // are never drawn; a function's edges count towards its part's. Pure: the map
 // component draws what this returns.
 import { flowColumns, type LBox } from './layout';
-import type { Box, MEdge, Model } from './model';
+import type { Box, MEdge, Model, Row } from './model';
 
 export const PART_H = 44;
+export const ADD_H = 22; // a proposed row inside a part
 export const CHIP_H = 26;
 const CHIP_GAP = 6;
 const FPAD = 24; // a frame's padding
@@ -41,6 +42,9 @@ export interface Item {
   sub: string;
   box?: Box; // a part
   parts?: Box[]; // a folder's
+  // what an open proposal adds to a part, or moves into it: drawn inside it,
+  // each a thing of its own on the map
+  adds: Row[];
   entry: boolean;
 }
 export interface Parts {
@@ -102,7 +106,11 @@ export function linksOf(m: Model, edges: Iterable<MEdge>, thing = thingFn(m)): L
 }
 
 // wide enough for its name (mono 12px) and what it holds (sans 10.5px)
-const itemWidth = (it: Item) => Math.max(170, it.label.length * 7.4 + 44, it.sub.length * 5.6 + 36);
+const itemWidth = (it: Item) => Math.max(170, it.label.length * 7.4 + 44, it.sub.length * 5.6 + 36, ...it.adds.map((r) => addLabel(r).length * 6.6 + 40));
+const itemHeight = (it: Item) => PART_H + (it.adds.length ? it.adds.length * ADD_H + 6 : 0);
+
+// addLabel is how a proposed row reads inside its part: "JOB low-stock", "Store.LowStock", "HandleWebhook ← payments".
+export const addLabel = (r: Row) => (r.prefix ? r.prefix + ' ' : '') + r.label + (r.moved ? '  ← ' + (r.moved.split('/').pop() ?? r.moved) : '');
 const chipWidth = (label: string) => Math.max(110, Math.min(260, label.length * 7 + 28));
 
 // sub is what a part holds, by kind: "2 routes · 1 job · 13 functions".
@@ -132,7 +140,7 @@ export function partSub(b: Box): string {
   return out.join(' · ');
 }
 
-const partItem = (b: Box): Item => ({ id: b.id, label: b.label, sub: partSub(b), box: b, entry: b.hasEntry });
+const partItem = (b: Box): Item => ({ id: b.id, label: b.label, sub: partSub(b), box: b, entry: b.hasEntry, adds: b.rows.filter((r) => r.prop || r.moved) });
 
 // foldItems is what a program's parts draw as. A program of up to MAX_PARTS
 // draws every part. A bigger one groups its parts by folder: a folder of three
@@ -168,7 +176,7 @@ export function foldItems(program: string, parts: Box[], open: ReadonlySet<strin
       const entries = g.reduce((n, b) => n + b.rows.filter((r) => r.node.entry).length, 0);
       const proposed = g.some((b) => b.prop || b.rows.some((r) => r.prop || r.moved));
       const sub = [`${g.length} parts`, entries && `${entries} entry point${entries === 1 ? '' : 's'}`, proposed && 'proposed'].filter(Boolean).join(' · ');
-      out.push({ id, label: path + '/', sub, parts: g, entry: g.some((b) => b.hasEntry), depth });
+      out.push({ id, label: path + '/', sub, parts: g, entry: g.some((b) => b.hasEntry), adds: [], depth });
     }
     return out;
   };
@@ -230,7 +238,10 @@ export function partsOf(m: Model, open: ReadonlySet<string> = new Set()): Parts 
     }
   }
   const base = thingFn(m);
+  const addOf = new Map<string, string>(); // a proposed row -> its part
+  for (const it of items) for (const r of it.adds) (addOf.set(r.id, it.id), prog.set(r.id, prog.get(it.id)!));
   const thing = (id: string) => {
+    if (addOf.has(id)) return id;
     const t = base(id);
     return t && (itemOfBox.get(t) ?? t);
   };
@@ -263,14 +274,18 @@ export function partsOf(m: Model, open: ReadonlySet<string> = new Set()): Parts 
   for (const name of order) {
     const mine = items.filter((it) => prog.get(it.id) === name);
     const ids = new Set(mine.map((it) => it.id));
-    const boxes: LBox[] = mine.map((it) => ({ id: it.id, w: itemWidth(it), h: PART_H, entry: it.entry }));
-    const inner: [string, string][] = links.filter((l) => ids.has(l.from) && ids.has(l.to)).map((l) => [l.from, l.to]);
+    const boxes: LBox[] = mine.map((it) => ({ id: it.id, w: itemWidth(it), h: itemHeight(it), entry: it.entry }));
+    const up = (t: string) => addOf.get(t) ?? t; // a proposed row lays out with its part
+    const inner: [string, string][] = links.filter((l) => ids.has(up(l.from)) && ids.has(up(l.to))).map((l) => [up(l.from), up(l.to)]);
     const pos = flowColumns(boxes, inner, 0, 50, 18);
     let w = 0,
       h = 0;
     for (const it of boxes) {
       const [px, py] = pos[it.id];
       at.set(it.id, { x: x + FPAD + px, y: FTOP + py, w: it.w, h: it.h });
+      mine
+        .find((m) => m.id === it.id)!
+        .adds.forEach((r, k) => at.set(r.id, { x: x + FPAD + px + 10, y: FTOP + py + PART_H - 4 + k * ADD_H, w: it.w - 20, h: ADD_H - 4 }));
       w = Math.max(w, px + it.w);
       h = Math.max(h, py + it.h);
     }

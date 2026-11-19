@@ -1,7 +1,7 @@
 // The details panel: shows the panel for what's selected, or the proposals.
 import { type ReactNode } from 'react';
 import { ProposalList, ProposalView } from './Proposals';
-import { getState, setDrawerWidth, setState, useModel, useParts, useStore } from './store';
+import { currentProposal, getState, setDrawerWidth, setState, useModel, useParts, useStore } from './store';
 import { isFolder } from './parts';
 import { Comment } from './Comment';
 import { NodePanel } from './panel/NodePanel';
@@ -66,9 +66,21 @@ export function Drawer() {
         }}
         onMouseLeave={() => getState().hover && setState({ hover: null })}
       >
+        {mode === 'propose' && pslug && (sel || form) && <ProposalBack />}
         {content}
         {!readOnly && !form && sel && content && <Comment key={'comment:' + sel} m={m} id={sel} />}
       </aside>
     </>
+  );
+}
+
+// ProposalBack returns from something opened inside a proposal to the proposal.
+function ProposalBack() {
+  const p = useStore(currentProposal);
+  if (!p) return null;
+  return (
+    <button className="pback" onClick={() => setState({ sel: null, form: null, connectFrom: null })}>
+      ‹ {p.name}
+    </button>
   );
 }
