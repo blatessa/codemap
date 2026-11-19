@@ -31,12 +31,12 @@ export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 // ("Table", "Route", "Function · internal/orders"), then its name the way the
 // map writes it ("POST /orders", "PAGE /checkout"). `cls` is db, http, queue,
 // entry or fn.
-export function Head({ kind, plan, title, cls, children }: { kind?: ReactNode; plan?: boolean; title: string; cls?: string; children?: ReactNode }) {
+export function Head({ kind, plan, diff, title, cls, children }: { kind?: ReactNode; plan?: boolean; diff?: string; title: string; cls?: string; children?: ReactNode }) {
   return (
     <div className="dhead">
       <div>
         {kind && (
-          <div className={`kind ${plan ? 'plan' : (cls ?? 'fn')}`}>
+          <div className={`kind ${diff ? 'd-' + diff : plan ? 'plan' : (cls ?? 'fn')}`}>
             <i />
             {kind}
           </div>

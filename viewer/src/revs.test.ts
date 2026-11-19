@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { parseDiff, presets, shortRev, sliceRange, specLabel, type Revs } from './revs';
+import { customSpec, parseDiff, presets, shortRev, sliceRange, specLabel, type Revs } from './revs';
 
 const diff = `diff --git a/x.go b/x.go
 --- a/x.go
@@ -44,7 +44,7 @@ describe('code diff', () => {
 
 describe('presets', () => {
   const revs: Revs = {
-    commits: [],
+    commits: [{ sha: 'c'.repeat(40), short: 'ccccccc', subject: 'Fix login', author: '', date: '', parents: [], refs: [] }],
     branches: ['feature', 'main', 'agent/fix-login'],
     current: 'feature',
     default: 'main',
@@ -55,8 +55,8 @@ describe('presets', () => {
   test('one click each', () => {
     expect(presets(revs).map((p) => [p.label, p.from, p.to])).toEqual([
       ['Uncommitted changes', 'HEAD', 'worktree'],
+      ['Last commit', 'HEAD^', 'HEAD'],
       ['This branch vs main', 'base:main', 'worktree'],
-      ['agent/fix-login vs main', 'base:main', 'agent/fix-login'],
       ['#7 Refunds', 'pr:7', ''],
     ]);
   });
@@ -65,7 +65,11 @@ describe('presets', () => {
   });
   test('labels', () => {
     expect(specLabel({ from: 'base:main', to: 'agent/fix-login' }, revs)).toBe('agent/fix-login vs main');
-    expect(specLabel({ from: 'a'.repeat(40), to: 'worktree' }, revs)).toBe('aaaaaaa → worktree');
+    expect(specLabel({ from: 'a'.repeat(40), to: 'worktree' }, revs)).toBe('aaaaaaa → working tree');
+    expect(specLabel({ from: 'c'.repeat(40) + '^', to: 'c'.repeat(40) }, revs)).toBe('ccccccc Fix login');
+    expect(specLabel({ from: 'main', to: 'feature' }, revs)).toBe('main → feature');
+    expect(customSpec('main', 'feature', true)).toEqual({ from: 'base:main', to: 'feature' });
+    expect(customSpec('main', 'feature', false)).toEqual({ from: 'main', to: 'feature' });
     expect(shortRev('main')).toBe('main');
   });
 });

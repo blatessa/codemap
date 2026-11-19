@@ -187,7 +187,16 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 		s.buildErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, d)
+	// the commits between the two sides; a range git can't list (unrelated
+	// histories) just has none
+	commits, _ := s.repo.LogRange(ctx, rg.From, rg.To, 50)
+	if commits == nil {
+		commits = []gitrev.Commit{}
+	}
+	writeJSON(w, http.StatusOK, struct {
+		*graph.GraphDiff
+		Commits []gitrev.Commit `json:"commits"`
+	}{d, commits})
 }
 
 func (s *Server) handleSourceDiff(w http.ResponseWriter, r *http.Request) {

@@ -1,9 +1,17 @@
 // The compare control, summary panel and code diff (revs.ts).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CodeBlock, highlight } from './Code';
+import { Section } from './panel/common';
+import { qn, type Model, type Row } from './model';
+import type { GEdge } from './types';
 import {
   compare,
+  customSpec,
   getSourceDiff,
+  nodeStatus,
+  moduleStatus,
+  refOptions,
+  type Diff,
   isWorktree,
   parseDiff,
   presets,
@@ -13,10 +21,7 @@ import {
   specLabel,
   useCompare,
   stopCompare,
-  type DataRef,
-  type Dep,
   type DLine,
-  type Ref,
 } from './revs';
 import { getState, setState, useModel, useStore } from './store';
 
@@ -39,6 +44,9 @@ function useOutside(open: boolean, close: () => void) {
 
 
 // CompareControl sits in the top bar: what's on the map, and the ways to change it.
+// The popover has the common comparisons one click away, then any two
+// revisions (a branch, a commit, the working tree), and recent commits to
+// compare around.
 export function CompareControl() {
   const { revs, spec, busy, error, phase } = useCompare();
   const readOnly = useStore((s) => s.readOnly);
@@ -72,7 +80,86 @@ export function CompareControl() {
             <span>{p.label}</span>
           </button>
         ))}
+        {open && <Custom go={go} />}
+        {open && <Recent go={go} />}
       </div>
+    </div>
+  );
+}
+
+// Custom compares any two revisions. "From the branch point" starts at where
+// the two histories part, so it shows only what the second side added.
+function Custom({ go }: { go: (f: string, t: string) => void }) {
+  const revs = useCompare((c) => c.revs);
+  const opts = refOptions(revs);
+  const [from, setFrom] = useState(revs?.default ?? 'HEAD');
+  const [to, setTo] = useState('worktree');
+  const [since, setSince] = useState(true);
+  const pick = (value: string, set: (v: string) => void, worktree: boolean) => (
+    <select value={value} aria-label={worktree ? 'To' : 'From'} onChange={(e) => set(e.target.value)}>
+      <option value="HEAD">HEAD</option>
+      {worktree && <option value="worktree">Working tree</option>}
+      {(['Branches', 'Commits'] as const).map((g) => (
+        <optgroup key={g} label={g}>
+          {opts
+            .filter((o) => o.group === g)
+            .map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+  const s = customSpec(from, to, since);
+  return (
+    <div className="cmpcustom">
+      <p className="eyebrow">Any two revisions</p>
+      <div className="cmprow">
+        <span>From</span>
+        {pick(from, setFrom, false)}
+      </div>
+      <div className="cmprow">
+        <span>To</span>
+        {pick(to, setTo, true)}
+      </div>
+      <label className="cmpsince" title="Start where the two histories part, so only what “To” added shows">
+        <input type="checkbox" checked={since} onChange={(e) => setSince(e.target.checked)} />
+        From where they branch
+      </label>
+      <button className="btn primary sm" id="cmp-go" onClick={() => go(s.from, s.to)}>
+        Compare
+      </button>
+    </div>
+  );
+}
+
+const ago = (iso: string) => {
+  const d = Math.max(0, Date.now() - Date.parse(iso)) / 36e5;
+  return d < 1 ? 'now' : d < 24 ? `${Math.floor(d)}h` : d < 24 * 30 ? `${Math.floor(d / 24)}d` : `${Math.floor(d / 24 / 30)}mo`;
+};
+
+// Recent commits: click one for what it changed; "since" for everything after it.
+function Recent({ go }: { go: (f: string, t: string) => void }) {
+  const commits = useCompare((c) => c.revs?.commits ?? []).slice(0, 12);
+  if (!commits.length) return null;
+  return (
+    <div className="cmprecent">
+      <p className="eyebrow">Recent commits</p>
+      {commits.map((c) => (
+        <div key={c.sha} className="cmpcommit" data-commit={c.short}>
+          <button className="res" title={`${c.author} · ${c.subject}`} onClick={() => go(c.sha + '^', c.sha)}>
+            <span className="cs">{c.subject}</span>
+            <span className="m">
+              {c.short} · {ago(c.date)}
+            </span>
+          </button>
+          <button className="since" title="Everything since this commit, up to the working tree" onClick={() => go(c.sha, 'worktree')}>
+            since
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -86,75 +173,136 @@ function goTo(id: string) {
   setState({ sel: id, form: null, hover: null });
 }
 
-const refText = (r: Ref) => (r.method ? r.method + ' ' : '') + r.label;
+const MARK = { added: '+', removed: '−', changed: '~', '': '·' } as const;
 
-function Items<T>({ title, add, rem, text, id }: { title: string; add: T[]; rem: T[]; text: (x: T) => string; id: (x: T) => string }) {
-  if (!add.length && !rem.length) return null;
-  return (
-    <div className="sumsec">
-      <p className="eyebrow">{title}</p>
-      <div className="links">
-        {add.map((x, i) => (
-          <button key={'a' + i} className="lnk sadd" data-go={id(x)} onClick={() => goTo(id(x))}>
-            <span className="sg">+</span>
-            {text(x)}
-          </button>
-        ))}
-        {rem.map((x, i) => (
-          <button key={'r' + i} className="lnk srem" data-go={id(x)} onClick={() => goTo(id(x))}>
-            <span className="sg">−</span>
-            {text(x)}
-          </button>
-        ))}
+// ChangedCalls lists the calls, reads and writes a node gained or lost, each a
+// link, as a proposal lists its new calls. Shared by the summary and the node panel.
+export function ChangedCalls({ m, added, removed, side = 'to' }: { m: Model; added: GEdge[]; removed: GEdge[]; side?: 'to' | 'from' }) {
+  const row = (e: GEdge, on: boolean) => {
+    const id = e[side];
+    return (
+      <div key={(on ? '+' : '-') + e.from + e.to + e.type} className={`pcall ${on ? 'cadd' : 'crem'}`}>
+        <span className="cmk">{on ? '+' : '−'}</span>
+        <span className="dv">{e.type === 'calls' ? (side === 'to' ? '→' : '←') : e.type}</span>
+        <button className="lnk" data-node={id} onClick={() => goTo(id)}>
+          {qn(m, id)}
+        </button>
+        {e.detail && <span className="q">{e.detail}</span>}
       </div>
-    </div>
+    );
+  };
+  return (
+    <>
+      {added.map((e) => row(e, true))}
+      {removed.map((e) => row(e, false))}
+    </>
   );
 }
 
+interface Group {
+  id: string;
+  label: string;
+  status: '' | 'added' | 'removed';
+  rows: { row: Row; status: ReturnType<typeof nodeStatus>; added: GEdge[]; removed: GEdge[] }[];
+}
+
+// changeGroups is what the comparison changes, by the part (or group of
+// tables, topics, services) it lands in, in the map's order: nodes added,
+// removed or changed, and code that gained or lost a call, each with its calls.
+// It's the same shape as a proposal's changes.
+function changeGroups(m: Model, d: Diff): Group[] {
+  const add = new Map<string, GEdge[]>(),
+    rem = new Map<string, GEdge[]>();
+  for (const e of d.addedEdges) (add.get(e.from) ?? add.set(e.from, []).get(e.from)!).push(e);
+  for (const e of d.removedEdges) (rem.get(e.from) ?? rem.set(e.from, []).get(e.from)!).push(e);
+  const out: Group[] = [];
+  for (const b of m.boxes) {
+    const rows = b.rows
+      .map((row) => ({ row, status: nodeStatus(row.id), added: add.get(row.id) ?? [], removed: rem.get(row.id) ?? [] }))
+      .filter((r) => r.status || r.added.length || r.removed.length);
+    const status = moduleStatus(b.id);
+    if (rows.length || status) out.push({ id: b.id, label: b.label, status, rows });
+  }
+  return out.sort((a, b) => Number(!!m.box.get(a.id)?.external) - Number(!!m.box.get(b.id)?.external));
+}
+
+const when = (iso: string) => {
+  const d = new Date(iso);
+  return isNaN(+d) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+// SummaryPanel is the comparison itself, shaped like the other panels: what is
+// compared, the commits in it, then the changes by the part they land in.
+// Every name opens its own panel, where the same changes show for that node.
 export function SummaryPanel() {
   const { diff, spec, revs, busy } = useCompare();
-  useModel();
+  const m = useModel();
   if (!spec) return null;
-  const s = diff?.summary;
-  const empty = diff && !diff.addedNodes.length && !diff.removedNodes.length && !diff.changed.length && !diff.addedEdges.length && !diff.removedEdges.length;
+  const groups = diff ? changeGroups(m, diff) : [];
+  const count = diff ? diff.addedNodes.length + diff.removedNodes.length + diff.changed.length : 0;
+  const empty = diff && !groups.length && !diff.commits.length;
   return (
     <aside className="drawer" id="drawer">
       <div className="dhead">
         <div>
+          <div className="kind chg">
+            <i />
+            Comparing
+          </div>
           <h2 id="sum-title">{specLabel(spec, revs)}</h2>
           {diff && (
             <div className="where">
-              {shortRev(diff.from)} → {isWorktree(diff.to) ? 'worktree' : shortRev(diff.to)}
+              {shortRev(diff.from)} → {isWorktree(diff.to) ? 'working tree' : shortRev(diff.to)}
             </div>
           )}
         </div>
+        <button className="x" aria-label="Back to worktree" onClick={() => void stopCompare()}>
+          ×
+        </button>
       </div>
       {!diff || busy ? <div className="loading sumload">…</div> : null}
-      {empty && <p>No changes</p>}
-      {s && (
-        <>
-          <Items title="Entry points" add={s.entriesAdded} rem={s.entriesRemoved} text={refText} id={(r) => r.id} />
-          <Items<DataRef> title="Data" add={s.dataAdded} rem={s.dataRemoved} text={(r) => `${r.type} ${r.label}`} id={(r) => r.id} />
-          <Items title="External" add={s.externalAdded} rem={s.externalRemoved} text={refText} id={(r) => r.id} />
-          <Items<Dep> title="Dependencies" add={s.depsAdded} rem={s.depsRemoved} text={(d) => `${d.fromLabel} → ${d.toLabel}`} id={(d) => d.from} />
-          {s.modules.length > 0 && (
-            <div className="sumsec">
-              <p className="eyebrow">Modules</p>
-              <div className="links">
-                {s.modules.map((m) => (
-                  <button key={m.id} className="lnk smod" data-go={m.id} onClick={() => goTo(m.id)}>
-                    <span className="ml">{m.label}</span>
-                    <span className="cnt">
-                      {m.added ? <span className="ca">+{m.added}</span> : null}
-                      {m.removed ? <span className="cr">−{m.removed}</span> : null}
-                      {m.changed ? <span className="cc">~{m.changed}</span> : null}
-                    </span>
+      {empty && <p className="none">No changes</p>}
+      {diff && diff.commits.length > 0 && (
+        <Section title="Commits" count={diff.commits.length}>
+          <div className="clist">
+            {diff.commits.map((c) => (
+              <button key={c.sha} className="crow" title={c.author} onClick={() => void compare(c.sha + '^', c.sha)}>
+                <span className="cs">{c.subject}</span>
+                <span className="m">
+                  {c.short} · {when(c.date)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Section>
+      )}
+      {groups.length > 0 && (
+        <Section title="Changes" count={count || undefined}>
+          <div className="pgroups">
+            {groups.map((g) => (
+              <div key={g.id} className="pgroup">
+                <div className="pghead">
+                  <button className={`iname ${m.box.get(g.id)?.rows[0]?.tagClass ?? ''}`} data-node={g.id} onClick={() => goTo(g.id)}>
+                    {g.label}
                   </button>
+                  {g.status === 'added' && <span className="ptag dadd">new part</span>}
+                  {g.status === 'removed' && <span className="ptag drem">removed part</span>}
+                </div>
+                {g.rows.map(({ row, status, added, removed }) => (
+                  <div key={row.id} className="pchange">
+                    <div className="pcrow">
+                      <span className={`pmark d-${status.slice(0, 3)}`}>{MARK[status]}</span>
+                      <button className={`iname ${row.tagClass} ${status === 'removed' ? 'gone' : ''}`} data-node={row.id} onClick={() => goTo(row.id)}>
+                        {(row.prefix ? row.prefix + ' ' : '') + row.label}
+                      </button>
+                    </div>
+                    {status !== 'removed' && <ChangedCalls m={m} added={added} removed={removed} />}
+                  </div>
                 ))}
               </div>
-            </div>
-          )}
-        </>
+            ))}
+          </div>
+        </Section>
       )}
     </aside>
   );

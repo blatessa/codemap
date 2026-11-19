@@ -172,6 +172,28 @@ func (r *Repo) Log(ctx context.Context, n int) ([]Commit, error) {
 	return cs, nil
 }
 
+// LogRange returns the commits a comparison covers: those reachable from to
+// (HEAD for the worktree) and not from from, newest first, at most n.
+func (r *Repo) LogRange(ctx context.Context, from, to string, n int) ([]Commit, error) {
+	if IsWorktree(to) {
+		to = "HEAD"
+	}
+	out, err := git(ctx, r.Root, "log", "--topo-order", "-n", strconv.Itoa(n),
+		"--format=%H%x1f%h%x1f%s%x1f%an%x1f%cI%x1f%P%x1f%D%x1e", from+".."+to)
+	if err != nil {
+		return nil, err
+	}
+	cs := []Commit{}
+	for _, rec := range strings.Split(string(out), "\x1e") {
+		f := strings.Split(strings.TrimLeft(rec, "\n"), "\x1f")
+		if len(f) < 7 {
+			continue
+		}
+		cs = append(cs, Commit{SHA: f[0], Short: f[1], Subject: f[2], Author: f[3], Date: f[4], Parents: strings.Fields(f[5]), Refs: []string{}})
+	}
+	return cs, nil
+}
+
 // Branches lists local branches, most recently committed first.
 func (r *Repo) Branches(ctx context.Context) ([]string, error) {
 	out, err := git(ctx, r.Root, "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads/")

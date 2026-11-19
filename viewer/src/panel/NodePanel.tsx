@@ -4,6 +4,8 @@
 // tests. Proposal actions sit under the heading.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Source } from '../Code';
+import { ChangedCalls } from '../Compare';
+import { edgeChanges, nodeStatus, useCompare } from '../revs';
 import { Fields } from '../Fields';
 import { screenRoot, qn, type MEdge, type Model } from '../model';
 import type { Parts } from '../parts';
@@ -78,6 +80,11 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   const connecting = useStore((s) => s.connectFrom === id);
   const { row, box } = m.node.get(id)!;
   const n = row.node;
+  // comparing: what this node gained or lost between the two sides
+  const cmp = useCompare((c) => c.diff);
+  const status = cmp ? nodeStatus(id) : '';
+  const ch = cmp ? edgeChanges(id) : null;
+  const nch = ch ? ch.outAdded.length + ch.outRemoved.length + ch.inAdded.length + ch.inRemoved.length : 0;
   // named as on the map: "POST /orders", "PAGE /checkout", a table in its colour
   const title = row.prefix ? `${row.prefix} ${row.label}` : row.label;
   const entries = !n.entry && !n.external && !row.ghost ? entryPointsOf(m, P, id) : [];
@@ -95,7 +102,7 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
       <Head
         kind={
           <>
-            {(row.ghost ? 'Missing ' : row.prop ? 'Proposed ' : '') + (row.ghost ? n.kind : cap(n.kind))}
+            {(row.ghost ? 'Missing ' : row.prop ? 'Proposed ' : status ? cap(status) + ' ' : '') + (row.ghost || status ? n.kind : cap(n.kind))}
             {n.file ? (
               <>
                 <span className="ksep">·</span>
@@ -107,12 +114,31 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
           </>
         }
         plan={row.prop || row.ghost}
+        diff={status ? status.slice(0, 3) : undefined}
         title={title}
         cls={row.tagClass || (n.entry ? 'entry' : 'fn')}
       >
       </Head>
       {row.moved && <p className="where plan">Moved here from {row.moved} by the proposal.</p>}
       {n.doc && <p className="doc">{n.doc}</p>}
+      {ch && (status || nch > 0) && (
+        <Section title="Changes" count={nch || undefined}>
+          {status === 'removed' && <p className="none">Gone in the new version; this is how it was.</p>}
+          {status === 'changed' && !nch && <p className="none">Its code changed; its calls didn’t.</p>}
+          {ch.outAdded.length + ch.outRemoved.length > 0 && (
+            <div className="chgroup">
+              <p className="eyebrow">Now calls</p>
+              <ChangedCalls m={m} added={ch.outAdded} removed={ch.outRemoved} />
+            </div>
+          )}
+          {ch.inAdded.length + ch.inRemoved.length > 0 && (
+            <div className="chgroup">
+              <p className="eyebrow">Now used by</p>
+              <ChangedCalls m={m} added={ch.inAdded} removed={ch.inRemoved} side="from" />
+            </div>
+          )}
+        </Section>
+      )}
       {propose && connecting && <CallPicker m={m} from={id} />}
       {propose && !connecting && (
         <div className="btns">

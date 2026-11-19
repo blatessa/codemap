@@ -86,6 +86,7 @@ export interface Diff {
   removedModules: GModule[];
   files: FileChange[];
   summary: Summary;
+  commits: Commit[]; // the commits between the two sides, newest first
 }
 
 const enc = encodeURIComponent;
@@ -183,6 +184,25 @@ export function rowCls(id: string): string {
   return s ? 'd-' + s.slice(0, 3) : '';
 }
 
+export const moduleStatus = (id: string): '' | 'added' | 'removed' => (!idx ? '' : idx.addedM.has(id) ? 'added' : idx.removedM.has(id) ? 'removed' : '');
+
+// edgeChanges is the calls (and reads, writes, …) a node gained or lost, and
+// the same for what uses it.
+export interface EdgeChanges {
+  outAdded: GEdge[];
+  outRemoved: GEdge[];
+  inAdded: GEdge[];
+  inRemoved: GEdge[];
+}
+export function edgeChanges(id: string): EdgeChanges {
+  const d = get().diff;
+  const r: EdgeChanges = { outAdded: [], outRemoved: [], inAdded: [], inRemoved: [] };
+  if (!d) return r;
+  for (const e of d.addedEdges) (e.from === id ? r.outAdded : e.to === id ? r.inAdded : []).push(e);
+  for (const e of d.removedEdges) (e.from === id ? r.outRemoved : e.to === id ? r.inRemoved : []).push(e);
+  return r;
+}
+
 function boxHas(b: Box | undefined): boolean {
   if (!b || !idx) return false;
   if (b.module && idx.touched.has(b.module.id)) return true;
@@ -271,22 +291,57 @@ export interface Preset {
   to: string;
 }
 
+// presets are the comparisons most workflows start from: work not committed
+// yet, the last commit, the branch against the main branch, open PRs.
 export function presets(r: Revs | null): Preset[] {
-  // What an agent changed: work not committed yet, or a branch or PR against
-  // the main branch (the current one, then the most recent others).
   const out: Preset[] = [{ id: 'uncommitted', label: 'Uncommitted changes', from: 'HEAD', to: 'worktree' }];
+  if (r?.commits?.length) out.push({ id: 'last', label: 'Last commit', from: 'HEAD^', to: 'HEAD' });
   if (r?.default && r.current && r.current !== r.default) out.push({ id: 'branch', label: `This branch vs ${r.default}`, from: 'base:' + r.default, to: 'worktree' });
-  if (r?.default)
-    for (const b of (r.branches ?? []).filter((x) => x !== r.default && x !== r.current).slice(0, 8))
-      out.push({ id: 'branch:' + b, label: `${b} vs ${r.default}`, from: 'base:' + r.default, to: b });
   for (const p of r?.prs ?? []) out.push({ id: 'pr' + p.number, label: `#${p.number} ${p.title}`, from: 'pr:' + p.number, to: '' });
   return out;
+}
+
+// the commit one is: a full sha, or its parent ("<sha>^")
+const commitOf = (r: Revs | null, rev: string) => r?.commits.find((c) => c.sha === rev);
+
+// refName is how a revision reads in a label: a branch as itself, a commit by
+// its short sha, the worktree as "working tree".
+export function refName(rev: string, r: Revs | null): string {
+  if (isWorktree(rev)) return 'working tree';
+  const c = commitOf(r, rev);
+  return c ? c.short : shortRev(rev);
 }
 
 export function specLabel(s: Spec, r: Revs | null): string {
   const p = presets(r).find((x) => x.from === s.from && x.to === s.to);
   if (p) return p.label;
-  return `${shortRev(s.from)} → ${isWorktree(s.to) ? 'worktree' : shortRev(s.to)}`;
+  // one commit on its own: "<sha>^ → <sha>"
+  const one = commitOf(r, s.to);
+  if (one && s.from === s.to + '^') return `${one.short} ${one.subject}`;
+  const base = s.from.startsWith('base:');
+  const from = refName(base ? s.from.slice(5) : s.from, r);
+  return base ? `${refName(s.to, r)} vs ${from}` : `${from} → ${refName(s.to, r)}`;
+}
+
+// ---- custom comparisons ----
+
+export interface RefOption {
+  value: string;
+  label: string;
+  group: 'Branches' | 'Commits';
+}
+
+// refOptions are the revisions the picker offers: branches, then recent commits.
+export function refOptions(r: Revs | null): RefOption[] {
+  const out: RefOption[] = (r?.branches ?? []).map((b) => ({ value: b, label: b, group: 'Branches' }));
+  for (const c of (r?.commits ?? []).slice(0, 40)) out.push({ value: c.sha, label: `${c.short} ${c.subject}`.slice(0, 60), group: 'Commits' });
+  return out;
+}
+
+// customSpec builds the comparison the picker describes. With `since`, from is
+// where the two sides' histories part (git's "a...b"): what `to` added on top.
+export function customSpec(from: string, to: string, since: boolean): Spec {
+  return { from: since && !isWorktree(from) ? 'base:' + from : from, to };
 }
 
 // ---- URL hash: #compare=from..to ----

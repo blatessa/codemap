@@ -52,6 +52,36 @@ body.ro .mhead{cursor:pointer}
 .cnt .cc{color:var(--diff-chg)}
 .sumload{margin:0}
 
+/* compare popover and changes */
+.cmpcustom,.cmprecent{border-top:1px solid var(--line);margin-top:4px;padding:8px 6px 4px;display:flex;flex-direction:column;gap:6px}
+.cmprow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.cmprow span{width:34px}
+.cmprow select{flex:1;min-width:0;font-family:var(--mono);font-size:12px}
+.cmpsince{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.cmpcustom .btn{align-self:flex-start}
+.cmpcommit{display:flex;align-items:center;gap:2px}
+.cmpcommit .res{flex:1;min-width:0}
+.cs{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.cmpcommit .since{all:unset;cursor:pointer;font-size:11px;color:var(--muted);padding:2px 6px;border-radius:4px}
+.cmpcommit .since:hover{background:var(--bg);color:var(--ink)}
+.clist{display:flex;flex-direction:column}
+.crow{all:unset;cursor:pointer;display:flex;justify-content:space-between;gap:10px;padding:4px 6px;border-radius:5px;font-size:12.5px}
+.crow:hover{background:var(--bg)}
+.crow .m{color:var(--muted);font-family:var(--mono);font-size:11px;flex:none}
+.kind.chg{color:var(--diff-chg)}.kind.chg i{background:var(--diff-chg)}
+.kind.d-add{color:var(--diff-add)}.kind.d-add i{background:var(--diff-add)}
+.kind.d-rem{color:var(--diff-rem)}.kind.d-rem i{background:var(--diff-rem)}
+.kind.d-cha{color:var(--diff-chg)}.kind.d-cha i{background:var(--diff-chg)}
+.pmark.d-add{color:var(--diff-add)}.pmark.d-rem{color:var(--diff-rem)}.pmark.d-cha{color:var(--diff-chg)}
+.ptag.dadd{color:var(--diff-add)}.ptag.drem{color:var(--diff-rem)}
+.iname.gone{color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--diff-rem) 50%,transparent)}
+.pcall .cmk{width:10px;font-weight:700;font-family:var(--mono)}
+.pcall.cadd .cmk{color:var(--diff-add)}
+.pcall.crem .cmk{color:var(--diff-rem)}
+.pcall.crem .lnk{color:var(--muted)}
+.chgroup{display:flex;flex-direction:column;gap:2px;margin-bottom:8px}
+.chgroup .pcall{padding-left:0}
+
 /* code diff */
 .dsrc{display:flex;flex-direction:column;gap:6px}
 .dseg{margin-left:0;align-self:flex-start}
