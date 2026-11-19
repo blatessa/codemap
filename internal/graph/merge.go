@@ -8,8 +8,7 @@ import (
 // Merge combines partial graphs from several extractors into one:
 //   - modules and nodes are unioned by ID; for duplicates, later non-empty scalar
 //     values win and Fields are shallow-merged (later keys win);
-//   - edges are deduplicated by from+to+type (the first Detail/File/Line seen is kept,
-//     Declared is OR-ed);
+//   - edges are deduplicated by from+to+type (the first Detail/File/Line seen is kept);
 //   - "fetches" edges to a route that doesn't exist are re-pointed at an existing route
 //     whose method matches and whose path matches by RouteMatch; if none matches, a
 //     placeholder route node with fields.unmatched=true is created.
@@ -43,8 +42,7 @@ func Merge(parts ...*Graph) *Graph {
 			out.Nodes = append(out.Nodes, copyNode(n))
 		}
 		for _, e := range p.Edges {
-			if i, ok := edgeIdx[e.key()]; ok {
-				out.Edges[i].Declared = out.Edges[i].Declared || e.Declared
+			if _, ok := edgeIdx[e.key()]; ok {
 				continue
 			}
 			edgeIdx[e.key()] = len(out.Edges)

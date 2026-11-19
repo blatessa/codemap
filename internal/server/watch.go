@@ -174,8 +174,8 @@ func (s *Server) apply(paths []string) {
 		case strings.HasPrefix(p, prefix):
 			name := strings.TrimPrefix(p, prefix)
 			projFiles = append(projFiles, name)
-			// Declared nodes are merged into the graph, and config drives the extractors.
-			if name == "external.toml" || name == "config.toml" {
+			// config drives the extractors
+			if name == "config.toml" {
 				rebuild = true
 			}
 		default:

@@ -114,18 +114,6 @@
       "module": "mod:ext:services",
       "external": true,
       "fields": {
-        "owner": "Platform team",
-        "setup": "Server token in POSTMARK_TOKEN",
-        "links": [
-          {
-            "label": "Account",
-            "url": "https://account.postmarkapp.com"
-          },
-          {
-            "label": "Docs",
-            "url": "https://postmarkapp.com/developer"
-          }
-        ],
         "import": "github.com/mrz1836/postmark"
       }
     },
@@ -136,23 +124,6 @@
       "module": "mod:ext:services",
       "external": true,
       "fields": {
-        "owner": "Payments team",
-        "setup": "Live and test accounts; key in STRIPE_SECRET_KEY",
-        "limits": "100 read and 100 write requests per second in live mode",
-        "links": [
-          {
-            "label": "Dashboard",
-            "url": "https://dashboard.stripe.com"
-          },
-          {
-            "label": "API docs",
-            "url": "https://docs.stripe.com/api"
-          },
-          {
-            "label": "Status",
-            "url": "https://status.stripe.com"
-          }
-        ],
         "import": "github.com/stripe/stripe-go/v79"
       }
     },
@@ -707,7 +678,7 @@
           [
             "user_id",
             "uuid",
-            "\u2192 users.id"
+            "→ users.id"
           ],
           [
             "items",
@@ -1028,13 +999,6 @@
     }
   ],
   "edges": [
-    {
-      "from": "ext:stripe",
-      "to": "route:POST /webhooks/stripe",
-      "type": "declared",
-      "detail": "sends payment_intent.succeeded",
-      "declared": true
-    },
     {
       "from": "go:shop/cmd/server.jobs",
       "to": "go:shop/internal/sched.(*Scheduler).Every",

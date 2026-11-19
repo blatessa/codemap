@@ -18,15 +18,11 @@ const GRAPH = path.resolve(process.env.CODEMAP_MOCK_GRAPH ?? path.join(here, '..
 const DIR = path.join(ROOT, '.codemap');
 
 type Obj = Record<string, unknown>;
-const FILES = ['blocks', 'external'] as const;
 // the [[key]] each list file keeps its entries under
-const LIST_KEY: Record<string, string> = { blocks: 'block' };
-type FileKey = (typeof FILES)[number];
 
 interface Mock {
   graph: Obj;
   config: unknown;
-  files: Record<FileKey, unknown>;
   proposals: Map<string, Obj>;
 }
 
@@ -40,15 +36,6 @@ function readText(name: string): string | null {
   } catch {
     return null;
   }
-}
-
-function readFile(key: FileKey): unknown {
-  const t = readText(key + '.toml');
-  const v: Obj = t ? TOML.parse(t) : {};
-  // TOML has no top-level arrays: lists are [[area]] and [[block]] tables, and
-  // external.toml holds [[node]] and [[edge]].
-  if (key === 'external') return renameKeys(v, { node: 'nodes', edge: 'edges' });
-  return v[LIST_KEY[key]] ?? [];
 }
 
 // renameKeys maps the singular TOML table keys to the JSON API's plural names.
@@ -114,13 +101,10 @@ function withRoles(): Obj {
 }
 
 function load(): Mock {
-  const files = {} as Record<FileKey, unknown>;
-  for (const k of FILES) files[k] = readFile(k);
   const t = readText('config.toml');
   return {
     graph: withRoles(),
     config: t ? TOML.parse(t) : {},
-    files,
     proposals: loadProposals(),
   };
 }
@@ -129,7 +113,6 @@ const hash = (v: unknown) => createHash('sha1').update(JSON.stringify(v)).digest
 
 function versions() {
   const v: Record<string, string> = {};
-  for (const k of FILES) v[k] = hash(db.files[k]);
   for (const [slug, p] of db.proposals) v['proposals/' + slug] = hash(p);
   return v;
 }
@@ -162,8 +145,6 @@ function broadcast(event: string, files: string[]) {
 
 const projectOf = () => ({
   config: db.config,
-  blocks: db.files.blocks,
-  external: db.files.external,
   proposals: [...db.proposals.values()],
 });
 
@@ -198,22 +179,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, next: () => voi
   }
   // test hook: serve another graph with an empty .codemap (reset restores the fixture)
   if (p === '/__mock/load' && m === 'PUT') {
-    db = { graph: (await readBody(req)) as Obj, config: {}, files: { blocks: [], external: {} }, proposals: new Map() };
+    db = { graph: (await readBody(req)) as Obj, config: {}, proposals: new Map() };
     return send(res, 204);
   }
   if (p === '/api/state' && m === 'GET') return send(res, 200, { graph: db.graph, project: projectOf(), versions: versions() });
-  const pf = /^\/api\/project\/(blocks|external)$/.exec(p);
-  if (pf && m === 'PUT') {
-    const key = pf[1] as FileKey;
-    const cur = hash(db.files[key]);
-    const im = req.headers['if-match'];
-    if (im !== undefined && im !== cur) return send(res, 409, { version: cur, value: db.files[key] });
-    let v = await readBody(req);
-    db.files[key] = v;
-    // like the real server's file watcher, which also sees our own writes
-    broadcast('project-changed', [`.codemap/${key}.toml`]);
-    return send(res, 200, { version: hash(v) });
-  }
+
   if (p === '/api/proposals' && m === 'GET') return send(res, 200, [...db.proposals.values()]);
   const pp = /^\/api\/proposals\/([^/]+)$/.exec(p);
   if (pp) {
@@ -282,9 +252,7 @@ function watch() {
         }
         continue;
       }
-      const base = path.basename(f).replace(/\.(toml|json)$/, '') as FileKey;
-      if ((FILES as readonly string[]).includes(base)) db.files[base] = readFile(base);
-      else if (f.includes('proposals')) db.proposals = loadProposals();
+      if (f.includes('proposals')) db.proposals = loadProposals();
     }
     if (graph) broadcast('graph-changed', [path.basename(GRAPH)]);
     const proj = files.filter((f) => f !== GRAPH).map((f) => path.relative(ROOT, f));

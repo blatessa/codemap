@@ -21,7 +21,7 @@ export function Head({ eyebrow, plan, title, children }: { eyebrow: string; plan
         <h2>{title}</h2>
         {children}
       </div>
-      <button className="x" aria-label="Close" onClick={() => setState({ sel: [], form: null, connectFrom: null, splitting: null })}>
+      <button className="x" aria-label="Close" onClick={() => setState({ sel: [], form: null, connectFrom: null })}>
         ×
       </button>
     </div>
@@ -33,7 +33,6 @@ export function NodeLink({ m, id, edge, detail }: { m: Model; id: string; edge?:
   return (
     <button className={`lnk ${edge?.prop || x?.row.prop ? 'prop' : ''}`} data-node={id} onClick={() => select(id)}>
       {qn(m, id)}
-      {edge?.declared && <span className="q">declared</span>}
       {detail && edge?.detail && <span className="q">{edge.detail}</span>}
     </button>
   );

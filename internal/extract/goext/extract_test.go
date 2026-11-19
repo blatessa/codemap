@@ -132,7 +132,7 @@ func TestShopExpected(t *testing.T) {
 	}
 	wantEdges := map[key]bool{}
 	for _, w := range want.Edges {
-		if !goSide(w.From) || !goSide(w.To) || w.Declared {
+		if !goSide(w.From) || !goSide(w.To) {
 			continue
 		}
 		k := key{w.From, w.To, w.Type}
@@ -159,17 +159,9 @@ func TestShopExpected(t *testing.T) {
 	}
 }
 
-// TestShopMerged merges the extracted graph with .codemap/external.toml as
-// build.Load does, and checks the traces the viewer relies on.
-func TestShopMerged(t *testing.T) {
-	g := extractShop(t)
-	proj, err := project.Load(shopRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	decl := proj.External.ToGraph()
-	project.FillDeclaredDefaults(decl, g)
-	m := graph.Merge(g, decl)
+// TestShopTraces checks the traces the viewer relies on.
+func TestShopTraces(t *testing.T) {
+	m := extractShop(t)
 	for _, e := range graph.Validate(m) {
 		t.Error(e)
 	}

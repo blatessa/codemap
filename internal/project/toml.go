@@ -2,7 +2,6 @@ package project
 
 import (
 	"bytes"
-	"fmt"
 	"math"
 	"reflect"
 	"sort"
@@ -12,12 +11,7 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// TOML has no top-level arrays, so list files keep their entries as an array of
-// tables under a singular key ([[block]]).
-const BlockKey = "block"
-
-// MarshalTOML encodes v as TOML. Free-form maps (declared nodes, proposal
-// sketches) are written with their well-known keys first (id, from, to, kind,
+// MarshalTOML encodes v as TOML. Free-form maps (proposal sketches) are written with their well-known keys first (id, from, to, kind,
 // label, ...) and the rest sorted, so a round trip is stable.
 func MarshalTOML(v any) ([]byte, error) {
 	var buf bytes.Buffer
@@ -31,29 +25,6 @@ func MarshalTOML(v any) ([]byte, error) {
 
 // UnmarshalTOML decodes TOML into v.
 func UnmarshalTOML(b []byte, v any) error { return toml.Unmarshal(b, v) }
-
-// MarshalList encodes a list file: each entry becomes a [[key]] table.
-func MarshalList[T any](key string, list []T) ([]byte, error) {
-	if len(list) == 0 {
-		return []byte{}, nil
-	}
-	return MarshalTOML(map[string][]T{key: list})
-}
-
-// UnmarshalList decodes a list file written by MarshalList.
-func UnmarshalList[T any](key string, b []byte, list *[]T) error {
-	var doc map[string][]T
-	if err := toml.Unmarshal(b, &doc); err != nil {
-		return err
-	}
-	for k := range doc {
-		if k != key {
-			return fmt.Errorf("unexpected key %q (entries are [[%s]] tables)", k, key)
-		}
-	}
-	*list = doc[key]
-	return nil
-}
 
 // firstKeys come first, in this order, in free-form maps.
 var firstKeys = []string{"id", "name", "from", "to", "kind", "label", "module", "external", "entry"}

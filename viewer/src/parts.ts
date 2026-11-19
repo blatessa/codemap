@@ -127,11 +127,10 @@ export function partsOf(m: Model): Parts {
   const parts = m.boxes.filter((b) => !isResourceBox(b));
   const resources = m.boxes.filter((b) => isResourceBox(b) && b.rows.length);
 
-  // each part's program: its module's, a block's source module's, or for a
-  // proposed module the program of what it's connected to
+  // each part's program: its module's, or for a proposed module the program of what it's connected to
   const prog = new Map<string, string>();
   for (const b of parts) {
-    const p = b.module?.program ?? (b.from ? m.box.get(b.from)?.module?.program : undefined);
+    const p = b.module?.program;
     if (p) prog.set(b.id, p);
   }
   for (const b of parts)

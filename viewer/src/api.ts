@@ -30,13 +30,6 @@ function headers(version: string | undefined) {
   return h;
 }
 
-export type ProjectFile = 'blocks' | 'external';
-
-export async function putProject(file: ProjectFile, value: unknown, version: string | undefined): Promise<string> {
-  const r = await check(await fetch('/api/project/' + file, { method: 'PUT', headers: headers(version), body: JSON.stringify(value) }));
-  return (await r.json()).version;
-}
-
 export async function putProposal(p: Proposal, version: string | undefined): Promise<string> {
   const r = await check(
     await fetch('/api/proposals/' + encodeURIComponent(p.slug), { method: 'PUT', headers: headers(version), body: JSON.stringify(p) }),

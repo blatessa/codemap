@@ -191,14 +191,14 @@ export function rowCls(id: string): string {
 
 function boxHas(b: Box | undefined): boolean {
   if (!b || !idx) return false;
-  if (b.module && idx.touched.has(b.module.id) && !b.block) return true;
+  if (b.module && idx.touched.has(b.module.id)) return true;
   return b.rows.some((r) => idx!.added.has(r.id) || idx!.removed.has(r.id) || idx!.changed.has(r.id));
 }
 
 export function boxCls(b: Box): string {
   if (!idx) return '';
-  if (!b.block && b.module && idx.addedM.has(b.id)) return 'd-add';
-  if (!b.block && b.module && idx.removedM.has(b.id)) return 'd-rem';
+  if (b.module && idx.addedM.has(b.id)) return 'd-add';
+  if (b.module && idx.removedM.has(b.id)) return 'd-rem';
   return boxHas(b) ? 'd-has' : '';
 }
 

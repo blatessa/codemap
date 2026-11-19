@@ -57,7 +57,7 @@ function MoveTo({ m, id, at }: { m: Model; id: string; at: string }) {
   return (
     <select className="pick" id="move-to" aria-label="Move to" value={at} onChange={(e) => moveNode(id, e.target.value)}>
       {m.boxes
-        .filter((b) => !b.external && !b.ghost && !b.block)
+        .filter((b) => !b.external && !b.ghost)
         .map((b) => (
           <option key={b.id} value={b.id}>
             {b.id === at ? `In ${b.label}` : `Move to ${b.label}`}
@@ -213,7 +213,7 @@ export function NodePanel({ m, id }: { m: Model; id: string }) {
               Add a call
             </button>
           )}
-          {!n.external && !row.ghost && !box.external && <MoveTo m={m} id={id} at={box.block ? box.from! : box.id} />}
+          {!n.external && !row.ghost && !box.external && <MoveTo m={m} id={id} at={box.id} />}
           {row.prop && (
             <button
               className="btn danger"

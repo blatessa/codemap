@@ -1,45 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
-import { blockFor, escapeGlob, globMatch, pathMatch } from './blocks';
 import { classify, humanize } from './fields';
 import { atRest, linksOf, partSub, partsOf } from './parts';
 import { SYNTH, buildModel, selectionOf, testsReaching, trace } from './model';
 import type { Graph } from './types';
-
-describe('blocks (port of project.BlockFor)', () => {
-  // same cases as internal/project TestBlockFor
-  const blocks = [
-    { id: 'block:checkout', name: '', from: 'mod:ts:web/src/pages', match: ['/checkout*', '/orders/*'] },
-    { id: 'block:account', name: '', from: 'mod:ts:web/src/pages', files: ['web/src/pages/account/**'] },
-  ];
-  test.each([
-    [{ module: 'mod:ts:web/src/pages', label: '/checkout' }, 'block:checkout'],
-    [{ module: 'mod:ts:web/src/pages', label: '/orders/:id' }, 'block:checkout'],
-    [{ module: 'mod:ts:web/src/pages', label: '/settings', file: 'web/src/pages/account/deep/Settings.tsx' }, 'block:account'],
-    [{ module: 'mod:ts:web/src/pages', label: '/login', file: 'web/src/pages/LoginPage.tsx' }, ''],
-    [{ module: 'mod:other', label: '/checkout' }, ''],
-  ])('%o -> %s', (n, want) => expect(blockFor(blocks, n)).toBe(want));
-
-  test('path.Match semantics', () => {
-    expect(pathMatch('a*', 'abc')).toBe(true);
-    expect(pathMatch('a*', 'a/b')).toBe(false);
-    expect(pathMatch('a?c', 'abc')).toBe(true);
-    expect(pathMatch('[a-c]x', 'bx')).toBe(true);
-    expect(pathMatch('[^a-c]x', 'dx')).toBe(true);
-    expect(pathMatch('[^a-c]x', 'ax')).toBe(false);
-    expect(pathMatch('\\*', '*')).toBe(true);
-    expect(pathMatch('\\*', 'a')).toBe(false);
-    expect(pathMatch('[', '[')).toBe(false); // malformed
-    expect(globMatch('a/**/c.go', 'a/b/d/c.go')).toBe(true);
-    expect(globMatch('a/**', 'a/b/c')).toBe(true);
-    expect(globMatch('a/**/c.go', 'b/c.go')).toBe(false);
-  });
-
-  test('exact match lists survive glob characters', () => {
-    for (const s of ['Handler.Get', '/orders/[id]', 'a*b?', 'x\\y']) expect(pathMatch(escapeGlob(s), s)).toBe(true);
-    expect(pathMatch(escapeGlob('a*'), 'abc')).toBe(false);
-  });
-});
 
 describe('field rendering rules (§3.3)', () => {
   const isNode = (id: string) => id === 'table:orders' || id === 'ext:stripe';
@@ -69,7 +33,7 @@ describe('field rendering rules (§3.3)', () => {
 
 describe('model on the shop fixture', () => {
   const g = JSON.parse(readFileSync(new URL('../../testdata/shop.expected.json', import.meta.url), 'utf8')) as Graph;
-  const m = buildModel(g, [], null);
+  const m = buildModel(g, null);
 
   test('tests are hidden from the map', () => {
     expect([...m.node.keys()].some((id) => id.startsWith('test:'))).toBe(false);
@@ -91,14 +55,8 @@ describe('model on the shop fixture', () => {
     expect(be.some((id) => id.startsWith('test:ts:'))).toBe(false);
   });
 
-  test('blocks split rows out of their module', () => {
-    const mb = buildModel(g, [{ id: 'block:repo', name: 'repo', from: 'mod:go:shop/internal/orders', match: ['Repo.*'] }], null);
-    expect(mb.box.get('block:repo')!.rows.map((r) => r.label).sort()).toEqual(['Repo.Find', 'Repo.Insert', 'Repo.UpdateStatus']);
-    expect(mb.box.get('mod:go:shop/internal/orders')!.rows.some((r) => r.label.startsWith('Repo.'))).toBe(false);
-  });
-
   test('proposal refs to missing IDs become ghosts', () => {
-    const mp = buildModel(g, [], {
+    const mp = buildModel(g, {
       slug: 'x',
       name: 'x',
       status: 'open',
@@ -116,16 +74,13 @@ describe('public rows', () => {
   const g = JSON.parse(readFileSync(new URL('../../testdata/shop.expected.json', import.meta.url), 'utf8')) as Graph;
 
   test('internal rows are the ones with no edge leaving their box', () => {
-    const m = buildModel(g, [], null);
+    const m = buildModel(g, null);
     const orders = m.box.get('mod:go:shop/internal/orders')!;
     expect(orders.rows.filter((r) => !r.pub).map((r) => r.label).sort()).toEqual(['CreateOrder.Total', 'writeError', 'writeJSON']);
-    // a block boundary counts as a module boundary
-    const mb = buildModel(g, [{ id: 'block:repo', name: 'repo', from: 'mod:go:shop/internal/orders', match: ['Repo.*'] }], null);
-    expect(mb.box.get('block:repo')!.rows.every((r) => r.pub)).toBe(true);
   });
 
   test('a path keeps its internal rows', () => {
-    const m = buildModel(g, [], null);
+    const m = buildModel(g, null);
     const S = selectionOf(m, ['go:shop/internal/orders.(*Service).Place'])!;
     expect(S.path.has('go:shop/internal/orders.(*Repo).Insert')).toBe(true);
     expect(S.path.has('go:shop/internal/orders.(CreateOrder).Total')).toBe(false); // leads nowhere: folded
@@ -169,7 +124,7 @@ describe('traces on a big codebase', () => {
       { from: 'go:x/a.save', to: 'table:t', type: 'writes', file: 'a/a.go', line: 10 },
     ],
   };
-  const m = buildModel(g, [], null);
+  const m = buildModel(g, null);
   const id = (s: string) => 'go:x/a.' + s;
 
   test('a selection stops at wide calls, utilities and shared functions', () => {
@@ -209,7 +164,7 @@ describe('the part map', () => {
   // the shop as codemap build writes it: modules carry their program
   const g = JSON.parse(readFileSync(new URL('../../testdata/shop.expected.json', import.meta.url), 'utf8')) as Graph;
   for (const mo of g.modules ?? []) if (!mo.external) mo.program = mo.id.startsWith('mod:ts:') ? 'shop-web' : 'shop';
-  const m = buildModel(g, [], null);
+  const m = buildModel(g, null);
   const P = partsOf(m);
 
   test('programs are frames, the one calling the other first; resources are frames of their own', () => {

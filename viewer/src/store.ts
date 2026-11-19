@@ -1,9 +1,8 @@
-// App state, persistence (§8 PUTs with If-Match, 409 reloads) and live updates.
+// App state, saving proposals (PUTs with If-Match, 409 reloads) and live updates.
 import { create } from 'zustand';
 import * as api from './api';
-import { escapeGlob, slugify } from './blocks';
 import { buildModel, selectionOf, type Model, type Sel } from './model';
-import type { Block, Graph, Loose, Proposal } from './types';
+import type { Graph, Loose, Proposal } from './types';
 
 export type Mode = 'explore' | 'propose';
 export interface Form {
@@ -18,7 +17,6 @@ export interface S {
   status: 'loading' | 'ready' | 'error';
   error: string;
   graph: Graph;
-  blocks: Block[];
   proposals: Proposal[];
   versions: Record<string, string>;
   mode: Mode;
@@ -29,7 +27,6 @@ export interface S {
   touchedView: boolean;
   connectFrom: string | null;
   form: Form | null;
-  splitting: string | null;
   pslug: string | null;
   cslug: string | null; // the proposal comments go to: the last one opened
   editing: boolean;
@@ -46,7 +43,6 @@ export const useStore = create<S>(() => ({
   status: 'loading',
   error: '',
   graph: empty,
-  blocks: [],
   proposals: [],
   versions: {},
   mode: 'explore',
@@ -57,7 +53,6 @@ export const useStore = create<S>(() => ({
   touchedView: false,
   connectFrom: null,
   form: null,
-  splitting: null,
   pslug: null,
   cslug: readCslug(),
   editing: false,
@@ -73,11 +68,11 @@ const get = useStore.getState;
 
 // ---- derived ----
 
-let memo: { g?: Graph; b?: Block[]; p?: Proposal | null; m?: Model } = {};
+let memo: { g?: Graph; p?: Proposal | null; m?: Model } = {};
 export function modelOf(s: S): Model {
   const p = s.mode === 'propose' ? currentProposal(s) : null;
   const g = p && s.baseGraph ? s.baseGraph : s.graph;
-  if (memo.g !== g || memo.b !== s.blocks || memo.p !== p) memo = { g, b: s.blocks, p, m: buildModel(g, s.blocks, p) };
+  if (memo.g !== g || memo.p !== p) memo = { g, p, m: buildModel(g, p) };
   return memo.m!;
 }
 export const useModel = () => useStore(modelOf);
@@ -145,8 +140,6 @@ export async function load() {
     const keep = (key: string) => !first && (pending.has(key) || s.versions[key] === v[key]);
     const next: Partial<S> = { status: 'ready', error: '', graph: hooks.graph(st.graph ?? empty), versions: { ...v } };
     const pr = st.project ?? ({} as never);
-    if (!keep('blocks')) next.blocks = pr.blocks ?? [];
-    else next.versions!.blocks = s.versions.blocks;
     // proposals: take the server's copy unless we're mid-edit on it
     const server = pr.proposals ?? [];
     next.proposals = server.map((p) => {
@@ -193,37 +186,6 @@ function debounce(key: string, fn: () => Promise<void>, ms: number) {
   );
 }
 
-function valueOf(file: api.ProjectFile): unknown {
-  const s = get();
-  if (file === 'blocks') return s.blocks;
-  return null;
-}
-
-export function persist(file: api.ProjectFile, explicit?: unknown, ms = 300) {
-  if (get().rev !== 'worktree' || get().readOnly) return;
-  debounce(
-    file,
-    async () => {
-      const value = explicit ?? valueOf(file);
-      try {
-        const v = await api.putProject(file, value, get().versions[file]);
-        set({ versions: { ...get().versions, [file]: v } });
-      } catch (e) {
-        if (e instanceof api.Conflict) applyConflict(file, e);
-        else console.error(e);
-      }
-    },
-    ms,
-  );
-}
-
-function applyConflict(file: api.ProjectFile, c: api.Conflict) {
-  const s = get();
-  const versions = { ...s.versions, [file]: c.version };
-  if (file === 'blocks') set({ blocks: (c.value as Block[]) ?? [], versions });
-  else set({ versions });
-}
-
 export function persistProposal(slug: string, ms = 400) {
   if (get().rev !== 'worktree' || get().readOnly) return;
   const key = 'proposals/' + slug;
@@ -260,50 +222,12 @@ export function select(id: string | null, fresh = false) {
   const m = modelOf(s);
   const node = !!id && m.node.has(id) && s.mode !== 'propose'; // sketching needs the whole map
   const st = s.story && !fresh && node ? storyOf({ ...s, sel: [id!] }) : null;
-  if (st) return set({ sel: [id!], hover: null, form: null, splitting: null });
-  set({ sel: id ? [id] : [], story: node ? id : null, hover: null, form: null, splitting: null });
-}
-
-export function toggleMulti(id: string) {
-  const s = get();
-  const ids = s.sel.includes(id) ? s.sel.filter((x) => x !== id) : [...s.sel, id];
-  set({ sel: ids, form: null, splitting: null, hover: null });
+  if (st) return set({ sel: [id!], hover: null, form: null });
+  set({ sel: id ? [id] : [], story: node ? id : null, hover: null, form: null });
 }
 
 export function setMode(mode: Mode) {
   set({ mode, connectFrom: null, form: null, ...(mode === 'propose' ? { sel: [], pslug: null, editing: false } : {}) });
-}
-
-// ---- positions ----
-
-
-
-
-// ---- blocks ----
-
-export function splitBlock(from: string, labels: string[], name: string) {
-  const s = get();
-  const taken = new Set(s.blocks.map((b) => b.id));
-  let id = 'block:' + slugify(name),
-    i = 2;
-  while (taken.has(id)) id = `block:${slugify(name)}-${i++}`;
-  const block: Block = { id, name, from, match: [...new Set(labels)].map(escapeGlob) };
-  set({ blocks: [...s.blocks, block], sel: [id], splitting: null, form: null });
-  persist('blocks');
-  return id;
-}
-
-export function renameBlock(id: string, name: string) {
-  set({ blocks: get().blocks.map((b) => (b.id === id ? { ...b, name } : b)) });
-  persist('blocks', undefined, 500);
-}
-
-export function mergeBlock(id: string) {
-  const s = get();
-  const b = s.blocks.find((x) => x.id === id);
-  if (!b) return;
-  set({ blocks: s.blocks.filter((x) => x.id !== id), sel: [b.from] });
-  persist('blocks');
 }
 
 // ---- proposals ----

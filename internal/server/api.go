@@ -59,9 +59,6 @@ func ifMatch(r *http.Request) string {
 // projectJSON is the project as sent to the viewer, with empty lists instead of null.
 func projectJSON(p *project.Project) project.Project {
 	c := *p
-	if c.Blocks == nil {
-		c.Blocks = []project.Block{}
-	}
 	if c.Proposals == nil {
 		c.Proposals = []*project.Proposal{}
 	}
@@ -85,134 +82,17 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, stateResponse{Graph: g, Project: projectJSON(p), Versions: v})
 }
 
-// kinds describes how each writable project file is decoded and encoded.
-type fileKind struct {
-	zero    func() any // pointer to an empty value
-	marshal func(v any) ([]byte, error)
-	parse   func(b []byte, v any) error
-	fix     func(v any) // normalise nil slices and fill defaults
-}
-
-// listKind is a TOML file holding a list as [[key]] tables.
-func listKind[T any](key string, fix func(*[]T)) fileKind {
-	return fileKind{
-		zero:    func() any { v := []T{}; return &v },
-		marshal: func(v any) ([]byte, error) { return project.MarshalList(key, *v.(*[]T)) },
-		parse:   func(b []byte, v any) error { return project.UnmarshalList(key, b, v.(*[]T)) },
-		fix: func(v any) {
-			if fix != nil {
-				fix(v.(*[]T))
-			}
-		},
-	}
-}
-
-func tomlKind[T any](empty T, fix func(*T)) fileKind {
-	return fileKind{
-		zero:    func() any { v := empty; return &v },
-		marshal: func(v any) ([]byte, error) { return project.MarshalTOML(*v.(*T)) },
-		parse:   func(b []byte, v any) error { return project.UnmarshalTOML(b, v) },
-		fix: func(v any) {
-			if fix != nil {
-				fix(v.(*T))
-			}
-		},
-	}
-}
-
-var kinds = map[string]fileKind{
-	"blocks": listKind(project.BlockKey, func(v *[]project.Block) {
-		if *v == nil {
-			*v = []project.Block{}
-		}
-		for i := range *v {
-			if b := &(*v)[i]; b.ID == "" && b.Name != "" {
-				b.ID = "block:" + project.Slugify(b.Name)
-			}
-		}
-	}),
-	"external": tomlKind(project.External{}, nil),
-}
-
-// currentValue parses the bytes of a project file for a 409 body. A missing
-// file is the empty value; an unparseable one is null.
-func currentValue(k fileKind, b []byte) any {
-	v := k.zero()
-	if b != nil {
-		if err := k.parse(b, v); err != nil {
-			return nil
-		}
-	}
-	k.fix(v)
-	return v
-}
-
 type conflict struct {
 	Version string `json:"version"`
 	Value   any    `json:"value"`
 	Error   string `json:"error,omitempty"`
 }
 
-func (s *Server) handlePutProject(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	file, ok := projectFiles[name]
-	if !ok {
-		writeError(w, http.StatusNotFound, "unknown project file "+strconv.Quote(name))
-		return
-	}
-	if !writeRev(w, r) {
-		return
-	}
-	k := kinds[name]
-	val := k.zero()
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody)).Decode(val); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid "+name+": "+err.Error())
-		return
-	}
-	k.fix(val)
-	data, err := k.marshal(val)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	s.writeMu.Lock()
-	cur, curBytes, err := s.fileVersion(file)
-	if err != nil {
-		s.writeMu.Unlock()
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	switch m := ifMatch(r); {
-	case m == "":
-		s.writeMu.Unlock()
-		writeJSON(w, http.StatusPreconditionRequired, conflict{cur, currentValue(k, curBytes), "If-Match is required"})
-		return
-	case m != cur:
-		s.writeMu.Unlock()
-		writeJSON(w, http.StatusConflict, conflict{Version: cur, Value: currentValue(k, curBytes)})
-		return
-	}
-	err = project.WriteFile(s.root, file, data)
-	s.writeMu.Unlock()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	s.afterWrite(name == "external")
-	writeJSON(w, http.StatusOK, map[string]string{"version": version(data)})
-}
-
 // afterWrite refreshes the cache right away so a following GET sees the write.
 // The watcher will also notice the change and send project-changed.
-func (s *Server) afterWrite(graphToo bool) {
+func (s *Server) afterWrite() {
 	if err := s.reloadProject(); err != nil {
 		s.log.Printf("reload .codemap: %v", err)
-	}
-	if graphToo {
-		if err := s.rebuildGraph(); err != nil {
-			s.log.Printf("rebuild: %v", err)
-		}
 	}
 }
 
@@ -298,7 +178,7 @@ func (s *Server) handlePutProposal(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.afterWrite(false)
+	s.afterWrite()
 	writeJSON(w, http.StatusOK, map[string]string{"version": version(data)})
 }
 
@@ -327,7 +207,7 @@ func (s *Server) handleDeleteProposal(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.afterWrite(false)
+	s.afterWrite()
 	w.WriteHeader(http.StatusNoContent)
 }
 

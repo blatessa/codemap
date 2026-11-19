@@ -197,12 +197,6 @@ func (s *Server) reloadProject() error {
 	return nil
 }
 
-// projectFiles maps the writable project keys to their file names.
-var projectFiles = map[string]string{
-	"blocks":   "blocks.toml",
-	"external": "external.toml",
-}
-
 // readProject reads .codemap/ once, so the versions match exactly the bytes that
 // were parsed.
 func readProject(root string) (*project.Project, map[string]string, error) {
@@ -222,16 +216,6 @@ func readProject(root string) (*project.Project, map[string]string, error) {
 	}
 	if _, _, err := read("config.toml"); err != nil {
 		return nil, nil, err
-	}
-	for key, name := range projectFiles {
-		b, ok, err := read(name)
-		if err != nil {
-			return nil, nil, err
-		}
-		versions[key] = Missing
-		if ok {
-			versions[key] = version(b)
-		}
 	}
 	entries, err := os.ReadDir(filepath.Join(dir, "proposals"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -288,7 +272,6 @@ func startDetached(cmd *exec.Cmd) error {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/state", s.handleState)
-	mux.HandleFunc("PUT /api/project/{name}", s.handlePutProject)
 	mux.HandleFunc("GET /api/proposals", s.handleListProposals)
 	mux.HandleFunc("PUT /api/proposals/{slug}", s.handlePutProposal)
 	mux.HandleFunc("DELETE /api/proposals/{slug}", s.handleDeleteProposal)

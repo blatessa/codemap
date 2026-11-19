@@ -56,13 +56,12 @@ type Node struct {
 
 // Edge connects two nodes. Type is one of the EdgeType constants or any other string.
 type Edge struct {
-	From     string `json:"from"`
-	To       string `json:"to"`
-	Type     string `json:"type"`
-	Detail   string `json:"detail,omitempty"`
-	File     string `json:"file,omitempty"`
-	Line     int    `json:"line,omitempty"`
-	Declared bool   `json:"declared,omitempty"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Type   string `json:"type"`
+	Detail string `json:"detail,omitempty"`
+	File   string `json:"file,omitempty"`
+	Line   int    `json:"line,omitempty"`
 	// Proposed marks an edge an open proposal sketches (see Node.Proposed).
 	// Traces always show it, and it never counts towards wide calls, effects
 	// or tests.
@@ -78,7 +77,6 @@ const (
 	Writes     = "writes"
 	Publishes  = "publishes"
 	Subscribes = "subscribes"
-	Declared   = "declared"
 )
 
 // Built-in node kinds. These are labels only; any string is allowed.

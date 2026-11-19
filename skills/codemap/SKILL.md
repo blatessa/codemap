@@ -117,32 +117,9 @@ detail = "POST /v1/refunds"
 - To move an existing function to another module, list it with its real ID and the new module: `[[node]]` with `id = "go:shop/internal/orders.(*Service).MarkPaid"` and `module = "mod:go:shop/internal/payments"`.
 - The user comments on a proposal from the viewer. Each comment is appended to the body under a `###` heading naming what it's about (a function, a module, or `file:lines` with the highlighted code quoted below). When asked to work through a proposal, read its body and treat those comments as the things to address.
 
-## Splitting a module
+## Explaining a module
 
-The map lays itself out from the code every time: entry points on the left, data and external systems on the right, and folders with many similar modules folded into one box. Nothing about positions or grouping is stored. When the user asks, you can split a module that mixes unrelated jobs into blocks in `.codemap/blocks.toml`. A node goes into the first block whose rules match it; the rest stay in the module.
-
-```toml
-[[block]]
-id = "block:handlers-billing"            # "block:" + a slug of the name
-name = "handlers · billing"
-from = "mod:go:app/internal/handlers"
-match = ["Billing*", "*Invoice*"]        # globs on function labels
-files = ["internal/handlers/billing*"]   # and/or globs on file paths
-```
-
-Run `codemap modules` afterwards and fix anything under "Problems". The viewer shows a module's package doc comment (Go) or file doc comment, so if those are missing and the user agrees, adding them is the best way to explain a module.
-
-## Other .codemap files
-
-These belong to the user. They edit them in the viewer, and the files are plain text if you're asked to change them:
-
-| File | Contents |
-|---|---|
-| `blocks.toml` | A module split into blocks by pattern, one `[[block]]` each |
-| `external.toml` | External systems and their details (`[[node]]`): owner, links, setup. Also calls into the code that the code can't show, such as a webhook from Stripe (`[[edge]]`). |
-| `config.toml` | What the extractors look for (below) |
-
-Don't rewrite them unprompted.
+The map lays itself out from the code every time, and nothing about positions or grouping is stored. The viewer shows a module's package doc comment (Go) or file doc comment, so if those are missing and the user agrees, adding them is the best way to explain a module. A module that mixes unrelated jobs is worth a proposal that splits it in the code.
 
 ## Configuring extraction (config.toml)
 

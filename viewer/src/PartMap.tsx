@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { linksOf, partSub, partsOf, atRest, type Link, type Rect } from './parts';
 import type { Model, Sel } from './model';
-import { getState, select, setState, storyOf, toggleMulti, useModel, useSel, useStore } from './store';
+import { getState, select, setState, storyOf, useModel, useSel, useStore } from './store';
 import { boxCls, rowCls } from './revs';
 
 // what's lit: the selection's things and lines, or the hovered thing's
@@ -176,9 +176,8 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
     const add = (t.closest('[data-add]') as HTMLElement | null)?.dataset.add;
     if (add) return setState({ form: { type: 'fn', box: add }, sel: [], connectFrom: null });
     const id = target(t);
-    if (!id) return setState({ sel: [], form: null, splitting: null, connectFrom: null });
-    if (e.shiftKey) toggleMulti(id);
-    else select(id);
+    if (!id) return setState({ sel: [], form: null, connectFrom: null });
+    select(id);
   };
   const onPointerOver = (e: React.PointerEvent) => {
     if (drag.current?.moved) return;

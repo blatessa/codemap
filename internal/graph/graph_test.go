@@ -73,7 +73,7 @@ func sample() *Graph {
 			{From: "route:POST /orders", To: "a.Create", Type: Calls},
 			{From: "a.Create", To: "a.Place", Type: Calls},
 			{From: "a.Place", To: "ext:stripe", Type: Calls},
-			{From: "ext:stripe", To: "route:POST /webhooks/stripe", Type: Declared, Declared: true},
+			{From: "ext:stripe", To: "route:POST /webhooks/stripe", Type: Calls}, // a webhook
 			{From: "route:POST /webhooks/stripe", To: "a.Hook", Type: Calls},
 			{From: "test:go:a.TestPlace", To: "a.Place", Type: Calls},
 		},

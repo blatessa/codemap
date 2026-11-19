@@ -301,7 +301,7 @@ export function App() {
       if (!s.sel.length && !s.form && s.mode === 'propose') return setMode('explore');
       // a step of a story goes back to the story
       if (s.story && s.sel[0] !== s.story && storyOf(s)) return setState({ sel: [s.story], form: null, hover: null });
-      setState({ sel: [], form: null, hover: null, splitting: null });
+      setState({ sel: [], form: null, hover: null });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

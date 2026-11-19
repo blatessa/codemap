@@ -33,7 +33,6 @@ export interface GEdge {
   detail?: string;
   file?: string;
   line?: number;
-  declared?: boolean;
   proposed?: boolean;
 }
 
@@ -43,14 +42,6 @@ export interface Graph {
   modules: GModule[] | null;
   nodes: GNode[] | null;
   edges: GEdge[] | null;
-}
-
-export interface Block {
-  id: string;
-  name: string;
-  from: string;
-  match?: string[] | null;
-  files?: string[] | null;
 }
 
 
@@ -72,8 +63,6 @@ export interface Proposal {
 
 export interface Project {
   config: unknown;
-  blocks: Block[] | null;
-  external: unknown;
   proposals: Proposal[] | null;
 }
 

@@ -1,6 +1,5 @@
 // Package build produces the merged graph for a repo: it runs the extractors,
-// merges their partial graphs with the declared nodes from .codemap/external.toml,
-// and loads the rest of .codemap/.
+// merges their partial graphs, and loads .codemap/.
 package build
 
 import (
@@ -78,10 +77,7 @@ func Graph(root string, proj *project.Project, opt Options) (*graph.Graph, error
 			parts = append(parts, g)
 		}
 	}
-	base := graph.Merge(parts...)
-	decl := proj.External.ToGraph()
-	project.FillDeclaredDefaults(decl, base)
-	g := graph.Merge(base, decl)
+	g := graph.Merge(parts...)
 	if g.Rev == "" {
 		g.Rev = "worktree"
 	}

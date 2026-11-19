@@ -5,7 +5,6 @@ import { getState, setState, useModel, useStore } from './store';
 import { Comment } from './Comment';
 import { NodePanel } from './panel/NodePanel';
 import { BoxPanel } from './panel/PartPanel';
-import { MultiPanel } from './panel/MultiPanel';
 import { FormPanel } from './panel/FormPanel';
 
 export function Drawer() {
@@ -18,7 +17,6 @@ export function Drawer() {
   let content: ReactNode = null;
   let wide = false;
   if (form) content = <FormPanel key={form.type + form.box} m={m} />;
-  else if (sel.length > 1) content = <MultiPanel m={m} ids={sel} />;
   else if (sel.length === 1 && m.node.has(sel[0])) content = <NodePanel m={m} id={sel[0]} />;
   else if (sel.length === 1 && m.box.has(sel[0])) content = <BoxPanel key={sel[0]} m={m} id={sel[0]} />;
   else if (mode === 'propose' && !pslug) content = <ProposalList />;

@@ -2,10 +2,6 @@ id:     ext:stripe
 kind:   service (external)
 module: external services
 import: github.com/stripe/stripe-go/v79
-limits: 100 read and 100 write requests per second in live mode
-links:  [{"label":"Dashboard","url":"https://dashboard.stripe.com"},{"label":"API docs","url":"https://docs.stripe.com/api"},{"label":"Status","url":"https://status.stripe.com"}]
-owner:  Payments team
-setup:  Live and test accounts; key in STRIPE_SECRET_KEY
 
 Called by:
   server.main

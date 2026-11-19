@@ -57,7 +57,7 @@ From the terminal (handy for agents too): `codemap show "POST /orders"`,
 `codemap callers Repo.Find`, `codemap modules`, `codemap diff main...`. Run `codemap` for
 the full list.
 
-Settings, blocks and proposals live in `.codemap/` in your repo, as plain TOML and
+Settings and proposals live in `.codemap/` in your repo, as plain TOML and
 Markdown you can commit.
 
 ## Agent skill
@@ -73,7 +73,7 @@ marketplace, so in Claude Code:
 On versions before 2.1.275, run `/plugin marketplace add blatessa/codemap`, then
 `/plugin install codemap@codemap`. The `codemap` binary must be on your PATH.
 
-Then ask things like "make this codebase look good in codemap" or "work through the refunds
+Then ask things like "what does POST /orders touch?" or "work through the refunds
 proposal".
 
 ## Development

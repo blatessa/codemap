@@ -14,12 +14,8 @@ func TestLoadFromGraphFile(t *testing.T) {
 	if errs := graph.Validate(g); len(errs) > 0 {
 		t.Fatal(errs)
 	}
-	if len(p.External.Nodes) == 0 {
+	if len(p.Proposals) == 0 {
 		t.Error("project not loaded")
-	}
-	ix := graph.NewIndex(g)
-	if ix.Node["ext:stripe"].Fields["owner"] != "Payments team" {
-		t.Error("declared fields missing")
 	}
 }
 

@@ -6,24 +6,7 @@
     "module": "mod:ext:services",
     "external": true,
     "fields": {
-      "import": "github.com/stripe/stripe-go/v79",
-      "limits": "100 read and 100 write requests per second in live mode",
-      "links": [
-        {
-          "label": "Dashboard",
-          "url": "https://dashboard.stripe.com"
-        },
-        {
-          "label": "API docs",
-          "url": "https://docs.stripe.com/api"
-        },
-        {
-          "label": "Status",
-          "url": "https://status.stripe.com"
-        }
-      ],
-      "owner": "Payments team",
-      "setup": "Live and test accounts; key in STRIPE_SECRET_KEY"
+      "import": "github.com/stripe/stripe-go/v79"
     }
   },
   "reachedBy": [
@@ -45,84 +28,7 @@
     }
   ],
   "tree": {
-    "id": "ext:stripe",
-    "children": [
-      {
-        "id": "route:POST /webhooks/stripe",
-        "via": {
-          "from": "ext:stripe",
-          "to": "route:POST /webhooks/stripe",
-          "type": "declared",
-          "detail": "sends payment_intent.succeeded",
-          "declared": true
-        },
-        "children": [
-          {
-            "id": "go:shop/internal/payments.(*Handler).HandleWebhook",
-            "via": {
-              "from": "route:POST /webhooks/stripe",
-              "to": "go:shop/internal/payments.(*Handler).HandleWebhook",
-              "type": "calls"
-            },
-            "children": [
-              {
-                "id": "go:shop/internal/orders.(*Service).MarkPaid",
-                "via": {
-                  "from": "go:shop/internal/payments.(*Handler).HandleWebhook",
-                  "to": "go:shop/internal/orders.(*Service).MarkPaid",
-                  "type": "calls"
-                },
-                "children": [
-                  {
-                    "id": "go:shop/internal/notify.(*Mailer).SendReceipt",
-                    "via": {
-                      "from": "go:shop/internal/orders.(*Service).MarkPaid",
-                      "to": "go:shop/internal/notify.(*Mailer).SendReceipt",
-                      "type": "calls"
-                    },
-                    "reaches": [
-                      {
-                        "to": "ext:postmark",
-                        "type": "calls"
-                      }
-                    ]
-                  },
-                  {
-                    "id": "go:shop/internal/orders.(*Repo).UpdateStatus",
-                    "via": {
-                      "from": "go:shop/internal/orders.(*Service).MarkPaid",
-                      "to": "go:shop/internal/orders.(*Repo).UpdateStatus",
-                      "type": "calls"
-                    },
-                    "reaches": [
-                      {
-                        "to": "table:orders",
-                        "type": "writes"
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "id": "go:shop/internal/payments.(*Handler).verifySignature",
-                "via": {
-                  "from": "go:shop/internal/payments.(*Handler).HandleWebhook",
-                  "to": "go:shop/internal/payments.(*Handler).verifySignature",
-                  "type": "calls"
-                },
-                "support": 1,
-                "reaches": [
-                  {
-                    "to": "ext:stripe",
-                    "type": "calls"
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    ]
+    "id": "ext:stripe"
   },
   "users": {
     "calls": [

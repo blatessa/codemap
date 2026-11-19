@@ -1,8 +1,7 @@
 // Turns graph.json + .codemap state into what the map draws: boxes (modules,
-// blocks, proposed modules) holding rows (nodes), and the edges between rows.
+// proposed modules) holding rows (nodes), and the edges between rows.
 // Selection, call trees and test reach come from the Go walks (wasm.ts).
-import { blockFor } from './blocks';
-import type { Block, GEdge, GModule, GNode, Graph, Loose, Proposal } from './types';
+import type { GEdge, GModule, GNode, Graph, Loose, Proposal } from './types';
 import { Walker, type Effect } from './wasm';
 
 export interface Row {
@@ -24,8 +23,6 @@ export interface Box {
   label: string;
   doc?: string;
   external: boolean;
-  block?: Block; // a split of `from`
-  from?: string;
   module?: GModule;
   prop: boolean;
   ghost: boolean;
@@ -39,7 +36,6 @@ export interface MEdge {
   to: string;
   type: string;
   detail?: string;
-  declared: boolean;
   prop: boolean;
   net: boolean;
   file?: string;
@@ -116,7 +112,7 @@ export const isTest = (n: GNode) => n.kind === 'test';
 // buildModel derives the map. `proposal` is drawn over the graph when set.
 // Rows with a role are support code: never drawn, except on a proposal's
 // edits; traces leave them out (trace).
-export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null): Model {
+export function buildModel(g: Graph, proposal: Proposal | null): Model {
   const mods = g.modules ?? [];
   const nodes = g.nodes ?? [];
   const gedges = g.edges ?? [];
@@ -127,18 +123,12 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
     return b;
   };
   for (const m of mods) mkBox(m.id, m.label || m.id, { module: m, external: !!m.external, doc: m.doc });
-  for (const b of blocks) {
-    const src = box.get(b.from);
-    if (!src || src.block) continue;
-    mkBox(b.id, b.name, { block: b, from: b.from, external: src.external, doc: src.doc, module: src.module });
-  }
   const node = new Map<string, { row: Row; box: Box }>();
   const fullNode = new Map<string, GNode>();
   const tests: GNode[] = [];
   const place = (n: GNode, prop: boolean, ghost: boolean) => {
-    const bid = blockFor(blocks, n) || n.module;
-    let b = box.get(bid);
-    if (!b) b = mkBox(bid, bid.replace(/^mod:[^:]+:/, ''), { ghost: true });
+    let b = box.get(n.module);
+    if (!b) b = mkBox(n.module, n.module.replace(/^mod:[^:]+:/, ''), { ghost: true });
     const row = rowFor(n, prop, ghost);
     b.rows.push(row);
     node.set(n.id, { row, box: b });
@@ -160,7 +150,6 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
       to: e.to,
       type: e.type || 'calls',
       detail: e.detail,
-      declared: !!e.declared,
       prop,
       net: e.type === 'fetches',
       file: e.file,
@@ -238,7 +227,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
 
   const boxes: Box[] = [];
   for (const b of box.values()) {
-    if (!b.rows.length && !b.prop && !b.block) continue; // modules with only tests, or nothing
+    if (!b.rows.length && !b.prop) continue; // modules with only tests, or nothing
     b.rows.sort((x, y) => Number(x.prop || x.ghost) - Number(y.prop || y.ghost) || sortRows(x, y));
     for (const r of b.rows) {
       if (r.node.entry || r.node.external || r.prop || r.ghost) r.pub = true;
@@ -265,7 +254,6 @@ function walkGraph(edges: MEdge[], node: Map<string, { row: Row }>, all: Map<str
     detail: e.detail,
     file: e.file,
     line: e.line,
-    declared: e.declared || undefined,
     proposed: e.prop || undefined,
   }));
   return { version: 1, modules: [], nodes, edges: out.concat(rest) };
@@ -305,7 +293,7 @@ export const SYNTH = 1 << 24;
 export function selectionOf(m: Model, ids: string[]): Sel | null {
   const S: Sel = { nodes: new Set(), edges: new Set(), up: new Set(), down: new Set(), path: new Set(), extra: [] };
   const synth = (from: string, to: string, type: string, kind: 'skip' | 'reach') => {
-    const e: MEdge = { i: SYNTH + S.extra.length, from, to, type, declared: false, prop: false, net: type === 'fetches', synth: kind };
+    const e: MEdge = { i: SYNTH + S.extra.length, from, to, type, prop: false, net: type === 'fetches', synth: kind };
     S.extra.push(e);
     S.edges.add(e.i);
   };

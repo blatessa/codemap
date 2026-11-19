@@ -34,19 +34,7 @@
                   "from": "route:POST /webhooks/stripe",
                   "to": "go:shop/internal/payments.(*Handler).HandleWebhook",
                   "type": "calls"
-                },
-                "children": [
-                  {
-                    "id": "ext:stripe",
-                    "via": {
-                      "from": "ext:stripe",
-                      "to": "route:POST /webhooks/stripe",
-                      "type": "declared",
-                      "detail": "sends payment_intent.succeeded",
-                      "declared": true
-                    }
-                  }
-                ]
+                }
               }
             ]
           }
