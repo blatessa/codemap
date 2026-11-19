@@ -3,6 +3,7 @@
 // in the sans face.
 import { useState, type ReactNode } from 'react';
 import { Source } from '../Code';
+import { openInEditor } from '../api';
 import { qn, sharedFn, testsReaching, type Model } from '../model';
 import { select, setState, storyOf, useStore } from '../store';
 
@@ -23,7 +24,7 @@ export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 // ("Table", "Route", "Function · internal/orders"), then its name the way the
 // map writes it ("POST /orders", "PAGE /checkout"). `cls` is db, http, queue,
 // entry or fn.
-export function Head({ kind, plan, title, cls, children }: { kind?: string; plan?: boolean; title: string; cls?: string; children?: ReactNode }) {
+export function Head({ kind, plan, title, cls, children }: { kind?: ReactNode; plan?: boolean; title: string; cls?: string; children?: ReactNode }) {
   return (
     <div className="dhead">
       <div>
@@ -86,34 +87,23 @@ export function kindClass(m: Model, id: string) {
   return m.node.get(id)?.row.tagClass ?? '';
 }
 
-// Crumbs shows the story a step belongs to: "/checkout › Service.Place". The
-// map keeps the story lit; its name goes back to it.
-export function Crumbs({ m, id }: { m: Model; id: string }) {
-  const story = useStore(storyOf);
-  if (!story || story === id) return null;
-  return (
-    <nav className="crumbs" aria-label="Story">
-      <button className="lnk" data-story={story} data-node={story} onClick={() => select(story)}>
-        {qn(m, story)}
-      </button>
-      <span>›</span>
-      <span className="here">{qn(m, id)}</span>
-    </nav>
-  );
-}
-
 // Entries lists entry points inline, "POST /orders · PAGE /checkout · +2",
-// each a link; `max` keeps it to a line (the rest open on click).
+// each a link; `max` keeps it to a line (the rest open on click). The story
+// the map is showing, if it's one of them, comes first and is marked: it's
+// where you came from, and clicking it goes back.
 export function Entries({ m, ids, max = Infinity }: { m: Model; ids: string[]; max?: number }) {
   const [all, setAll] = useState(false);
+  const story = useStore(storyOf);
   if (!ids.length) return <span className="none">No entry point reaches it</span>;
-  const shown = all ? ids : ids.slice(0, max);
+  const sorted = story && ids.includes(story) ? [story, ...ids.filter((x) => x !== story)] : ids;
+  const shown = all ? sorted : sorted.slice(0, max);
   return (
     <span className="ents">
       {shown.map((x, i) => (
         <span key={x}>
           {i > 0 && <span className="sep"> · </span>}
-          <button className="ent" data-node={x} onClick={() => select(x)}>
+          <button className={`ent ${x === story ? 'story' : ''}`} data-node={x} data-story={x === story ? x : undefined} title={x === story ? 'Back to its story' : undefined} onClick={() => select(x)}>
+            {x === story && '‹ '}
             {qn(m, x)}
           </button>
         </span>
@@ -124,5 +114,16 @@ export function Entries({ m, ids, max = Infinity }: { m: Model; ids: string[]; m
         </button>
       )}
     </span>
+  );
+}
+
+// FileLink is a file:line that opens in the editor.
+export function FileLink({ file, line }: { file?: string; line?: number }) {
+  if (!file) return null;
+  return (
+    <button className="flink" title="Open in editor" onClick={() => void openInEditor(file, line ?? 1)}>
+      {file}
+      {line ? ':' + line : ''}
+    </button>
   );
 }

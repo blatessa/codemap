@@ -72,6 +72,8 @@ test('the map is parts and how they talk; selecting lights things where they are
   await page.locator('#drawer .trow[data-node="go:shop/internal/orders.(*Service).Place"]').click();
   await expect(page.locator('#drawer h2')).toHaveText('Service.Place');
   await expect(box(page, ORDERS)).toHaveClass(/\bmsel\b/);
+  // the story it's a step of is marked among its entry points
+  await expect(page.locator('#drawer .ent.story')).toHaveText('‹ PAGE /checkout');
   expect(await page.locator('#map > g').getAttribute('transform')).toBe(view);
   await page.keyboard.press('Escape');
   await expect(page.locator('#drawer h2')).toHaveText('PAGE /checkout');

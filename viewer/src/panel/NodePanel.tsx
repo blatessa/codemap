@@ -3,12 +3,12 @@
 // connects (the diagram), what starts it, what it does, then its source and
 // tests. Proposal actions sit under the heading.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Source, Where } from '../Code';
+import { Source } from '../Code';
 import { Fields } from '../Fields';
 import { screenRoot, qn, type MEdge, type Model } from '../model';
 import type { Parts } from '../parts';
 import { currentProposal, moveNode, proposeEdge, removeProposalNode, select, setState, useSel, useStore } from '../store';
-import { Section, Head, Tests, onPath, Crumbs, Entries, cap } from './common';
+import { Section, Head, Tests, onPath, Entries, cap, FileLink } from './common';
 import { CallTree } from './CallTree';
 import { ScreenOutline } from './ScreenOutline';
 import { Diagram } from './Diagram';
@@ -93,14 +93,24 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   return (
     <>
       <Head
-        kind={(row.ghost ? 'Missing ' : row.prop ? 'Proposed ' : '') + (row.ghost ? n.kind : cap(n.kind === 'route' ? 'route' : n.kind)) + (!n.external && !n.entry && !row.ghost ? ' · ' + box.label : '')}
+        kind={
+          <>
+            {(row.ghost ? 'Missing ' : row.prop ? 'Proposed ' : '') + (row.ghost ? n.kind : cap(n.kind))}
+            {n.file ? (
+              <>
+                <span className="ksep">·</span>
+                <FileLink file={n.file} line={n.line} />
+              </>
+            ) : !n.external && !row.ghost ? (
+              <span className="ksep">· {box.label}</span>
+            ) : null}
+          </>
+        }
         plan={row.prop || row.ghost}
         title={title}
         cls={row.tagClass || (n.entry ? 'entry' : 'fn')}
       >
-        <Where file={n.file} line={n.line} />
       </Head>
-      <Crumbs m={m} id={id} />
       {row.moved && <p className="where plan">Moved here from {row.moved} by the proposal.</p>}
       {n.doc && <p className="doc">{n.doc}</p>}
       {propose && connecting && <CallPicker m={m} from={id} />}

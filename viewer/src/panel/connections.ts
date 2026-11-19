@@ -26,7 +26,8 @@ export function membersOf(m: Model, P: Parts, id: string): Set<string> {
 // selfLabel is how the diagram's middle names the selected thing.
 export function selfLabel(m: Model, P: Parts, id: string): { label: string; short: string; cls: string } {
   const r = m.node.get(id)?.row;
-  if (r && !r.node.external) return { label: qn(m, id), short: (r.prefix ? r.prefix + ' ' : '') + r.label, cls: 'part' };
+  // a method by its own name: the heading has the rest
+  if (r && !r.node.external) return { label: qn(m, id), short: r.prefix ? r.prefix + ' ' + r.label : r.label.split('.').pop()!, cls: 'part' };
   return thingLabel(m, P, P.itemOf(id));
 }
 

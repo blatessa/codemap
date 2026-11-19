@@ -34,6 +34,19 @@ export function Diagram({ m, P, id }: { m: Model; P: Parts; id: string }) {
       onClick={() => setOpen(open === key(side, c) ? null : key(side, c))}
     >
       <span className="dl">{c.short}</span>
+      {open === key(side, c) && (
+        <span
+          className="dgo"
+          role="link"
+          title={'Open ' + c.label}
+          onClick={(e) => {
+            e.stopPropagation();
+            select(c.thing);
+          }}
+        >
+          ↗
+        </span>
+      )}
     </button>
   );
   const curve = (x1: number, y1: number, x2: number, y2: number) => `M${x1},${y1} C${(x1 + x2) / 2},${y1} ${(x1 + x2) / 2},${y2} ${x2},${y2}`;
@@ -75,13 +88,7 @@ function Calls({ m, P, id, side, c }: { m: Model; P: Parts; id: string; side: 'i
     if (!seen.has(k)) (seen.add(k), list.push(e));
   }
   return (
-    <div className="dcalls" id="conn-calls">
-      <div className="dchead">
-        <span>{side === 'in' ? `from ${c.label}` : `to ${c.label}`}</span>
-        <button className="lnk" data-node={c.thing} onClick={() => select(c.thing)}>
-          Open ›
-        </button>
-      </div>
+    <div className={`dcalls k-${c.kinds[0]}`} id="conn-calls" data-side={side}>
       {list.map((e) => (
         <CallRow key={e.i} e={e} from={name(e.from)} to={name(e.to)} />
       ))}

@@ -364,23 +364,18 @@ kbd,.kbd{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px 
 .dline.k-event{stroke:var(--queue)}
 .dchip{all:unset;box-sizing:border-box;position:absolute;width:33%;height:24px;display:flex;align-items:center;gap:6px;padding:0 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-family:var(--mono);font-size:11.5px;cursor:pointer}
 .dchip:hover{border-color:var(--muted)}
-.dchip.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.dchip.on{border-color:var(--muted);background:var(--bg)}
 .dchip .dl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dchip.db .dl{color:var(--db)}.dchip.http .dl{color:var(--http)}.dchip.queue .dl{color:var(--queue)}
 .dchip.folder{box-shadow:3px -3px 0 -1px var(--surface),3px -3px 0 0 var(--line)}
 .dme{position:absolute;left:38.5%;width:23%;height:26px;line-height:23px;box-sizing:border-box;text-align:center;border:1.5px solid var(--accent);border-radius:7px;background:var(--accent-soft);font-family:var(--mono);font-size:10.5px;font-weight:600;padding:0 5px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .dme.db{color:var(--db)}.dme.http{color:var(--http)}.dme.queue{color:var(--queue)}
-.dcalls{margin-top:10px;border:1px solid var(--line);border-radius:7px;padding:6px 6px 8px;background:var(--code-bg)}
-.dchead{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--muted);padding:2px 6px 6px;font-family:var(--mono)}
 .dcall{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 4px;font-family:var(--mono);font-size:12px}
 .dcall .lnk{padding:2px 4px}
 .dcall .dv{color:var(--muted);font-size:11px}
 .dcall .q{flex:1 1 100%;padding-left:10px;color:var(--muted);font-size:11px;word-break:break-word}
 
 /* panel: the story trail, entry points, uses */
-.crumbs{display:flex;gap:6px;align-items:baseline;font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:-8px}
-.crumbs .lnk{padding:1px 4px;color:var(--accent)}
-.crumbs .here{color:var(--ink)}
 .uses{display:flex;flex-direction:column;gap:10px}
 .use{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
 .use .dcall{padding-left:12px}
@@ -465,3 +460,17 @@ details.test .code{margin:4px 0 8px}
 .kind.entry{color:var(--accent)}.kind.entry i{background:var(--accent)}
 .kind.plan{color:var(--plan)}.kind.plan i{background:var(--plan)}
 .drawer h2.entry,.drawer h2.fn{color:var(--ink)}
+
+/* the kind line: kind · file */
+.kind .ksep{color:var(--muted);margin:0 2px}
+.flink{all:unset;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.flink:hover{color:var(--ink);text-decoration:underline}
+/* the story you came from, among entry points */
+.ent.story{color:var(--accent);font-weight:500}
+/* a connection opened: its calls hang under the diagram */
+.dgo{color:var(--muted);font-family:var(--sans);font-size:12px;padding:0 2px;border-radius:3px}
+.dgo:hover{color:var(--ink);background:var(--surface)}
+.dcalls{margin-top:10px;padding:2px 0 2px 10px;border-left:2px solid var(--edge)}
+.dcalls.k-reads,.dcalls.k-writes{border-left-color:var(--db)}
+.dcalls.k-http{border-left-color:var(--http)}
+.dcalls.k-event{border-left-color:var(--queue)}
