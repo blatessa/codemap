@@ -134,6 +134,7 @@ type extractor struct {
 	tmpl        *templates                    // template files and their names (screens.go)
 	requests    []request                     // calls to the repo's own HTTP API, matched to routes at the end (requests.go)
 	fragments   []sqlFragment                 // table accesses in SQL fragments, kept at the end if the table is known (fragments.go)
+	relCache    map[string]relResult          // rel's answers by absolute path
 	used        map[*project.CallPattern]bool // config call patterns that matched a call
 }
 
@@ -328,11 +329,25 @@ func (x *extractor) inRepo(p *packages.Package) bool {
 
 // rel returns a slash-separated path relative to the repo root.
 func (x *extractor) rel(p string) (string, bool) {
-	r, err := filepath.Rel(x.root, p)
-	if err != nil || strings.HasPrefix(r, "..") {
-		return "", false
+	// called for every position of every node: remember each file's answer
+	if c, ok := x.relCache[p]; ok {
+		return c.rel, c.ok
 	}
-	return filepath.ToSlash(r), true
+	r, err := filepath.Rel(x.root, p)
+	c := relResult{ok: err == nil && !strings.HasPrefix(r, "..")}
+	if c.ok {
+		c.rel = filepath.ToSlash(r)
+	}
+	if x.relCache == nil {
+		x.relCache = map[string]relResult{}
+	}
+	x.relCache[p] = c
+	return c.rel, c.ok
+}
+
+type relResult struct {
+	rel string
+	ok  bool
 }
 
 func (l *load) pos(p token.Pos) (string, int) {

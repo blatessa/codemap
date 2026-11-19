@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/blatessa/codemap/internal/extract/sqlext"
 	"github.com/blatessa/codemap/internal/graph"
@@ -72,12 +73,23 @@ func Graph(root string, proj *project.Project, opt Options) (*graph.Graph, error
 		if len(Extractors) == 0 {
 			return nil, ErrNoExtractors
 		}
-		for _, x := range Extractors {
-			g, err := x(root, proj.Config)
+		// The extractors are independent (Go loads and type-checks, TypeScript
+		// runs in Node), so they run together; parts keep the registered order.
+		parts = make([]*graph.Graph, len(Extractors))
+		errs := make([]error, len(Extractors))
+		var wg sync.WaitGroup
+		for i, x := range Extractors {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				parts[i], errs[i] = x(root, proj.Config)
+			}()
+		}
+		wg.Wait()
+		for _, err := range errs {
 			if err != nil {
 				return nil, err
 			}
-			parts = append(parts, g)
 		}
 	}
 	g := graph.Merge(parts...)

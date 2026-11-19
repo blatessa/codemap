@@ -88,6 +88,31 @@ function toPosix(p: string): string {
   return p.split(path.sep).join("/");
 }
 
+// Programs in one run share the parsed library and dependency typings (lib.*.d.ts,
+// node_modules), the bulk of what a program parses: a repo with many tsconfigs
+// would otherwise parse React's typings once per package. Only files outside the
+// repo are shared, and only between programs whose options parse and bind them
+// the same way.
+const shared = new Map<string, ts.SourceFile>();
+function sharedHost(options: ts.CompilerOptions): ts.CompilerHost {
+  const host = ts.createCompilerHost(options, true);
+  const get = host.getSourceFile.bind(host);
+  const sig = JSON.stringify([options.target, options.module, options.jsx, options.strict, options.alwaysStrict, options.allowJs, options.moduleDetection, options.moduleResolution]);
+  host.getSourceFile = (name, langOrOpts, ...rest) => {
+    const shareable = /[\\/]node_modules[\\/]|[\\/]typescript[\\/]lib[\\/]lib\./.test(name);
+    if (!shareable) return get(name, langOrOpts, ...rest);
+    const lang = typeof langOrOpts === "object" ? `${langOrOpts.languageVersion}/${langOrOpts.impliedNodeFormat}` : String(langOrOpts);
+    const key = `${sig}|${lang}|${name}`;
+    let sf = shared.get(key);
+    if (!sf) {
+      sf = get(name, langOrOpts, ...rest);
+      if (sf) shared.set(key, sf);
+    }
+    return sf;
+  };
+  return host;
+}
+
 /** Reads a tsconfig and any project references, returning one parsed config per program. */
 function loadConfigs(file: string, warn: (s: string) => void, seen = new Set<string>()): ts.ParsedCommandLine[] {
   if (seen.has(file)) return [];
@@ -141,7 +166,7 @@ export function extract(repo: string, cfg: Config, warn: (s: string) => void = (
     for (const pc of parsed) {
       const names = pc.fileNames.filter((f) => SRC_EXT.test(f) && !excluded(rel(f)) && !owned.has(path.resolve(f)));
       if (names.length === 0) continue;
-      const prog = ts.createProgram({ rootNames: names, options: pc.options });
+      const prog = ts.createProgram({ rootNames: names, options: pc.options, host: sharedHost(pc.options) });
       prog.getTypeChecker(); // binds every file, which also sets parent pointers
       const files: ts.SourceFile[] = [];
       for (const n of names) {
