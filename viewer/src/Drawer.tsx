@@ -4,6 +4,8 @@ import { ProposalList, ProposalView } from './Proposals';
 import { currentProposal, getState, setDrawerWidth, setState, useModel, useParts, useStore } from './store';
 import { isFolder } from './parts';
 import { Comment } from './Comment';
+import { SummaryPanel } from './Compare';
+import { useCompare } from './revs';
 import { NodePanel } from './panel/NodePanel';
 import { GroupPanel } from './panel/GroupPanel';
 import { FormPanel } from './panel/FormPanel';
@@ -16,6 +18,7 @@ export function Drawer() {
   const mode = useStore((s) => s.mode);
   const pslug = useStore((s) => s.pslug);
   const readOnly = useStore((s) => s.readOnly);
+  const comparing = useCompare((c) => !!c.spec);
   const width = useStore((s) => s.drawerW);
   // dragging the left edge sets the width
   const drag = (e: React.PointerEvent) => {
@@ -35,6 +38,7 @@ export function Drawer() {
   if (form) content = <FormPanel key={form.type + form.box} m={m} />;
   else if (sel && m.node.has(sel)) content = <NodePanel key={sel} m={m} P={P} id={sel} />;
   else if (sel && (m.box.has(sel) || isFolder(sel))) content = <GroupPanel key={sel} m={m} P={P} id={sel} />;
+  else if (comparing && mode === 'explore') content = <SummaryPanel m={m} />;
   else if (mode === 'propose' && !pslug) content = <ProposalList />;
   else if (mode === 'propose') {
     content = <ProposalView m={m} />;

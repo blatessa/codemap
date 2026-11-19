@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { openInEditor } from './api';
-import { CompareControl, SummaryPanel } from './Compare';
+import { CompareControl } from './Compare';
 import { Drawer } from './Drawer';
 import { compare, presets, start as startRevs, stopCompare, useCompare } from './revs';
 import { PartMap, zoomCenter } from './PartMap';
@@ -214,7 +214,7 @@ export function App() {
           {status === 'ready' && <MapControls />}
           {menu && <ContextMenu menu={menu} close={() => setMenu(null)} />}
         </div>
-        {status === 'ready' && (summary ? <SummaryPanel /> : <Drawer />)}
+        {status === 'ready' && <Drawer />}
       </div>
     </>
   );

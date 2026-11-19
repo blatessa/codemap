@@ -31,7 +31,7 @@ export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 // ("Table", "Route", "Function · internal/orders"), then its name the way the
 // map writes it ("POST /orders", "PAGE /checkout"). `cls` is db, http, queue,
 // entry or fn.
-export function Head({ kind, plan, diff, title, cls, children }: { kind?: ReactNode; plan?: boolean; diff?: string; title: string; cls?: string; children?: ReactNode }) {
+export function Head({ kind, plan, diff, title, cls, onClose, children }: { kind?: ReactNode; plan?: boolean; diff?: string; title: string; cls?: string; onClose?: () => void; children?: ReactNode }) {
   return (
     <div className="dhead">
       <div>
@@ -44,7 +44,7 @@ export function Head({ kind, plan, diff, title, cls, children }: { kind?: ReactN
         <h2 className={`${cls ?? ''} ${plan ? 'plan' : ''}`}>{title}</h2>
         {children}
       </div>
-      <button className="x" aria-label="Close" onClick={() => setState({ sel: null, form: null, connectFrom: null })}>
+      <button className="x" aria-label="Close" onClick={onClose ?? (() => setState({ sel: null, form: null, connectFrom: null }))}>
         ×
       </button>
     </div>

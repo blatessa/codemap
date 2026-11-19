@@ -1,7 +1,7 @@
 // The compare control, summary panel and code diff (revs.ts).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CodeBlock, highlight } from './Code';
-import { Section } from './panel/common';
+import { Head, Section } from './panel/common';
 import { diffHook, qn, type Model, type Row } from './model';
 import type { GEdge } from './types';
 import {
@@ -22,7 +22,7 @@ import {
   stopCompare,
   type DLine,
 } from './revs';
-import { getState, setState, useModel, useStore } from './store';
+import { getState, setState, useStore } from './store';
 
 function useOutside(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -177,16 +177,25 @@ export function ChangedCalls({ m, added, removed, side = 'to' }: { m: Model; add
   );
 }
 
+type Kind = 'added' | 'removed' | 'moved' | 'changed';
+interface ChangeRow {
+  row: Row;
+  kind: Kind; // a node whose only change is a call it gained or lost is "changed"
+  added: GEdge[];
+  removed: GEdge[];
+}
 interface Group {
   id: string;
   label: string;
   status: '' | 'added' | 'removed';
-  rows: { row: Row; status: ReturnType<typeof nodeStatus>; added: GEdge[]; removed: GEdge[] }[];
+  rows: ChangeRow[];
 }
 
+const ORDER: Record<Kind, number> = { added: 0, removed: 1, moved: 2, changed: 3 };
+
 // changeGroups is what the comparison changes, by the part (or group of
-// tables, topics, services) it lands in, in the map's order: nodes added,
-// removed or changed, and code that gained or lost a call, each with its calls.
+// tables, topics, services) it lands in, in the map's order. In a part, entry
+// points first, then new, gone, moved and changed code, each with its calls.
 // It's the same shape as a proposal's changes.
 function changeGroups(m: Model, d: Diff): Group[] {
   const add = new Map<string, GEdge[]>(),
@@ -195,9 +204,14 @@ function changeGroups(m: Model, d: Diff): Group[] {
   for (const e of d.removedEdges) (rem.get(e.from) ?? rem.set(e.from, []).get(e.from)!).push(e);
   const out: Group[] = [];
   for (const b of m.boxes) {
-    const rows = b.rows
-      .map((row) => ({ row, status: nodeStatus(row.id), added: add.get(row.id) ?? [], removed: rem.get(row.id) ?? [] }))
-      .filter((r) => r.status || r.added.length || r.removed.length);
+    const rows: ChangeRow[] = [];
+    for (const row of b.rows) {
+      const st = nodeStatus(row.id);
+      const added = add.get(row.id) ?? [],
+        removed = rem.get(row.id) ?? [];
+      if (st || added.length || removed.length) rows.push({ row, kind: st || 'changed', added, removed });
+    }
+    rows.sort((x, y) => Number(!!y.row.node.entry) - Number(!!x.row.node.entry) || ORDER[x.kind] - ORDER[y.kind]);
     const status = moduleStatus(b.id);
     if (rows.length || status) out.push({ id: b.id, label: b.label, status, rows });
   }
@@ -209,35 +223,61 @@ const when = (iso: string) => {
   return isNaN(+d) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-// SummaryPanel is the comparison itself, shaped like the other panels: what is
-// compared, the commits in it, then the changes by the part they land in.
-// Every name opens its own panel, where the same changes show for that node.
-export function SummaryPanel() {
-  const { diff, spec, revs, busy } = useCompare();
-  const m = useModel();
-  if (!spec) return null;
-  const groups = diff ? changeGroups(m, diff) : [];
-  const count = diff ? diff.addedNodes.length + diff.removedNodes.length + diff.changed.length : 0;
-  const empty = diff && !groups.length && !diff.commits.length;
+type Filter = 'all' | Kind;
+const FILTERS: [Filter, string][] = [
+  ['all', 'All'],
+  ['added', 'Added'],
+  ['changed', 'Changed'],
+  ['moved', 'Moved'],
+  ['removed', 'Removed'],
+];
+
+// RowCalls: what one node gained or lost. A few show inline; more fold behind a count.
+function RowCalls({ m, r }: { m: Model; r: ChangeRow }) {
+  const n = r.added.length + r.removed.length;
+  const [open, setOpen] = useState(n <= 3);
+  if (!n || r.kind === 'removed') return null;
   return (
-    <aside className="drawer" id="drawer">
-      <div className="dhead">
-        <div>
-          <div className="kind chg">
-            <i />
-            Comparing
-          </div>
-          <h2 id="sum-title">{specLabel(spec, revs)}</h2>
-          {diff && (
-            <div className="where">
-              {shortRev(diff.from)} → {isWorktree(diff.to) ? 'working tree' : shortRev(diff.to)}
-            </div>
-          )}
-        </div>
-        <button className="x" aria-label="Back to worktree" onClick={() => void stopCompare()}>
-          ×
+    <div className="pcalls">
+      {!open && (
+        <button className="more" onClick={() => setOpen(true)}>
+          {r.added.length > 0 && <span className="ca">+{r.added.length}</span>} {r.removed.length > 0 && <span className="cr">−{r.removed.length}</span>} calls ▸
         </button>
-      </div>
+      )}
+      {open && <ChangedCalls m={m} added={r.added} removed={r.removed} />}
+    </div>
+  );
+}
+
+// SummaryPanel is the comparison itself, shaped like the other panels (it
+// shows in the same drawer): what is compared, how much changed (a filter),
+// the commits in it, then the changes by the part they land in. Every name
+// opens its own panel, where the same changes show for that node.
+export function SummaryPanel({ m }: { m: Model }) {
+  const { diff, spec, revs, busy } = useCompare();
+  const [filter, setFilter] = useState<Filter>('all');
+  if (!spec) return null;
+  const all = diff ? changeGroups(m, diff) : [];
+  const count = (k: Kind) => all.reduce((n, g) => n + g.rows.filter((r) => r.kind === k).length, 0);
+  const groups = all
+    .map((g) => ({ ...g, rows: filter === 'all' ? g.rows : g.rows.filter((r) => r.kind === filter) }))
+    .filter((g) => (filter === 'all' ? g.rows.length || g.status : g.rows.length));
+  const total = all.reduce((n, g) => n + g.rows.length, 0);
+  const empty = diff && !all.length && !diff.commits.length;
+  return (
+    <>
+      <Head
+        kind="Comparing"
+        cls="chg"
+        title={specLabel(spec, revs)}
+        onClose={() => void stopCompare()}
+      >
+        {diff && (
+          <div className="where">
+            {shortRev(diff.from)} → {isWorktree(diff.to) ? 'working tree' : shortRev(diff.to)}
+          </div>
+        )}
+      </Head>
       {!diff || busy ? <div className="loading sumload">…</div> : null}
       {empty && <p className="none">No changes</p>}
       {diff && diff.commits.length > 0 && (
@@ -266,8 +306,16 @@ export function SummaryPanel() {
           </div>
         </Section>
       )}
-      {groups.length > 0 && (
-        <Section title="Changes" count={count || undefined}>
+      {total > 0 && (
+        <Section title="Changes" count={total}>
+          <div className="seg sm cfilter" role="group" aria-label="Show">
+            {FILTERS.filter(([k]) => k === 'all' || count(k as Kind) > 0).map(([k, label]) => (
+              <button key={k} aria-pressed={filter === k} data-filter={k} onClick={() => setFilter(k)}>
+                {label}
+                <span className="n">{k === 'all' ? total : count(k as Kind)}</span>
+              </button>
+            ))}
+          </div>
           <div className="pgroups">
             {groups.map((g) => (
               <div key={g.id} className="pgroup">
@@ -277,17 +325,18 @@ export function SummaryPanel() {
                   </button>
                   {g.status === 'added' && <span className="ptag dadd">new part</span>}
                   {g.status === 'removed' && <span className="ptag drem">removed part</span>}
+                  <span className="ptag gn">{g.rows.length}</span>
                 </div>
-                {g.rows.map(({ row, status, added, removed }) => (
-                  <div key={row.id} className="pchange">
+                {g.rows.map((r) => (
+                  <div key={r.row.id} className="pchange">
                     <div className="pcrow">
-                      <span className={`pmark d-${status.slice(0, 3)}`}>{MARK[status]}</span>
-                      <button className={`iname ${row.tagClass} ${status === 'removed' ? 'gone' : ''}`} data-node={row.id} onClick={() => goTo(row.id)}>
-                        {(row.prefix ? row.prefix + ' ' : '') + row.label}
+                      <span className={`pmark d-${r.kind.slice(0, 3)}`}>{MARK[r.kind]}</span>
+                      <button className={`iname ${r.row.tagClass} ${r.kind === 'removed' ? 'gone' : ''}`} data-node={r.row.id} onClick={() => goTo(r.row.id)}>
+                        {(r.row.prefix ? r.row.prefix + ' ' : '') + r.row.label}
                       </button>
-                      {status === 'moved' && <span className="ptag">from {diffHook.movedFrom(row.id)}</span>}
+                      {r.kind === 'moved' && <span className="ptag">from {diffHook.movedFrom(r.row.id)}</span>}
                     </div>
-                    {status !== 'removed' && <ChangedCalls m={m} added={added} removed={removed} />}
+                    <RowCalls m={m} r={r} />
                   </div>
                 ))}
               </div>
@@ -295,7 +344,7 @@ export function SummaryPanel() {
           </div>
         </Section>
       )}
-    </aside>
+    </>
   );
 }
 
