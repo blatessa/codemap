@@ -21,7 +21,6 @@ import {
   type Ref,
 } from './revs';
 import { currentProposal, getState, setState, useModel, useStore } from './store';
-import './compare.css';
 
 function useOutside(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null);

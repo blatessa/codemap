@@ -4,19 +4,19 @@
 id = 'block:viewer-map'
 name = 'viewer · map'
 from = 'mod:ts:viewer/src'
-files = ['viewer/src/MapView.tsx', 'viewer/src/layout.ts', 'viewer/src/groups.ts', 'viewer/src/blocks.ts']
+files = ['viewer/src/PartMap.tsx', 'viewer/src/parts.ts', 'viewer/src/layout.ts', 'viewer/src/blocks.ts']
 
 [[block]]
 id = 'block:viewer-panels'
 name = 'viewer · panels'
 from = 'mod:ts:viewer/src'
-files = ['viewer/src/App.tsx', 'viewer/src/Drawer.tsx', 'viewer/src/Fields.tsx', 'viewer/src/fields.ts', 'viewer/src/Code.tsx', 'viewer/src/Comment.tsx', 'viewer/src/Proposals.tsx']
+files = ['viewer/src/App.tsx', 'viewer/src/Drawer.tsx', 'viewer/src/panel/*', 'viewer/src/Fields.tsx', 'viewer/src/fields.ts', 'viewer/src/Code.tsx', 'viewer/src/Comment.tsx', 'viewer/src/Proposals.tsx']
 
 [[block]]
 id = 'block:viewer-state'
 name = 'viewer · state'
 from = 'mod:ts:viewer/src'
-files = ['viewer/src/store.ts', 'viewer/src/model.ts', 'viewer/src/api.ts']
+files = ['viewer/src/store.ts', 'viewer/src/model.ts', 'viewer/src/api.ts', 'viewer/src/wasm.ts']
 
 [[block]]
 id = 'block:viewer-compare'
