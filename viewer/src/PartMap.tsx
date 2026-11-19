@@ -3,7 +3,7 @@
 // only change what's lit and which lines draw, so nothing moves under you.
 // Functions never draw here; the panel has them.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { addLabel, linksOf, isFolder, type Item, type Link, type Parts, type Rect } from './parts';
+import { addLabel, linksOf, isFolder, markChar, markOf, type Item, type Link, type Parts, type Rect } from './parts';
 import type { Model, Sel } from './model';
 import { getState, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
 import { boxCls, rowCls } from './revs';
@@ -264,8 +264,8 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   // ---- what draws ----
   // at rest no lines draw: they're for what's hovered or selected (and a
   // proposal's new ones, which are what it's about)
-  const shown = lit ? lit.links : P.links.filter((l) => l.prop);
-  const lineCls = (l: Link) => ['edge', 'k-' + l.kind, l.kind === 'http' && 'net', l.prop && 'prop', lit && 'on'].filter(Boolean).join(' ');
+  const shown = lit ? lit.links : P.links.filter((l) => l.prop || l.diff);
+  const lineCls = (l: Link) => ['edge', 'k-' + l.kind, l.kind === 'http' && 'net', l.prop && 'prop', l.diff && 'dl-' + l.diff, lit && 'on'].filter(Boolean).join(' ');
   const dimOf = (t: string) => (lit ? (lit.things.has(t) ? 'touched' : 'dim') : '');
 
   return (
@@ -286,7 +286,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
       data-hover={hover ?? ''}
     >
       <defs>
-        {['mk-n', 'mk-h', 'mk-p'].map((id) => (
+        {['mk-n', 'mk-h', 'mk-p', 'mk-a', 'mk-r', 'mk-c'].map((id) => (
           <marker key={id} id={id} viewBox="0 0 8 8" refX={7.5} refY={4} markerUnits="userSpaceOnUse" markerWidth={9} markerHeight={9} orient="auto">
             <path className={id} d="M0,0.5 L8,4 L0,7.5z" />
           </marker>
@@ -307,7 +307,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
               b = P.at.get(l.to);
             if (!a || !b) return null;
             return (
-              <path key={l.key} className={lineCls(l)} d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} style={{ strokeWidth: 1.2 + Math.log2(l.edges.length) * 0.8 + 'px' }} markerEnd={`url(#${l.prop ? 'mk-p' : lit ? 'mk-h' : 'mk-n'})`}>
+              <path key={l.key} className={lineCls(l)} d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} style={{ strokeWidth: 1.2 + Math.log2(l.edges.length) * 0.8 + 'px' }} markerEnd={`url(#${lit ? 'mk-h' : l.prop ? 'mk-p' : l.diff ? { add: 'mk-a', rem: 'mk-r', chg: 'mk-c' }[l.diff] : 'mk-n'})`}>
                 <title>{`${VERB[l.kind]} · ${l.edges.length}`}</title>
               </path>
             );
@@ -328,21 +328,28 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
                   </text>
                   <text className="msub" x={q.x + 14} y={q.y + 34}>
                     {it.sub}
+                    {it.counts && <tspan className="mcnt"> · {it.counts}</tspan>}
                   </text>
                 </g>
                 {it.adds.map((r) => {
                   const a = P.at.get(r.id);
                   if (!a) return null;
-                  const c = ['padd', r.moved && 'moved', selThings.has(r.id) && 'sel', hov === r.id && 'hov', dimOf(r.id)].filter(Boolean).join(' ');
+                  const mk = markOf(r.id);
+                  const c = ['padd', r.moved && 'moved', mk && 'cmp d-' + mk, selThings.has(r.id) && 'sel', hov === r.id && 'hov', dimOf(r.id)].filter(Boolean).join(' ');
                   return (
                     <g key={r.id} className={c} data-node={r.id}>
                       <rect x={a.x} y={a.y} width={a.w} height={a.h} rx={4} />
                       <text x={a.x + 8} y={a.y + 12.5}>
-                        <tspan className="pplus">{r.moved ? '↳' : '+'}</tspan> {addLabel(r)}
+                        <tspan className="pplus">{r.moved ? '↳' : markChar(r.id) || '+'}</tspan> {addLabel(r)}
                       </text>
                     </g>
                   );
                 })}
+                {it.more > 0 && P.at.get('more:' + it.id) && (
+                  <text className="pmore" x={P.at.get('more:' + it.id)!.x + 8} y={P.at.get('more:' + it.id)!.y + 12.5}>
+                    +{it.more} more changed
+                  </text>
+                )}
                 {canAdd && b && !b.ghost && (
                   <g className="add" data-add={b.id}>
                     <rect x={q.x + q.w - 28} y={q.y + 12} width={20} height={20} rx={5} />

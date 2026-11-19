@@ -2,7 +2,7 @@
 // The map draws the "to" graph with the diff's removed modules, nodes and edges
 // merged back in; MapView asks rowCls/boxCls/edgeCls how to colour each one.
 import { create } from 'zustand';
-import { type Box } from './model';
+import { diffHook, type Box, type DiffMark } from './model';
 import { currentProposal, getState as getMain, hooks, load, setState as setMain, useStore } from './store';
 import type { GEdge, GModule, GNode, Graph } from './types';
 
@@ -157,8 +157,18 @@ interface Index {
   addedM: Set<string>;
   removedM: Set<string>;
   touched: Set<string>; // module ids with any change
+  moved: Map<string, string>; // node id -> the file it came from (its file was renamed)
 }
 let idx: Index | null = null;
+
+// placeOf is where a node id lives, short: its file for "ts:web/x.ts#Name",
+// its package for "go:shop/internal/orders.(*Repo).Find".
+function placeOf(id: string): string {
+  const s = id.replace(/^[a-z]+:/, '');
+  const [path] = s.split('#');
+  const last = path.split('/').pop() ?? path;
+  return s.includes('#') ? last : last.split('.')[0];
+}
 
 function indexOf(d: Diff): Index {
   const i: Index = {
@@ -170,14 +180,20 @@ function indexOf(d: Diff): Index {
     addedM: new Set(d.addedModules.map((m) => m.id)),
     removedM: new Set(d.removedModules.map((m) => m.id)),
     touched: new Set([...d.addedModules, ...d.removedModules].map((m) => m.id)),
+    moved: new Map(),
   };
+  for (const r of d.renamed ?? []) i.moved.set(r.to, placeOf(r.from));
   for (const n of [...d.addedNodes, ...d.removedNodes]) i.touched.add(n.module);
   for (const m of d.summary.modules) i.touched.add(m.id);
   return i;
 }
 
-export const nodeStatus = (id: string): '' | 'added' | 'removed' | 'changed' =>
-  !idx ? '' : idx.added.has(id) ? 'added' : idx.removed.has(id) ? 'removed' : idx.changed.has(id) ? 'changed' : '';
+export const nodeStatus = (id: string): DiffMark =>
+  !idx ? '' : idx.added.has(id) ? 'added' : idx.removed.has(id) ? 'removed' : idx.moved.has(id) ? 'moved' : idx.changed.has(id) ? 'changed' : '';
+
+diffHook.node = (id) => nodeStatus(id);
+diffHook.edge = (e) => (!idx ? '' : idx.addedE.has(ekey(e)) ? 'added' : idx.removedE.has(ekey(e)) ? 'removed' : '');
+diffHook.movedFrom = (id) => idx?.moved.get(id) ?? '';
 
 export function rowCls(id: string): string {
   const s = nodeStatus(id);
@@ -206,7 +222,7 @@ export function edgeChanges(id: string): EdgeChanges {
 function boxHas(b: Box | undefined): boolean {
   if (!b || !idx) return false;
   if (b.module && idx.touched.has(b.module.id)) return true;
-  return b.rows.some((r) => idx!.added.has(r.id) || idx!.removed.has(r.id) || idx!.changed.has(r.id));
+  return b.rows.some((r) => nodeStatus(r.id));
 }
 
 export function boxCls(b: Box): string {
@@ -321,27 +337,6 @@ export function specLabel(s: Spec, r: Revs | null): string {
   const base = s.from.startsWith('base:');
   const from = refName(base ? s.from.slice(5) : s.from, r);
   return base ? `${refName(s.to, r)} vs ${from}` : `${from} → ${refName(s.to, r)}`;
-}
-
-// ---- custom comparisons ----
-
-export interface RefOption {
-  value: string;
-  label: string;
-  group: 'Branches' | 'Commits';
-}
-
-// refOptions are the revisions the picker offers: branches, then recent commits.
-export function refOptions(r: Revs | null): RefOption[] {
-  const out: RefOption[] = (r?.branches ?? []).map((b) => ({ value: b, label: b, group: 'Branches' }));
-  for (const c of (r?.commits ?? []).slice(0, 40)) out.push({ value: c.sha, label: `${c.short} ${c.subject}`.slice(0, 60), group: 'Commits' });
-  return out;
-}
-
-// customSpec builds the comparison the picker describes. With `since`, from is
-// where the two sides' histories part (git's "a...b"): what `to` added on top.
-export function customSpec(from: string, to: string, since: boolean): Spec {
-  return { from: since && !isWorktree(from) ? 'base:' + from : from, to };
 }
 
 // ---- URL hash: #compare=from..to ----

@@ -21,6 +21,23 @@
 /* edges */
 .edge.d-add{stroke:var(--diff-add);opacity:1}
 .edge.d-rem{stroke:var(--diff-rem);stroke-dasharray:4 4;opacity:.6}
+.edge.dl-add{stroke:var(--diff-add);stroke-width:1.8}
+.edge.dl-rem{stroke:var(--diff-rem);stroke-dasharray:5 4;stroke-width:1.6}
+.edge.dl-chg{stroke:var(--diff-chg);stroke-width:1.6}
+.edge.on.dl-add,.edge.on.dl-rem,.edge.on.dl-chg{stroke:var(--accent)}
+.mk-a{fill:var(--diff-add)}.mk-r{fill:var(--diff-rem)}.mk-c{fill:var(--diff-chg)}
+.mcnt{fill:var(--diff-chg);font-weight:600}
+.pmore{font-family:var(--sans);font-size:10.5px;fill:var(--muted);pointer-events:none}
+.padd.cmp rect{stroke-dasharray:none;fill:var(--surface)}
+.padd.cmp text{fill:var(--ink)}
+.padd.d-added rect{fill:var(--diff-add-soft);stroke:var(--diff-add)}
+.padd.d-added .pplus{fill:var(--diff-add)}
+.padd.d-removed rect{fill:var(--diff-rem-soft);stroke:var(--diff-rem);stroke-dasharray:3 2}
+.padd.d-removed text{fill:var(--muted);text-decoration:line-through}
+.padd.d-removed .pplus{fill:var(--diff-rem)}
+.padd.d-changed rect{stroke:var(--diff-chg)}
+.padd.d-changed .pplus{fill:var(--diff-chg)}
+.padd.d-moved rect{stroke:var(--muted)}
 
 /* read-only: no editing on a past rev or while comparing */
 body.ro #reset,body.ro #m-propose,body.ro #addmod,body.ro .drawer .btns{display:none!important}
@@ -53,24 +70,16 @@ body.ro .mhead{cursor:pointer}
 .sumload{margin:0}
 
 /* compare popover and changes */
-.cmpcustom,.cmprecent{border-top:1px solid var(--line);margin-top:4px;padding:8px 6px 4px;display:flex;flex-direction:column;gap:6px}
-.cmprow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
-.cmprow span{width:34px}
-.cmprow select{flex:1;min-width:0;font-family:var(--mono);font-size:12px}
-.cmpsince{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
-.cmpcustom .btn{align-self:flex-start}
-.cmpcommit{display:flex;align-items:center;gap:2px}
-.cmpcommit .res{flex:1;min-width:0}
 .cs{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.cmpcommit .since{all:unset;cursor:pointer;font-size:11px;color:var(--muted);padding:2px 6px;border-radius:4px}
-.cmpcommit .since:hover{background:var(--bg);color:var(--ink)}
 .clist{display:flex;flex-direction:column}
-.crow{all:unset;cursor:pointer;display:flex;justify-content:space-between;gap:10px;padding:4px 6px;border-radius:5px;font-size:12.5px}
-.crow:hover{background:var(--bg)}
-.crow .m{color:var(--muted);font-family:var(--mono);font-size:11px;flex:none}
+.ccommit{all:unset;cursor:pointer;display:flex;justify-content:space-between;gap:10px;padding:4px 6px;border-radius:5px;font-size:12.5px}
+.ccommit:hover{background:var(--bg)}
+.ccommit .m{color:var(--muted);font-family:var(--mono);font-size:11px;flex:none}
 .kind.chg{color:var(--diff-chg)}.kind.chg i{background:var(--diff-chg)}
 .kind.d-add{color:var(--diff-add)}.kind.d-add i{background:var(--diff-add)}
 .kind.d-rem{color:var(--diff-rem)}.kind.d-rem i{background:var(--diff-rem)}
+.kind.d-mov{color:var(--muted)}.kind.d-mov i{background:var(--muted)}
+.pmark.d-mov{color:var(--muted)}
 .kind.d-cha{color:var(--diff-chg)}.kind.d-cha i{background:var(--diff-chg)}
 .pmark.d-add{color:var(--diff-add)}.pmark.d-rem{color:var(--diff-rem)}.pmark.d-cha{color:var(--diff-chg)}
 .ptag.dadd{color:var(--diff-add)}.ptag.drem{color:var(--diff-rem)}
@@ -140,7 +149,7 @@ svg#map.connecting{cursor:crosshair}
 .results{position:absolute;top:calc(100% + 4px);left:0;width:280px;max-width:80vw;background:var(--surface);border:1px solid var(--line);border-radius:7px;padding:4px;box-shadow:0 8px 24px rgba(10,20,40,.12);display:flex;flex-direction:column}
 .res{all:unset;cursor:pointer;display:flex;justify-content:space-between;gap:10px;padding:5px 8px;border-radius:5px;font-family:var(--mono);font-size:12px}
 .res:hover,.res.act{background:var(--bg)}
-.res .m{color:var(--muted);font-size:11px}
+.res .m{color:var(--muted);font-size:11px;flex:none}
 
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { customSpec, parseDiff, presets, shortRev, sliceRange, specLabel, type Revs } from './revs';
+import { parseDiff, presets, shortRev, sliceRange, specLabel, type Revs } from './revs';
 
 const diff = `diff --git a/x.go b/x.go
 --- a/x.go
@@ -68,8 +68,6 @@ describe('presets', () => {
     expect(specLabel({ from: 'a'.repeat(40), to: 'worktree' }, revs)).toBe('aaaaaaa → working tree');
     expect(specLabel({ from: 'c'.repeat(40) + '^', to: 'c'.repeat(40) }, revs)).toBe('ccccccc Fix login');
     expect(specLabel({ from: 'main', to: 'feature' }, revs)).toBe('main → feature');
-    expect(customSpec('main', 'feature', true)).toEqual({ from: 'base:main', to: 'feature' });
-    expect(customSpec('main', 'feature', false)).toEqual({ from: 'main', to: 'feature' });
     expect(shortRev('main')).toBe('main');
   });
 });

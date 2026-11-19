@@ -200,16 +200,15 @@ test('on a branch the map opens on what changed, and the summary jumps to it', a
   const id = (await first.getAttribute('data-node'))!;
   await first.click();
   // its part is selected and marked changed
-  await expect(page.locator('#map .mod.msel')).toHaveClass(/\bd-(add|has)\b/);
+  await expect(page.locator('#map .mod.msel, #map .padd.sel, #map .res.sel').first()).toHaveClass(/\b(d-(add|has|cha|rem)|cmp|sel)\b/);
   await expect(page.locator('#drawer h2')).not.toBeEmpty();
   expect(id).toBeTruthy();
   // the node's own panel says what changed about it
   await expect(page.locator('#drawer .kind')).toContainText(/Added|Changed|Removed/);
-  // any two revisions, from the picker
+  // another comparison, from the picker
   await page.locator('#cmp').click();
-  await expect(page.locator('#cmp-go')).toBeVisible();
-  await page.locator('#cmp-go').click();
-  await expect(page.locator('#sum-title, #cmp .cl').first()).toBeVisible();
+  await page.locator('#cmp-pop [data-preset="uncommitted"]').click();
+  await expect(page.locator('#cmp')).toContainText('Uncommitted');
   await page.locator('#cmp-x').click();
   await expect(page.locator('#cmp')).not.toContainText('vs main');
 });

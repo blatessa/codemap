@@ -4,6 +4,15 @@
 import type { GEdge, GModule, GNode, Graph, Loose, Proposal } from './types';
 import { Walker, type Effect } from './wasm';
 
+// What a comparison did to a node or edge, for the map to draw (revs.ts sets
+// these while one is open; otherwise nothing is marked).
+export type DiffMark = '' | 'added' | 'removed' | 'changed' | 'moved';
+export const diffHook = {
+  node: (_id: string): DiffMark => '',
+  edge: (_e: { from: string; to: string; type: string }): '' | 'added' | 'removed' => '',
+  movedFrom: (_id: string): string => '', // the file a moved node came from
+};
+
 export interface Row {
   id: string;
   label: string;

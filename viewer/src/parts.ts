@@ -3,7 +3,7 @@
 // are never drawn; a function's edges count towards its part's. Pure: the map
 // component draws what this returns.
 import { flowColumns, type LBox } from './layout';
-import type { Box, MEdge, Model, Row } from './model';
+import { diffHook, type Box, type MEdge, type Model, type Row } from './model';
 
 export const PART_H = 44;
 export const ADD_H = 22; // a proposed row inside a part
@@ -34,6 +34,7 @@ export interface Link {
   kind: LinkKind;
   edges: number[]; // the function edges it stands for (MEdge.i)
   prop: boolean; // only proposed edges
+  diff?: 'add' | 'rem' | 'chg'; // a comparison: only edges added, only removed, or both
 }
 // An Item is a code box on the map: a part, or a folder of parts drawn as one.
 export interface Item {
@@ -45,6 +46,8 @@ export interface Item {
   // what an open proposal adds to a part, or moves into it: drawn inside it,
   // each a thing of its own on the map
   adds: Row[];
+  more: number; // changed rows beyond those drawn (a comparison draws the first few)
+  counts: string; // "+2 −1 ~5": what a comparison changed in it
   entry: boolean;
 }
 export interface Parts {
@@ -92,6 +95,7 @@ export function linkKind(m: Model, e: MEdge): LinkKind {
 
 export function linksOf(m: Model, edges: Iterable<MEdge>, thing = thingFn(m)): Link[] {
   const by = new Map<string, Link>();
+  const dc = new Map<string, { add: number; rem: number; n: number }>();
   for (const e of edges) {
     const a = thing(e.from),
       b = thing(e.to);
@@ -101,16 +105,50 @@ export function linksOf(m: Model, edges: Iterable<MEdge>, thing = thingFn(m)): L
     const l = by.get(key) ?? by.set(key, { key, from: a, to: b, kind, edges: [], prop: true }).get(key)!;
     l.edges.push(e.i);
     l.prop &&= e.prop;
+    const c = dc.get(key) ?? dc.set(key, { add: 0, rem: 0, n: 0 }).get(key)!;
+    const d = diffHook.edge(e);
+    c.n++;
+    if (d === 'added') c.add++;
+    else if (d === 'removed') c.rem++;
+  }
+  for (const l of by.values()) {
+    const c = dc.get(l.key)!;
+    if (c.add || c.rem) l.diff = c.add === c.n ? 'add' : c.rem === c.n ? 'rem' : 'chg';
   }
   return [...by.values()];
 }
 
 // wide enough for its name (mono 12px) and what it holds (sans 10.5px)
-const itemWidth = (it: Item) => Math.max(170, it.label.length * 7.4 + 44, it.sub.length * 5.6 + 36, ...it.adds.map((r) => addLabel(r).length * 6.6 + 40));
-const itemHeight = (it: Item) => PART_H + (it.adds.length ? it.adds.length * ADD_H + 6 : 0);
+const itemWidth = (it: Item) => Math.max(170, it.label.length * 7.4 + 44, (it.sub.length + it.counts.length) * 5.6 + 36, ...it.adds.map((r) => addLabel(r).length * 6.6 + 40));
+const itemHeight = (it: Item) => PART_H + (it.adds.length || it.more ? (it.adds.length + (it.more ? 1 : 0)) * ADD_H + 6 : 0);
 
-// addLabel is how a proposed row reads inside its part: "JOB low-stock", "Store.LowStock", "HandleWebhook ← payments".
-export const addLabel = (r: Row) => (r.prefix ? r.prefix + ' ' : '') + r.label + (r.moved ? '  ← ' + (r.moved.split('/').pop() ?? r.moved) : '');
+// addLabel is how a proposed or changed row reads inside its part: "JOB low-stock", "Store.LowStock", "HandleWebhook ← payments".
+export const addLabel = (r: Row) => {
+  const from = r.moved ? r.moved.split('/').pop() ?? r.moved : diffHook.movedFrom(r.id);
+  return (r.prefix ? r.prefix + ' ' : '') + r.label + (from ? '  ← ' + from : '');
+};
+
+// A comparison draws this many changed rows inside a part; the rest are counted.
+export const MAX_CHANGED = 6;
+const MARK_RANK = { added: 0, removed: 1, moved: 2, changed: 3, '': 4 } as const;
+const MARK_CH = { added: '+', removed: '−', moved: '↳', changed: '~', '': '' } as const;
+export const markOf = (id: string) => diffHook.node(id);
+export const markChar = (id: string) => MARK_CH[diffHook.node(id)];
+
+// changedRows: a part's rows a comparison added, removed, moved or changed,
+// the ones that matter first (new, gone, moved, entry points), and how many don't fit.
+function changedRows(rows: Row[]): { shown: Row[]; total: number } {
+  const all = rows.filter((r) => diffHook.node(r.id));
+  all.sort((a, b) => MARK_RANK[diffHook.node(a.id)] - MARK_RANK[diffHook.node(b.id)] || Number(!!b.node.entry) - Number(!!a.node.entry));
+  return { shown: all.slice(0, MAX_CHANGED), total: all.length };
+}
+
+// countsOf is "+2 −1 ~5" for rows a comparison changed.
+function countsOf(rows: Row[]): string {
+  const n = { added: 0, removed: 0, moved: 0, changed: 0, '': 0 };
+  for (const r of rows) n[diffHook.node(r.id)]++;
+  return [n.added && `+${n.added}`, n.removed && `−${n.removed}`, n.moved && `↳${n.moved}`, n.changed && `~${n.changed}`].filter(Boolean).join(' ');
+}
 const chipWidth = (label: string) => Math.max(110, Math.min(260, label.length * 7 + 28));
 
 // sub is what a part holds, by kind: "2 routes · 1 job · 13 functions".
@@ -140,7 +178,11 @@ export function partSub(b: Box): string {
   return out.join(' · ');
 }
 
-const partItem = (b: Box): Item => ({ id: b.id, label: b.label, sub: partSub(b), box: b, entry: b.hasEntry, adds: b.rows.filter((r) => r.prop || r.moved) });
+function partItem(b: Box): Item {
+  const { shown, total } = changedRows(b.rows);
+  const props = b.rows.filter((r) => r.prop || r.moved);
+  return { id: b.id, label: b.label, sub: partSub(b), counts: countsOf(b.rows), box: b, entry: b.hasEntry, adds: [...props, ...shown.filter((r) => !props.includes(r))], more: total - shown.length, };
+}
 
 // foldItems is what a program's parts draw as. A program of up to MAX_PARTS
 // draws every part. A bigger one groups its parts by folder: a folder of three
@@ -176,7 +218,7 @@ export function foldItems(program: string, parts: Box[], open: ReadonlySet<strin
       const entries = g.reduce((n, b) => n + b.rows.filter((r) => r.node.entry).length, 0);
       const proposed = g.some((b) => b.prop || b.rows.some((r) => r.prop || r.moved));
       const sub = [`${g.length} parts`, entries && `${entries} entry point${entries === 1 ? '' : 's'}`, proposed && 'proposed'].filter(Boolean).join(' · ');
-      out.push({ id, label: path + '/', sub, parts: g, entry: g.some((b) => b.hasEntry), adds: [], depth });
+      out.push({ id, label: path + '/', sub, counts: countsOf(g.flatMap((b) => b.rows)), parts: g, entry: g.some((b) => b.hasEntry), adds: [], more: 0, depth });
     }
     return out;
   };
@@ -283,9 +325,9 @@ export function partsOf(m: Model, open: ReadonlySet<string> = new Set()): Parts 
     for (const it of boxes) {
       const [px, py] = pos[it.id];
       at.set(it.id, { x: x + FPAD + px, y: FTOP + py, w: it.w, h: it.h });
-      mine
-        .find((m) => m.id === it.id)!
-        .adds.forEach((r, k) => at.set(r.id, { x: x + FPAD + px + 10, y: FTOP + py + PART_H - 4 + k * ADD_H, w: it.w - 20, h: ADD_H - 4 }));
+      const own = mine.find((m) => m.id === it.id)!;
+      own.adds.forEach((r, k) => at.set(r.id, { x: x + FPAD + px + 10, y: FTOP + py + PART_H - 4 + k * ADD_H, w: it.w - 20, h: ADD_H - 4 }));
+      if (own.more) at.set('more:' + own.id, { x: x + FPAD + px + 10, y: FTOP + py + PART_H - 4 + own.adds.length * ADD_H, w: it.w - 20, h: ADD_H - 4 });
       w = Math.max(w, px + it.w);
       h = Math.max(h, py + it.h);
     }
