@@ -1,8 +1,8 @@
 // Pieces every panel uses: section headings, links to nodes, tests.
 import { useState, type ReactNode } from 'react';
 import { Source } from '../Code';
-import { qn, sharedFn, testsReaching, type MEdge, type Model } from '../model';
-import { select, setState } from '../store';
+import { effectSummary, qn, sharedFn, testsReaching, type Effect, type Model } from '../model';
+import { select, setState, storyOf, useStore } from '../store';
 
 export const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <div>
@@ -24,27 +24,6 @@ export function Head({ eyebrow, plan, title, children }: { eyebrow: string; plan
       <button className="x" aria-label="Close" onClick={() => setState({ sel: null, form: null, connectFrom: null })}>
         ×
       </button>
-    </div>
-  );
-}
-
-export function NodeLink({ m, id, edge, detail }: { m: Model; id: string; edge?: MEdge; detail?: boolean }) {
-  const x = m.node.get(id);
-  return (
-    <button className={`lnk ${edge?.prop || x?.row.prop ? 'prop' : ''}`} data-node={id} onClick={() => select(id)}>
-      {qn(m, id)}
-      {detail && edge?.detail && <span className="q">{edge.detail}</span>}
-    </button>
-  );
-}
-
-export function EdgeList({ m, edges, end, detail }: { m: Model; edges: MEdge[]; end: 'from' | 'to'; detail?: boolean }) {
-  if (!edges.length) return <p>—</p>;
-  return (
-    <div className="links">
-      {edges.map((e) => (
-        <NodeLink key={e.i} m={m} id={e[end]} edge={e} detail={detail} />
-      ))}
     </div>
   );
 }
@@ -90,4 +69,40 @@ function TestRow({ name, file, line, endLine, via }: { name: string; file?: stri
 
 export function kindClass(m: Model, id: string) {
   return m.node.get(id)?.row.tagClass ?? '';
+}
+
+// Crumbs shows the story a step belongs to: "/checkout › Service.Place". The
+// map keeps the story lit; its name goes back to it.
+export function Crumbs({ m, id }: { m: Model; id: string }) {
+  const story = useStore(storyOf);
+  if (!story || story === id) return null;
+  return (
+    <nav className="crumbs" aria-label="Story">
+      <button className="lnk" data-story={story} data-node={story} onClick={() => select(story)}>
+        {qn(m, story)}
+      </button>
+      <span>›</span>
+      <span className="here">{qn(m, id)}</span>
+    </nav>
+  );
+}
+
+// Entries lists entry points, each a link.
+export function Entries({ m, ids }: { m: Model; ids: string[] }) {
+  if (!ids.length) return <span className="chip">No entry point reaches it</span>;
+  return (
+    <div className="ents">
+      {ids.map((x) => (
+        <button key={x} className="ent" data-node={x} onClick={() => select(x)}>
+          {qn(m, x)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Reach is what something reaches, coloured like the map: "writes orders · calls api.stripe.com".
+export function Reach({ m, fs }: { m: Model; fs: Effect[] }) {
+  if (!fs.length) return null;
+  return <span className="reach">→ {effectSummary(m, fs)}</span>;
 }

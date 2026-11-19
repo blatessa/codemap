@@ -36,6 +36,7 @@ interface Api {
   trace(h: number, id: string): string;
   up(h: number, id: string): string;
   entries(h: number, id: string): string;
+  effects(h: number, id: string): string;
   tests(h: number, ids: string): string;
 }
 
@@ -92,6 +93,9 @@ export class Walker {
   }
   entries(id: string) {
     return this.ask<string[]>('e' + id, (h) => api().entries(h, id));
+  }
+  effects(id: string) {
+    return this.ask<Effect[]>('f' + id, (h) => api().effects(h, id));
   }
   tests(ids: string[]) {
     const s = JSON.stringify([...ids].sort());

@@ -58,20 +58,29 @@ export function Comment({ m, id }: { m: Model; id: string }) {
   const [snip, setSnip] = useState<Snip | null>(null);
   const [sent, setSent] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  // hidden until wanted: `c`, highlighting code, or working on a proposal
+  const proposing = useStore((s) => s.mode === 'propose');
+  const [active, setActive] = useState(false);
+  const [focusSeq, setFocusSeq] = useState(0);
+  useEffect(() => {
+    if (focusSeq) ref.current?.focus({ preventScroll: true });
+  }, [focusSeq]);
   useEffect(() => {
     setSnip(null);
     setSent(false);
+    setActive(false);
+    const want = () => (setActive(true), setFocusSeq((n) => n + 1));
     const onUp = () => {
       const s = snippetOf(window.getSelection());
       if (!s) return;
       setSnip(s);
-      ref.current?.focus({ preventScroll: true });
+      want();
     };
     const onKey = (e: KeyboardEvent) => {
       const t = document.activeElement?.tagName;
       if (e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.altKey && t !== 'INPUT' && t !== 'TEXTAREA' && t !== 'SELECT') {
         e.preventDefault();
-        ref.current?.focus();
+        want();
       }
     };
     document.addEventListener('mouseup', onUp);
@@ -87,7 +96,7 @@ export function Comment({ m, id }: { m: Model; id: string }) {
     t.style.height = 'auto';
     t.style.height = Math.min(t.scrollHeight, 160) + 'px';
   }, [text]);
-  if (!open.length) return null;
+  if (!open.length || !(active || proposing)) return null;
   const send = () => {
     if (!text.trim() || !p) return;
     comment(aboutOf(m, id, snip), text);

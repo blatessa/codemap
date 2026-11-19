@@ -319,13 +319,3 @@ export function partsOf(m: Model, open: ReadonlySet<string> = new Set()): Parts 
   (memo.get(m) ?? memo.set(m, new Map()).get(m)!).set(okey, out);
   return out;
 }
-
-// atRest reports whether a link draws with nothing selected or hovered: how
-// programs talk to each other, and events. Calls inside a program and data
-// access draw for what's hovered or selected.
-export function atRest(P: Parts, l: Link): boolean {
-  if (l.kind === 'http' || l.kind === 'event') return true;
-  const a = P.programOf(l.from),
-    b = P.programOf(l.to);
-  return !!a && !!b && a !== b;
-}

@@ -3,7 +3,7 @@
 // only change what's lit and which lines draw, so nothing moves under you.
 // Functions never draw here; the panel has them.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { linksOf, atRest, isFolder, type Item, type Link, type Parts, type Rect } from './parts';
+import { linksOf, isFolder, type Item, type Link, type Parts, type Rect } from './parts';
 import type { Model, Sel } from './model';
 import { getState, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
 import { boxCls, rowCls } from './revs';
@@ -96,6 +96,9 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   const fitSeq = useStore((s) => s.fitSeq);
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<string | null>(null);
+  // hovering a name in the panel marks it on the map
+  const panelHover = useStore((s) => s.hover);
+  const hov = hover ?? (panelHover ? P.itemOf(panelHover) : null);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -259,11 +262,10 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   };
 
   // ---- what draws ----
-  // at rest every connection draws: how parts talk across programs and over
-  // events strongly, the rest faintly
-  const shown = lit ? lit.links : P.links;
-  const lineCls = (l: Link) =>
-    ['edge', 'k-' + l.kind, l.kind === 'http' && 'net', l.prop && 'prop', lit ? 'on' : atRest(P, l) || l.prop ? '' : 'faint'].filter(Boolean).join(' ');
+  // at rest no lines draw: they're for what's hovered or selected (and a
+  // proposal's new ones, which are what it's about)
+  const shown = lit ? lit.links : P.links.filter((l) => l.prop);
+  const lineCls = (l: Link) => ['edge', 'k-' + l.kind, l.kind === 'http' && 'net', l.prop && 'prop', lit && 'on'].filter(Boolean).join(' ');
   const dimOf = (t: string) => (lit ? (lit.things.has(t) ? 'touched' : 'dim') : '');
 
   return (
@@ -315,7 +317,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
             const q = P.at.get(it.id);
             if (!q) return null;
             const b = it.box;
-            const cls = ['mod', !b && 'folder', ...(b ? [b.prop && 'prop', !b.prop && b.rows.some((r) => r.prop || r.moved) && 'pchg', b.ghost && 'ghost'] : []), itemDiff(it), selThings.has(it.id) && 'msel', hover === it.id && 'hov', dimOf(it.id)].filter(Boolean).join(' ');
+            const cls = ['mod', !b && 'folder', ...(b ? [b.prop && 'prop', !b.prop && b.rows.some((r) => r.prop || r.moved) && 'pchg', b.ghost && 'ghost'] : []), itemDiff(it), selThings.has(it.id) && 'msel', hov === it.id && 'hov', dimOf(it.id)].filter(Boolean).join(' ');
             return (
               <g key={it.id} className={cls} data-box={it.id}>
                 {!b && <rect className="stack" x={q.x + 4} y={q.y - 4} width={q.w} height={q.h} rx={8} />}
@@ -345,7 +347,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
             b.rows.map((r) => {
               const q = P.at.get(r.id);
               if (!q) return null;
-              const cls = ['res', r.tagClass, r.prop && 'prop', rowCls(r.id), selThings.has(r.id) && 'sel', hover === r.id && 'hov', dimOf(r.id)].filter(Boolean).join(' ');
+              const cls = ['res', r.tagClass, r.prop && 'prop', rowCls(r.id), selThings.has(r.id) && 'sel', hov === r.id && 'hov', dimOf(r.id)].filter(Boolean).join(' ');
               return (
                 <g key={r.id} className={cls} data-node={r.id}>
                   <rect className="box" x={q.x} y={q.y} width={q.w} height={q.h} rx={6} />

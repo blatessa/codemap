@@ -111,6 +111,15 @@ func (l *Loaded) Entries(id string) []string {
 	return out
 }
 
+// Effects returns the effects reachable below id (graph.Index.EffectsBeneath).
+func (l *Loaded) Effects(id string) []graph.Effect {
+	out := l.ix.EffectsBeneath(id)
+	if out == nil {
+		return []graph.Effect{}
+	}
+	return out
+}
+
 // Tests returns the tests of any of ids (graph.Index.TestsReaching).
 func (l *Loaded) Tests(ids []string) []graph.TestReach {
 	out := l.ix.TestsReaching(ids...)

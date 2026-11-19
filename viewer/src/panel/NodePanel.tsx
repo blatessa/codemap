@@ -1,13 +1,18 @@
 // A node: a route, page, job or other entry point; a function; or a table,
-// topic or service. Proposal actions sit on top.
+// topic or service. Every panel has the same shape: what it is, how it
+// connects (the diagram), what starts it, what it does, then its source and
+// tests. Proposal actions sit under the heading.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Source, Where } from '../Code';
 import { Fields } from '../Fields';
-import { entriesReaching, onScreen, screenRoot, qn, type MEdge, type Model } from '../model';
-import { currentProposal, moveNode, proposeEdge, removeProposalNode, select, storyOf, setState, useSel, useStore } from '../store';
-import { Section, Head, NodeLink, EdgeList, Tests, onPath, cap } from './common';
+import { screenRoot, qn, type MEdge, type Model } from '../model';
+import type { Parts } from '../parts';
+import { currentProposal, moveNode, proposeEdge, removeProposalNode, select, setState, useSel, useStore } from '../store';
+import { Section, Head, Tests, onPath, cap, Crumbs, Entries } from './common';
 import { CallTree } from './CallTree';
 import { ScreenOutline } from './ScreenOutline';
+import { Diagram } from './Diagram';
+import { entryPointsOf } from './connections';
 
 // CallPicker: what a proposed call goes to, found by name.
 function CallPicker({ m, from }: { m: Model; from: string }) {
@@ -67,142 +72,31 @@ function MoveTo({ m, id, at }: { m: Model; id: string; at: string }) {
   );
 }
 
-export function NodePanel({ m, id }: { m: Model; id: string }) {
+export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   const S = useSel();
   const propose = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
-  const story = useStore(storyOf);
   const connecting = useStore((s) => s.connectFrom === id);
   const { row, box } = m.node.get(id)!;
   const n = row.node;
   const method = typeof n.fields?.method === 'string' ? (n.fields.method as string).toUpperCase() : '';
-  const eyebrow = row.prop ? 'Proposed' : row.ghost ? 'Missing' : n.external || n.entry ? cap(n.kind) : box.label;
-  // a page's code calling out of the frontend shows as the page (graph.FoldScreens)
-  const inn = (m.all.inn.get(id) ?? []).filter((e) => onScreen(n) || !onScreen(m.node.get(e.from)?.row.node)),
-    out = m.all.out.get(id) ?? [];
-  let body: ReactNode;
-  if (row.ghost) body = null;
-  else if (n.external) {
-    // sections come from edge types only, never from the node's kind
-    const by = (list: MEdge[], t: string) => list.filter((e) => e.type === t);
-    const writes = by(inn, 'writes'),
-      reads = by(inn, 'reads'),
-      pubs = by(inn, 'publishes'),
-      subs = by(out, 'subscribes');
-    const calledBy = inn.filter((e) => !['writes', 'reads', 'publishes'].includes(e.type));
-    const callsUs = out.filter((e) => e.type !== 'subscribes');
-    const other = writes.length + reads.length + pubs.length + subs.length;
-    body = (
+  // what it is, and for code where it lives
+  const kind = row.ghost ? 'Missing' : cap(n.kind === 'function' ? 'function' : n.kind);
+  const eyebrow = (row.prop ? 'Proposed ' + kind.toLowerCase() : kind) + (!n.external && !row.ghost ? ' · ' + box.label : '');
+  let does: ReactNode = null;
+  if (n.external) does = <Uses m={m} id={id} />;
+  else if (!row.ghost)
+    does = (
       <>
-        <Fields m={m} fields={n.fields} />
-        {(writes.length > 0 || reads.length > 0) && (
-          <div className="cols">
-            <Section title="Writes">
-              <EdgeList m={m} edges={writes} end="from" detail />
-            </Section>
-            <Section title="Reads">
-              <EdgeList m={m} edges={reads} end="from" detail />
-            </Section>
-          </div>
-        )}
-        {(pubs.length > 0 || subs.length > 0) && (
-          <div className="cols">
-            <Section title="Published by">
-              <EdgeList m={m} edges={pubs} end="from" detail />
-            </Section>
-            <Section title="Subscribers">
-              <EdgeList m={m} edges={subs} end="to" detail />
-            </Section>
-          </div>
-        )}
-        {(calledBy.length > 0 || !other) && (
-          <Section title="Called by">
-            <EdgeList m={m} edges={calledBy} end="from" detail />
-          </Section>
-        )}
-        {callsUs.length > 0 && (
-          <Section title="Calls us">
-            <EdgeList m={m} edges={callsUs} end="to" detail />
-          </Section>
-        )}
-      </>
-    );
-  } else if (n.entry) {
-    body = (
-      <>
-        <Fields m={m} fields={n.fields} skip={['method']} />
         {screenRoot(n) && <ScreenOutline m={m} id={id} />}
-        {inn.length > 0 && (
-          <Section title="Called from">
-            <EdgeList m={m} edges={inn} end="from" />
-          </Section>
-        )}
         <CallTree m={m} id={id} />
-        {n.file && n.line ? (
-          <Section title="Source">
-            <Source file={n.file} from={n.line} to={n.endLine} />
-          </Section>
-        ) : null}
-        {!row.prop && S && (
-          <Section title="Tests along this path">
-            <Tests m={m} ids={onPath(m, S.down)} />
-          </Section>
-        )}
       </>
     );
-  } else {
-    const ents = entriesReaching(m, id);
-    body = (
-      <>
-        <Fields m={m} fields={n.fields} />
-        <div className="cols">
-          <Section title="Called from">
-            <EdgeList m={m} edges={inn} end="from" />
-          </Section>
-          <Section title="Calls">
-            <EdgeList m={m} edges={out} end="to" />
-          </Section>
-        </div>
-        <Section title="Reached by">
-          {ents.length ? (
-            <div className="links">
-              {ents.map((x) => (
-                <NodeLink key={x} m={m} id={x} />
-              ))}
-            </div>
-          ) : (
-            <span className="chip">Unreachable</span>
-          )}
-        </Section>
-        {n.file && n.line ? (
-          <Section title="Source">
-            <Source file={n.file} from={n.line} to={n.endLine} />
-          </Section>
-        ) : null}
-        {!row.prop && (
-          <Section title="Tests">
-            <Tests m={m} ids={[id]} />
-          </Section>
-        )}
-      </>
-    );
-  }
   return (
     <>
       <Head eyebrow={eyebrow} plan={row.prop} title={method && !row.label.startsWith(method) ? `${method} ${row.label}` : row.label}>
         <Where file={n.file} line={n.line} />
       </Head>
-      {story && story !== id && (
-        <div className="btns">
-          <button className="btn" data-story={story} onClick={() => select(story)}>
-            ← {qn(m, story)}
-          </button>
-          {!n.external && (
-            <button className="btn" onClick={() => select(id, true)}>
-              Trace from here
-            </button>
-          )}
-        </div>
-      )}
+      <Crumbs m={m} id={id} />
       {row.moved && <p className="where plan">Moved here from {row.moved} by the proposal.</p>}
       {n.doc && <p className="doc">{n.doc}</p>}
       {propose && connecting && <CallPicker m={m} from={id} />}
@@ -227,7 +121,87 @@ export function NodePanel({ m, id }: { m: Model; id: string }) {
           )}
         </div>
       )}
-      {body}
+      {!row.ghost && <Diagram m={m} P={P} id={id} />}
+      {!row.ghost && !n.entry && !n.external && (
+        <Section title="What starts it">
+          <Entries m={m} ids={entryPointsOf(m, P, id)} />
+        </Section>
+      )}
+      {does}
+      <Fields m={m} fields={n.fields} skip={['method']} />
+      {!n.external && n.file && n.line ? (
+        <Section title="Source">
+          <Source file={n.file} from={n.line} to={n.endLine} />
+        </Section>
+      ) : null}
+      {!row.prop && !row.ghost && (
+        <Section title={n.entry ? 'Tests along this path' : 'Tests'}>
+          <Tests m={m} ids={n.entry && S ? onPath(m, S.down) : [id]} />
+        </Section>
+      )}
+    </>
+  );
+}
+
+const USE_VERB: Record<string, string> = { writes: 'writes', reads: 'reads', publishes: 'publishes', calls: 'calls', fetches: 'fetches', renders: 'shows' };
+
+// Uses is what a table, topic or service is used for: by entry point, the
+// code that writes, reads, publishes or calls it, with the query or call;
+// then, for a topic or webhook, what it runs.
+function Uses({ m, id }: { m: Model; id: string }) {
+  const inn = m.all.inn.get(id) ?? [],
+    out = m.all.out.get(id) ?? [];
+  const by = new Map<string, MEdge[]>();
+  for (const e of inn) {
+    const f = m.node.get(e.from)?.row.node;
+    const ents = f?.entry ? [e.from] : m.walk.entries(e.from);
+    for (const x of ents.length ? ents : ['']) (by.get(x) ?? by.set(x, []).get(x)!).push(e);
+  }
+  const groups = [...by].sort(([a], [b]) => (a ? 0 : 1) - (b ? 0 : 1) || qn(m, a).localeCompare(qn(m, b)));
+  return (
+    <>
+      <Section title="What uses it">
+        {groups.length ? (
+          <div className="uses">
+            {groups.map(([ent, es]) => (
+              <div key={ent} className="use">
+                {ent ? (
+                  <button className="ent" data-node={ent} onClick={() => select(ent)}>
+                    {qn(m, ent)}
+                  </button>
+                ) : (
+                  <span className="chip">No entry point</span>
+                )}
+                {es.map((e) => (
+                  <div key={e.i} className="dcall">
+                    <button className="lnk" data-node={e.from} onClick={() => select(e.from)}>
+                      {qn(m, e.from)}
+                    </button>
+                    <span className="dv">{USE_VERB[e.type] ?? e.type}</span>
+                    {e.detail && <span className="q">{e.detail}</span>}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <span className="chip">Nothing uses it</span>
+        )}
+      </Section>
+      {out.length > 0 && (
+        <Section title="What it runs">
+          <div className="uses">
+            {out.map((e) => (
+              <div key={e.i} className="dcall">
+                <span className="dv">{e.type === 'subscribes' ? 'handled by' : 'calls'}</span>
+                <button className="lnk" data-node={e.to} onClick={() => select(e.to)}>
+                  {qn(m, e.to)}
+                </button>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
     </>
   );
 }

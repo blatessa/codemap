@@ -53,10 +53,8 @@ test('the map is parts and how they talk; selecting lights things where they are
   await expect(box(page, ORDERS)).toContainText('13 functions');
   await expect(node(page, 'table:orders')).toBeVisible();
   await expect(page.locator('#map [data-node^="go:"], #map [data-node^="ts:"]')).toHaveCount(0);
-  // the web app calls the server over HTTP, and orders publishes an event, drawn strongly; calls inside a program faintly
-  await expect(page.locator('#map path.edge.k-http:not(.faint)').first()).toBeAttached();
-  await expect(page.locator('#map path.edge.k-event:not(.faint)').first()).toBeAttached();
-  await expect(page.locator('#map path.edge.k-calls.faint').first()).toBeAttached();
+  // at rest, no lines
+  await expect(page.locator('#map path.edge')).toHaveCount(0);
   // hovering a part shows just its connections
   await box(page, ORDERS).hover();
   await expect(page.locator('#map')).toHaveAttribute('data-hover', ORDERS);
@@ -80,7 +78,7 @@ test('the map is parts and how they talk; selecting lights things where they are
   // a table: what writes it and what reads it
   await node(page, 'table:orders').click();
   await expect(page.locator('#drawer h2')).toHaveText('orders');
-  await expect(page.locator('#drawer').getByText('Repo.Insert')).toBeVisible();
+  await expect(page.locator('#drawer').getByText('Repo.Insert').first()).toBeVisible();
   await expect(box(page, ORDERS)).toHaveClass(/\btouched\b/);
 });
 
@@ -94,18 +92,24 @@ test('a route: its call tree ends in what it touches, with the tests along the w
   await expect(node(page, 'ext:stripe')).toHaveClass(/\btouched\b/);
 });
 
-test('a part: what uses it and what it depends on', async ({ page }) => {
+test('a part: its connections, why they exist, what starts it and what it does', async ({ page }) => {
   await open(page);
   await box(page, ORDERS).click();
   const d = page.locator('#drawer');
   await expect(d.locator('h2')).toHaveText('internal/orders');
-  await expect(d.locator('.cols').first()).toContainText('cmd/server');
-  await expect(d.locator('.cols').first()).toContainText('internal/inventory');
-  // tables and topics by name, not their group
-  await expect(d.locator('.cols').first()).not.toContainText('database');
-  await expect(d.locator('.cols').first()).toContainText('order.placed');
-  await d.locator('.lnk', { hasText: 'Service.Place' }).click();
-  await expect(d.locator('h2')).toHaveText('Service.Place');
+  // the diagram: what calls in, what it calls out to, tables and topics by name
+  await expect(d.locator('[data-conn="in:mod:go:shop/cmd/server"]')).toBeVisible();
+  await expect(d.locator('[data-conn="out:table:orders"]')).toBeVisible();
+  await expect(d.locator('[data-conn="out:topic:order.placed"]')).toBeVisible();
+  // opening a connection shows the calls behind it
+  await d.locator('[data-conn="out:mod:go:shop/internal/payments"]').click();
+  await expect(d.locator('#conn-calls')).toContainText('orders.Service.Place');
+  await expect(d.locator('#conn-calls')).toContainText('payments.Client.Charge');
+  await expect(d.locator('.ent', { hasText: 'POST /orders' })).toBeVisible();
+  // what it does: what other parts use, each with what it reaches
+  await expect(d.locator('.trow', { hasText: 'Service.MarkPaid' })).toContainText('writes orders');
+  await d.locator('.trow', { hasText: 'Handler.Create' }).click();
+  await expect(d.locator('h2')).toHaveText('Handler.Create');
 });
 
 test('search runs commands; switching selections keeps one panel', async ({ page }) => {

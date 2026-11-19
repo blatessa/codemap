@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { classify, humanize } from './fields';
-import { MAX_PARTS, atRest, foldItems, linksOf, partSub, partsOf } from './parts';
+import { MAX_PARTS, foldItems, linksOf, partSub, partsOf } from './parts';
 import type { Box } from './model';
 import { SYNTH, buildModel, selectionOf, testsReaching, trace } from './model';
 import type { Graph } from './types';
@@ -192,12 +192,10 @@ describe('the part map', () => {
       }
   });
 
-  test('lines are typed by how things talk, and at rest show communication between programs and over events strongly', () => {
+  test('lines are typed by how things talk', () => {
     const kind = (from: string, to: string) => P.links.filter((l) => l.from === from && l.to === to).map((l) => l.kind);
     expect(kind('mod:ts:web/src/api', 'mod:go:shop/cmd/server')).toEqual(['http']);
     expect(kind('mod:go:shop/internal/orders', 'table:orders')).toContain('writes');
-    expect(P.links.filter((l) => atRest(P, l)).map((l) => l.kind).sort()).toEqual(expect.arrayContaining(['event', 'http']));
-    expect(atRest(P, P.links.find((l) => l.kind === 'calls' && P.programOf(l.from) === P.programOf(l.to))!)).toBe(false);
   });
 
   test('a link stands for every function edge between its two things', () => {

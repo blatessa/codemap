@@ -6,6 +6,7 @@
 //	load(graphJSON) → handle      free(handle)
 //	trace(handle, id) → JSON      up(handle, id) → JSON
 //	entries(handle, id) → JSON    tests(handle, idsJSON) → JSON
+//	effects(handle, id) → JSON
 //
 // Errors are thrown as JavaScript errors.
 package main
@@ -51,6 +52,7 @@ func main() {
 		"trace":   fn(func(a []js.Value) any { return reply(get(a[0]).Trace(a[1].String())) }),
 		"up":      fn(func(a []js.Value) any { return reply(get(a[0]).Up(a[1].String())) }),
 		"entries": fn(func(a []js.Value) any { return reply(get(a[0]).Entries(a[1].String())) }),
+		"effects": fn(func(a []js.Value) any { return reply(get(a[0]).Effects(a[1].String())) }),
 		"tests": fn(func(a []js.Value) any {
 			var ids []string
 			if err := json.Unmarshal([]byte(a[1].String()), &ids); err != nil {
