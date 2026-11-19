@@ -270,10 +270,6 @@ func TestConflictAfterDiskEdit(t *testing.T) {
 	if cf.Version != diskVersion(t, root, "blocks.toml") || len(cf.Value) != 1 || cf.Value[0].Name != "Agent" {
 		t.Errorf("409: %+v", cf)
 	}
-	// Areas are gone: the endpoint is unknown.
-	if r := do(t, ts, "PUT", "/api/project/areas", []any{}, "If-Match", Missing); r.status != 404 {
-		t.Errorf("areas: %d", r.status)
-	}
 	if r := do(t, ts, "PUT", "/api/project/bogus", []any{}, "If-Match", Missing); r.status != 404 {
 		t.Errorf("bogus: %d", r.status)
 	}

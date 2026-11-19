@@ -1,6 +1,5 @@
 // Package project loads and saves the user state in a repo's .codemap/ directory
-// (blocks, external, config and proposals). Every file is optional. Files it
-// doesn't know, such as an areas.toml from older versions, are ignored.
+// (blocks, external, config and proposals). Every file is optional.
 package project
 
 import (

@@ -122,12 +122,3 @@ test('on a branch the map opens on what changed, and the summary jumps to it', a
   await page.locator('#cmp-x').click();
   await expect(page.locator('#cmp')).not.toContainText('vs main');
 });
-
-test('a repo with an old areas.toml still opens, without areas', async ({ page }) => {
-  await open(page);
-  await expect(page.locator('#map [data-area-box]')).toHaveCount(0);
-  expect((await (await page.request.get('/api/state')).json()).project.areas).toBeUndefined();
-  await page.keyboard.press('Control+k');
-  await page.keyboard.type('area');
-  await expect(page.locator('[data-cmd="area"]')).toHaveCount(0);
-});

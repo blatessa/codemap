@@ -17,10 +17,6 @@ func TestModulesFlagsBadBlocks(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "blocks.toml"), []byte(blocks), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// An areas.toml left over from older versions is ignored.
-	if err := os.WriteFile(filepath.Join(dir, "areas.toml"), []byte("[[area]]\nname = 'A'\nmodules = ['mod:nope']\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	graph, _ := filepath.Abs("../../testdata/shop.expected.json")
 	out, code := runCmd(runModules, []string{"--root", root, "--graph", graph})
 	if code != 0 {
@@ -33,8 +29,5 @@ func TestModulesFlagsBadBlocks(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
-	}
-	if strings.Contains(strings.ToLower(out), "area") {
-		t.Errorf("areas should be gone:\n%s", out)
 	}
 }

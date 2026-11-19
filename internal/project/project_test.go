@@ -10,8 +10,6 @@ import (
 
 func TestLoadFSAndProposals(t *testing.T) {
 	fsys := fstest.MapFS{
-		// Left over from older versions: ignored, not an error.
-		"areas.toml": {Data: []byte("[[area]]\nname = \"Commerce\"\nmodules = [\"mod:go:shop/internal/orders\"]\n")},
 		"external.toml": {Data: []byte(`[[node]]
 id = "ext:stripe"
 owner = "Payments team"

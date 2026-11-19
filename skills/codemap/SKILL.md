@@ -130,7 +130,7 @@ match = ["Billing*", "*Invoice*"]        # globs on function labels
 files = ["internal/handlers/billing*"]   # and/or globs on file paths
 ```
 
-Run `codemap modules` afterwards and fix anything under "Problems". The viewer shows a module's package doc comment (Go) or file doc comment, so if those are missing and the user agrees, adding them is the best way to explain a module. (Old `.codemap/areas.toml` and `.codemap/layout.json` files are ignored and can be deleted.)
+Run `codemap modules` afterwards and fix anything under "Problems". The viewer shows a module's package doc comment (Go) or file doc comment, so if those are missing and the user agrees, adding them is the best way to explain a module.
 
 ## Other .codemap files
 
