@@ -87,5 +87,6 @@ func Graph(root string, proj *project.Project, opt Options) (*graph.Graph, error
 	graph.AssignRoles(g, func(file string) ([]byte, error) {
 		return os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
 	})
+	graph.FoldScreens(g)
 	return g, nil
 }

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Source, Where } from './Code';
 import { Fields } from './Fields';
-import { HEAD, PAD, ROW, effectSummary, entriesReaching, isEffect, trace, type TreeRow, qn, sharedFn, shortMod, testsReaching, type MEdge, type Model } from './model';
+import { HEAD, PAD, ROW, effectSummary, entriesReaching, isEffect, onScreen, trace, type TreeRow, qn, sharedFn, shortMod, testsReaching, type Effect, type MEdge, type Model } from './model';
 import { ProposalList, ProposalView } from './Proposals';
 import {
   currentProposal,
@@ -13,6 +13,7 @@ import {
   removeProposalNode,
   renameBlock,
   select,
+  storyOf,
   setState,
   splitBlock,
   toggleExpanded,
@@ -116,7 +117,7 @@ function kindClass(m: Model, id: string) {
 // A call tree's effects read as one line per call: "reads save, task,
 // workspace", with the query on hover, instead of a row per table with the SQL
 // repeated.
-type Item = { kind: 'row'; r: TreeRow } | { kind: 'eff'; type: string; ids: string[]; detail?: string; depth: number };
+type Item = { kind: 'row'; r: TreeRow } | { kind: 'eff'; type: string; ids: string[]; detail?: string; depth: number; action?: string };
 function items(m: Model, rows: TreeRow[]): Item[] {
   const out: Item[] = [];
   for (const r of rows) {
@@ -126,7 +127,9 @@ function items(m: Model, rows: TreeRow[]): Item[] {
         if (!last.ids.includes(r.id)) last.ids.push(r.id);
         continue;
       }
-      out.push({ kind: 'eff', type: r.via.type, ids: [r.id], detail: r.via.detail, depth: r.depth });
+      // a page's calls name what on the screen makes them (graph.FoldScreens)
+      const action = m.node.get(r.via.from)?.row.node.kind === 'page' ? r.via.detail : undefined;
+      out.push({ kind: 'eff', type: r.via.type, ids: [r.id], detail: r.via.detail, depth: r.depth, action });
       continue;
     }
     out.push({ kind: 'row', r });
@@ -155,6 +158,7 @@ function CallTree({ m, id }: { m: Model; id: string }) {
               <div key={i} className="trow eff" style={{ paddingLeft: 6 + Math.min(it.depth, 12) * 14 }} title={it.detail}>
                 <span className="l">
                   └
+                  {it.action && <span>{it.action}</span>}
                   <span className={kindClass(m, it.ids[0])}>
                     {verb(it.type)}{' '}
                     {it.ids.map((x, j) => (
@@ -205,14 +209,81 @@ function CallTree({ m, id }: { m: Model; id: string }) {
   );
 }
 
+// ScreenOutline: what a page is made of, as the user meets it: its
+// components, nested as they render, and the handlers and hooks in them that
+// reach past the frontend, with what they reach.
+function ScreenOutline({ m, id }: { m: Model; id: string }) {
+  const part = (x: string) => onScreen(m.node.get(x)?.row.node);
+  // what x's code reaches outside the frontend (graph.FoldScreens)
+  const reaches = (x: string) => {
+    const got = new Map<string, Effect>(),
+      seen = new Set([x]),
+      q = [x];
+    while (q.length) {
+      const y = q.shift()!;
+      for (const e of m.all.out.get(y) ?? []) {
+        if (isEffect(m, e) && !part(e.to)) got.set(e.type + '\0' + e.to, { to: e.to, type: e.type });
+        else if ((e.type === 'calls' || e.type === 'renders') && part(e.to) && m.node.get(e.to)!.row.node.kind !== 'component' && !seen.has(e.to)) {
+          seen.add(e.to);
+          q.push(e.to);
+        }
+      }
+    }
+    return [...got.values()];
+  };
+  const rows: { id: string; depth: number; comp: boolean; fs: Effect[] }[] = [];
+  const seen = new Set<string>();
+  const walk = (x: string, depth: number) => {
+    const outs = [...(m.all.out.get(x) ?? [])].sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
+    for (const e of outs) {
+      if (!part(e.to) || seen.has(e.to) || depth > 8) continue;
+      const comp = m.node.get(e.to)!.row.node.kind === 'component';
+      if (comp) {
+        seen.add(e.to);
+        rows.push({ id: e.to, depth, comp, fs: [] });
+        walk(e.to, depth + 1);
+      } else {
+        const fs = reaches(e.to);
+        if (fs.length) rows.push({ id: e.to, depth, comp, fs });
+      }
+    }
+  };
+  // the component a page renders is the page: start inside it
+  const own = (m.all.out.get(id) ?? []).filter((e) => e.type === 'renders' && part(e.to));
+  if (own.length === 1) {
+    seen.add(own[0].to);
+    walk(own[0].to, 0);
+  } else walk(id, 0);
+  if (!rows.length) return null;
+  return (
+    <Section title="On this screen">
+      <div className="tree">
+        {rows.map((r) => {
+          const l = m.node.get(r.id)!.row.label;
+          return (
+            <button key={r.id + r.depth} className="trow" data-node={r.id} style={{ paddingLeft: 6 + r.depth * 14 }} onClick={() => select(r.id, true)}>
+              <span className="l">
+                {r.comp ? <span>{l}</span> : <span className="m">{l.includes('.') ? l.slice(l.lastIndexOf('.') + 1) : l}</span>}
+                {!r.comp && <span className="act">→ {effectSummary(m, r.fs)}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
 function NodePanel({ m, id }: { m: Model; id: string }) {
   const S = useSel();
   const propose = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
+  const story = useStore(storyOf);
   const { row, box } = m.node.get(id)!;
   const n = row.node;
   const method = typeof n.fields?.method === 'string' ? (n.fields.method as string).toUpperCase() : '';
   const eyebrow = row.prop ? 'Proposed' : row.ghost ? 'Missing' : n.external || n.entry ? cap(n.kind) : box.label;
-  const inn = m.all.inn.get(id) ?? [],
+  // a page's code calling out of the frontend shows as the page (graph.FoldScreens)
+  const inn = (m.all.inn.get(id) ?? []).filter((e) => onScreen(n) || !onScreen(m.node.get(e.from)?.row.node)),
     out = m.all.out.get(id) ?? [];
   let body: ReactNode;
   if (row.ghost) body = null;
@@ -265,6 +336,7 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
     body = (
       <>
         <Fields m={m} fields={n.fields} skip={['method']} />
+        {n.kind === 'page' && <ScreenOutline m={m} id={id} />}
         {inn.length > 0 && (
           <Section title="Called from">
             <EdgeList m={m} edges={inn} end="from" />
@@ -325,6 +397,18 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
       <Head eyebrow={eyebrow} plan={row.prop} title={method && !row.label.startsWith(method) ? `${method} ${row.label}` : row.label}>
         <Where file={n.file} line={n.line} />
       </Head>
+      {story && story !== id && (
+        <div className="btns">
+          <button className="btn" data-story={story} onClick={() => select(story)}>
+            ← {qn(m, story)}
+          </button>
+          {!n.external && (
+            <button className="btn" onClick={() => select(id, true)}>
+              Trace from here
+            </button>
+          )}
+        </div>
+      )}
       {row.moved && <p className="where plan">Moved here from {row.moved} by the proposal. Drag it back to undo.</p>}
       {n.doc && <p className="doc">{n.doc}</p>}
       {propose && (

@@ -291,6 +291,11 @@ func (ix *Index) treeRows(edges []*Edge, up bool) []*TreeNode {
 		edges = append([]*Edge(nil), edges...)
 		sort.SliceStable(edges, func(i, j int) bool {
 			a, b := edges[i], edges[j]
+			// a page's own effects come before the code that makes them, so the
+			// story from a page goes on from there (FoldScreens)
+			if sa, sb := OnScreen(ix.Node[a.To]), OnScreen(ix.Node[b.To]); sa != sb {
+				return sb
+			}
 			if a.File != b.File {
 				return a.File < b.File
 			}

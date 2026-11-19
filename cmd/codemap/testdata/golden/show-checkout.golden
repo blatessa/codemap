@@ -3,11 +3,20 @@ kind:   page (entry)
 module: web/src/pages
 file:   web/src/main.tsx:10
 
-page /checkout
-  pages.CheckoutPage  renders  (+2)
-    components.PlaceOrderButton  renders
-      components.PlaceOrderButton.onClick
-        api.createOrder  (+1)  → writes orders, stock · reads users · publishes order.placed · calls api.stripe.com · fetches POST /orders
+page /checkout  (+1)
+  POST /orders  fetches: PlaceOrderButton.onClick
+    auth.Handler.RequireUser  (+2)
+      auth.Store.UserByID
+        users [table]  reads: SELECT id, email FROM users WHERE id = $1
+    orders.Handler.Create  (+3)
+      orders.Service.Place  (+2)
+        inventory.Store.Reserve  ...  → writes stock
+        payments.Client.Charge  ...  → calls api.stripe.com
+        orders.Repo.Insert  ...  → writes orders
+        order.placed [topic]  publishes
 
 Tests:
-  test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order  web/src/components/PlaceOrderButton.test.tsx:12  (direct)
+  test:go:shop/internal/auth.TestRequireUser_MissingToken  internal/auth/middleware_test.go:11  (direct)
+  test:go:shop/internal/inventory.TestReserve_InsufficientStock  internal/inventory/reserve_test.go:11  (direct)
+  test:go:shop/internal/orders.TestPlace_ChargesAndInserts  internal/orders/service_test.go:53  (direct)
+  test:go:shop/internal/orders.TestPlace_OutOfStock  internal/orders/service_test.go:64  (direct)

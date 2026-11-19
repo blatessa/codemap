@@ -3,11 +3,11 @@ kind:   page (entry)
 module: web/src/pages
 file:   web/src/main.tsx:9
 
-page /login
-  pages.LoginPage  renders  (+1)
-    components.LoginForm  renders
-      components.LoginForm.onSubmit
-        api.login  (+1)  → reads users · fetches POST /login
+page /login  (+1)
+  POST /login  fetches: LoginForm.onSubmit
+    auth.Handler.Login  (+1)
+      auth.Handler.checkPassword
+        users [table]  reads: SELECT id, password_hash FROM users WHERE email = $1
 
 Tests:
-  (none)
+  test:go:shop/internal/auth.TestLogin_WrongPassword  internal/auth/login_test.go:23  (direct)

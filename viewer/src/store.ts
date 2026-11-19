@@ -30,6 +30,7 @@ export interface S {
   collapsed: Set<string>;
   expanded: Set<string>; // boxes showing their internal rows too
   focus: boolean;
+  story: string | null; // the feature on the map; clicking its steps keeps it there
   view: { x: number; y: number; k: number };
   touchedView: boolean;
   connectFrom: string | null;
@@ -62,6 +63,7 @@ export const useStore = create<S>(() => ({
   collapsed: new Set(),
   expanded: new Set(),
   focus: false,
+  story: null,
   view: { x: 0, y: 0, k: 1 },
   touchedView: false,
   connectFrom: null,
@@ -134,10 +136,25 @@ export const groupingOf = (s: S) => groupingFor(modelOf(s));
 export const useGrouping = () => useStore(groupingOf);
 
 let selMemo: { m?: Model; sel?: string[]; S?: Sel | null } = {};
-export function selOf(s: S): Sel | null {
+const ofIds = (s: S, ids: string[]): Sel | null => {
   const m = modelOf(s);
-  if (selMemo.m !== m || selMemo.sel !== s.sel) selMemo = { m, sel: s.sel, S: selectionOf(m, s.sel, groupingOf(s).groups) };
+  if (selMemo.m !== m || selMemo.sel !== ids) selMemo = { m, sel: ids, S: selectionOf(m, ids, groupingOf(s).groups) };
   return selMemo.S!;
+};
+const storyIds = new Map<string, string[]>();
+// storyOf is the story the map shows: the selection's own, or, for a step
+// inside the current story, still that story.
+export function storyOf(s: S): string | null {
+  if (!s.story || s.sel.length !== 1) return null;
+  if (s.sel[0] === s.story) return s.story;
+  let ids = storyIds.get(s.story);
+  if (!ids) storyIds.set(s.story, (ids = [s.story]));
+  return ofIds(s, ids)?.nodes.has(s.sel[0]) ? s.story : null;
+}
+export function selOf(s: S): Sel | null {
+  const st = storyOf(s);
+  if (st) return ofIds(s, storyIds.get(st) ?? (storyIds.set(st, [st]), storyIds.get(st)!));
+  return ofIds(s, s.sel);
 }
 export const useSel = () => useStore(selOf);
 
@@ -312,11 +329,16 @@ export function persistProposal(slug: string, ms = 400) {
 // ---- selection ----
 
 // Selecting a function or entry point focuses on its path, on every map: the
-// story of one feature, laid out on its own.
-export function select(id: string | null) {
-  const m = modelOf(get());
-  const node = !!id && m.node.has(id) && get().mode !== 'propose'; // sketching needs the whole map
-  set({ sel: id ? [id] : [], hover: null, form: null, splitting: null, ...(id ? (node ? { focus: true } : {}) : { focus: false }) });
+// story of one feature, laid out on its own. Selecting a step of the story on
+// the map keeps the story where it is; `fresh` (search, "trace from here")
+// starts a new one.
+export function select(id: string | null, fresh = false) {
+  const s = get();
+  const m = modelOf(s);
+  const node = !!id && m.node.has(id) && s.mode !== 'propose'; // sketching needs the whole map
+  const st = s.story && !fresh && node ? storyOf({ ...s, sel: [id!] }) : null;
+  if (st) return set({ sel: [id!], hover: null, form: null, splitting: null });
+  set({ sel: id ? [id] : [], story: node ? id : null, hover: null, form: null, splitting: null, ...(id ? (node ? { focus: true } : {}) : { focus: false }) });
 }
 
 export function toggleMulti(id: string) {

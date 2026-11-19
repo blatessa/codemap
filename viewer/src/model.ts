@@ -91,6 +91,9 @@ export const roleOf = (n: GNode): string => (typeof n.fields?.role === 'string' 
 export const sharedFn = (n: GNode): boolean => n.fields?.shared === true;
 // stops reports whether traces stop at a node: utilities and shared functions
 // are shown, but what they call isn't part of the trace
+// onScreen: frontend code that is part of a page (graph.FoldScreens). A
+// page's story shows what that code reaches, not the code.
+export const onScreen = (n?: GNode): boolean => n?.fields?.screen === true;
 export const stops = (n: GNode): boolean => roleOf(n) === 'utility' || sharedFn(n);
 
 const codeKind = (n?: GNode): boolean => n?.kind === 'function' || n?.kind === 'component';
@@ -412,6 +415,8 @@ function walkUp(m: Model, start: string): { nodes: Set<string>; edges: Set<numbe
     const n = q.shift()!;
     for (const e of m.inn.get(n) ?? []) {
       if (e.wide) continue;
+      // the page's own edge stands for its code's calls out of the frontend
+      if (onScreen(m.node.get(e.from)?.row.node) && !onScreen(m.node.get(e.to)?.row.node)) continue;
       const vn = m.node.get(e.to)?.row.node;
       if (e.to !== start && vn?.external) continue;
       edges.add(e.i);
@@ -653,6 +658,8 @@ function traceWith(m: Model, start: string, prune: boolean): Trace {
   // other than what most features reach (cli.Prune). Every effect still
   // appears once.
   const shown = new Set<string>();
+  const fold = !onScreen(m.node.get(start)?.row.node); // from a page, its code is the page
+  const part = (id: string) => onScreen(m.node.get(id)?.row.node);
   const fresh = (id: string) => reach(id).some((f) => !common.has(effKey(f)) && !shown.has(effKey(f)));
   const hasOut = (id: string) => (m.all.out.get(id)?.length ?? 0) > 0;
   type Kids = { rows: TreeRow[][]; support: number }; // each child with its subtree, preorder
@@ -660,7 +667,10 @@ function traceWith(m: Model, start: string, prune: boolean): Trace {
     const res: Kids = { rows: [], support: 0 };
     const wide = new Map<string, TreeRow>();
     // in the order the code makes the calls
-    const outs = [...(m.all.out.get(id) ?? [])].sort((a, b) => (a.file ?? '').localeCompare(b.file ?? '') || (a.line ?? 0) - (b.line ?? 0));
+    // a page's own effects come before the code making them (graph.treeRows)
+    const outs = [...(m.all.out.get(id) ?? [])].sort(
+      (a, b) => Number(part(a.to)) - Number(part(b.to)) || (a.file ?? '').localeCompare(b.file ?? '') || (a.line ?? 0) - (b.line ?? 0),
+    );
     for (const e of outs) {
       if (e.wide && prune) {
         const k = e.file + ':' + e.line;
@@ -692,7 +702,7 @@ function traceWith(m: Model, start: string, prune: boolean): Trace {
         res.support += sub.support;
         continue;
       }
-      if (role) {
+      if (role || (fold && part(e.to))) {
         res.support++;
         continue;
       }
@@ -758,7 +768,16 @@ function traceWith(m: Model, start: string, prune: boolean): Trace {
     const r = rows[i];
     if (!r.seen && !r.targets) r.reaches = rollup(r.id, i);
   }
-  return { rows, support: top.support, reaches: rollup(start, -1) };
+  // Read top to bottom, every effect is said once: where the story first
+  // reaches it (cli.Rollup).
+  const reaches = rollup(start, -1);
+  const said = new Set(reaches.map(key));
+  for (const r of rows) {
+    if (r.targets) continue;
+    if (isEffect(m, r.via)) said.add(key({ to: r.id, type: r.via.type }));
+    r.reaches = r.reaches.filter((f) => !said.has(key(f)) && (said.add(key(f)), true));
+  }
+  return { rows, support: top.support, reaches };
 }
 
 // effectSummary words effects as codemap show does: "writes comment, issue ·

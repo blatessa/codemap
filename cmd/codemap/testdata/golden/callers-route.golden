@@ -4,10 +4,5 @@ module: cmd/server
 file:   cmd/server/routes.go:13
 method: POST
 
-POST /orders
-  api.createOrder  fetches: POST /orders
-    components.PlaceOrderButton.onClick
-      components.PlaceOrderButton
-        navigates to the new order [test]  renders
-        pages.CheckoutPage  renders
-          page /checkout  renders
+POST /orders  (+1)
+  page /checkout  fetches: PlaceOrderButton.onClick

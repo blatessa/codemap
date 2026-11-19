@@ -99,6 +99,12 @@ func RoleOf(ix *graph.Index, id string) string {
 // shared function (widely used, with effects of its own or one call away) is
 // shown without what it calls. The root always stays.
 func Features(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
+	// a page's own code is the page: its trace shows what that code reaches
+	// (graph.FoldScreens), unless the trace starts inside the frontend
+	return features(ix, t, !graph.OnScreen(ix.Node[t.ID]))
+}
+
+func features(ix *graph.Index, t *graph.TreeNode, fold bool) *graph.TreeNode {
 	out := *t
 	out.Children = nil
 	var add func(kids []*graph.TreeNode, depth int)
@@ -111,14 +117,14 @@ func Features(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
 					continue
 				}
 				add(c.Children, depth+1)
-			case r != "":
+			case r != "" || fold && graph.OnScreen(ix.Node[c.ID]):
 				out.Support++
 			case Shared(ix, c.ID):
 				leaf := *c // shown, not gone into
 				leaf.Children = nil
 				out.Children = append(out.Children, &leaf)
 			default:
-				out.Children = append(out.Children, Features(ix, c))
+				out.Children = append(out.Children, features(ix, c, fold))
 			}
 		}
 	}
@@ -240,5 +246,26 @@ func Rollup(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
 		return covered
 	}
 	walk(t)
+	// Read top to bottom, every effect is said once: where the story first
+	// reaches it.
+	said := map[graph.Effect]bool{}
+	var once func(t *graph.TreeNode)
+	once = func(t *graph.TreeNode) {
+		if t.Via != nil && t != root && ix.IsEffect(t.Via) {
+			said[graph.Effect{To: t.ID, Type: t.Via.Type}] = true
+		}
+		var keep []graph.Effect
+		for _, f := range t.Reaches {
+			if !said[f] {
+				keep = append(keep, f)
+				said[f] = true
+			}
+		}
+		t.Reaches = keep
+		for _, c := range t.Children {
+			once(c)
+		}
+	}
+	once(t)
 	return t
 }

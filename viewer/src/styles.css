@@ -250,3 +250,4 @@ details.test .code{border:0;border-top:1px solid var(--line);border-radius:0}
   .seg{margin-left:0}
 }
 @media (prefers-reduced-motion:no-preference){.edge,.fn,.box{transition:opacity .15s,stroke .15s}}
+.trow .act{color:var(--http);font-size:11px}

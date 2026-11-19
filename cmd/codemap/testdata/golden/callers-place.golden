@@ -6,12 +6,7 @@ doc:    Place reserves stock, charges the card and saves the order, in that orde
 
 orders.Service.Place
   orders.Handler.Create
-    POST /orders
-      api.createOrder  fetches: POST /orders
-        components.PlaceOrderButton.onClick
-          components.PlaceOrderButton
-            navigates to the new order [test]  renders
-            pages.CheckoutPage  renders
-              page /checkout  renders
+    POST /orders  (+1)
+      page /checkout  fetches: PlaceOrderButton.onClick
   TestPlace_ChargesAndInserts [test]
   TestPlace_OutOfStock [test]

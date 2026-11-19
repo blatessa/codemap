@@ -56,8 +56,22 @@ test('detail follows what you select: at rest, hovered, a module, a trace', asyn
   await expect(node(page, 'table:orders')).toHaveClass(/\bon\b/);
   await expect(page.locator('#drawer').getByText('Call tree')).toBeVisible();
   // the trace stops 4 levels down; what's below still shows as effects
-  await expect(page.locator('#drawer .trow .reach').first()).toContainText('writes orders');
+  await expect(page.locator('#drawer .trow .reach', { hasText: 'writes orders' })).toBeVisible();
   await expect(page.locator('#map path.edge.reach.on').first()).toBeAttached();
+  // a screen is one step: its components aren't on the path, the API it calls is
+  await expect(page.locator('#drawer .trow.eff', { hasText: 'PlaceOrderButton.onClick' })).toContainText('fetches POST /orders');
+  await expect(page.locator('#map [data-node="ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton"]')).toHaveCount(0);
+  // its panel shows what's on it: components, and the action calling the API
+  await expect(page.locator('#drawer').getByText('On this screen')).toBeVisible();
+  await expect(page.locator('#drawer .trow', { hasText: /^onClick/ })).toContainText('fetches POST /orders');
+  // a step of the story keeps the story on the map, and Escape goes back to it
+  const view = await page.locator('#map g').first().getAttribute('transform');
+  await page.locator('#drawer .trow[data-node="go:shop/internal/orders.(*Service).Place"]').click();
+  await expect(page.locator('#drawer h2')).toHaveText('Service.Place');
+  await expect(node(page, 'page:/checkout')).toBeVisible();
+  expect(await page.locator('#map g').first().getAttribute('transform')).toBe(view);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#drawer h2')).toHaveText('/checkout');
   // there's no way to show every function
   await expect(page.locator('#showall')).toHaveCount(0);
 });

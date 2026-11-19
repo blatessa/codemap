@@ -11,7 +11,19 @@
   "reachedBy": [],
   "tests": [
     {
-      "test": "test:ts:web/src/components/PlaceOrderButton.test.tsx#navigates to the new order",
+      "test": "test:go:shop/internal/auth.TestRequireUser_MissingToken",
+      "direct": true
+    },
+    {
+      "test": "test:go:shop/internal/inventory.TestReserve_InsufficientStock",
+      "direct": true
+    },
+    {
+      "test": "test:go:shop/internal/orders.TestPlace_ChargesAndInserts",
+      "direct": true
+    },
+    {
+      "test": "test:go:shop/internal/orders.TestPlace_OutOfStock",
       "direct": true
     }
   ],
@@ -19,71 +31,128 @@
     "id": "page:/checkout",
     "children": [
       {
-        "id": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
+        "id": "route:POST /orders",
         "via": {
           "from": "page:/checkout",
-          "to": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
-          "type": "renders"
+          "to": "route:POST /orders",
+          "type": "fetches",
+          "detail": "PlaceOrderButton.onClick"
         },
         "children": [
           {
-            "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
+            "id": "go:shop/internal/auth.(*Handler).RequireUser",
             "via": {
-              "from": "ts:web/src/pages/CheckoutPage.tsx#CheckoutPage",
-              "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
-              "type": "renders"
+              "from": "route:POST /orders",
+              "to": "go:shop/internal/auth.(*Handler).RequireUser",
+              "type": "calls"
             },
             "children": [
               {
-                "id": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+                "id": "go:shop/internal/auth.(*Store).UserByID",
                 "via": {
-                  "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton",
-                  "to": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
+                  "from": "go:shop/internal/auth.(*Handler).RequireUser",
+                  "to": "go:shop/internal/auth.(*Store).UserByID",
                   "type": "calls"
                 },
                 "children": [
                   {
-                    "id": "ts:web/src/api/orders.ts#createOrder",
+                    "id": "table:users",
                     "via": {
-                      "from": "ts:web/src/components/PlaceOrderButton.tsx#PlaceOrderButton.onClick",
-                      "to": "ts:web/src/api/orders.ts#createOrder",
-                      "type": "calls"
+                      "from": "go:shop/internal/auth.(*Store).UserByID",
+                      "to": "table:users",
+                      "type": "reads",
+                      "detail": "SELECT id, email FROM users WHERE id = $1"
+                    }
+                  }
+                ]
+              }
+            ],
+            "support": 2
+          },
+          {
+            "id": "go:shop/internal/orders.(*Handler).Create",
+            "via": {
+              "from": "route:POST /orders",
+              "to": "go:shop/internal/orders.(*Handler).Create",
+              "type": "calls"
+            },
+            "children": [
+              {
+                "id": "go:shop/internal/orders.(*Service).Place",
+                "via": {
+                  "from": "go:shop/internal/orders.(*Handler).Create",
+                  "to": "go:shop/internal/orders.(*Service).Place",
+                  "type": "calls"
+                },
+                "children": [
+                  {
+                    "id": "go:shop/internal/inventory.(*Store).Reserve",
+                    "via": {
+                      "from": "go:shop/internal/orders.(*Service).Place",
+                      "to": "go:shop/internal/inventory.(*Store).Reserve",
+                      "type": "calls",
+                      "file": "internal/orders/service.go",
+                      "line": 49
                     },
-                    "support": 1,
                     "reaches": [
-                      {
-                        "to": "ext:stripe",
-                        "type": "calls"
-                      },
-                      {
-                        "to": "route:POST /orders",
-                        "type": "fetches"
-                      },
-                      {
-                        "to": "topic:order.placed",
-                        "type": "publishes"
-                      },
-                      {
-                        "to": "table:users",
-                        "type": "reads"
-                      },
-                      {
-                        "to": "table:orders",
-                        "type": "writes"
-                      },
                       {
                         "to": "table:stock",
                         "type": "writes"
                       }
                     ]
+                  },
+                  {
+                    "id": "go:shop/internal/payments.(*Client).Charge",
+                    "via": {
+                      "from": "go:shop/internal/orders.(*Service).Place",
+                      "to": "go:shop/internal/payments.(*Client).Charge",
+                      "type": "calls",
+                      "file": "internal/orders/service.go",
+                      "line": 52
+                    },
+                    "reaches": [
+                      {
+                        "to": "ext:stripe",
+                        "type": "calls"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "go:shop/internal/orders.(*Repo).Insert",
+                    "via": {
+                      "from": "go:shop/internal/orders.(*Service).Place",
+                      "to": "go:shop/internal/orders.(*Repo).Insert",
+                      "type": "calls",
+                      "file": "internal/orders/service.go",
+                      "line": 57
+                    },
+                    "reaches": [
+                      {
+                        "to": "table:orders",
+                        "type": "writes"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "topic:order.placed",
+                    "via": {
+                      "from": "go:shop/internal/orders.(*Service).Place",
+                      "to": "topic:order.placed",
+                      "type": "publishes",
+                      "detail": "order.placed",
+                      "file": "internal/orders/service.go",
+                      "line": 60
+                    }
                   }
-                ]
+                ],
+                "support": 2
               }
-            ]
+            ],
+            "support": 3
           }
-        ],
-        "support": 2
+        ]
       }
-    ]
+    ],
+    "support": 1
   }
 }

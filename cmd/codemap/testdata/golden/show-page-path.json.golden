@@ -9,60 +9,57 @@
     "entry": true
   },
   "reachedBy": [],
-  "tests": [],
+  "tests": [
+    {
+      "test": "test:go:shop/internal/auth.TestLogin_WrongPassword",
+      "direct": true
+    }
+  ],
   "tree": {
     "id": "page:/login",
     "children": [
       {
-        "id": "ts:web/src/pages/LoginPage.tsx#LoginPage",
+        "id": "route:POST /login",
         "via": {
           "from": "page:/login",
-          "to": "ts:web/src/pages/LoginPage.tsx#LoginPage",
-          "type": "renders"
+          "to": "route:POST /login",
+          "type": "fetches",
+          "detail": "LoginForm.onSubmit"
         },
         "children": [
           {
-            "id": "ts:web/src/components/LoginForm.tsx#LoginForm",
+            "id": "go:shop/internal/auth.(*Handler).Login",
             "via": {
-              "from": "ts:web/src/pages/LoginPage.tsx#LoginPage",
-              "to": "ts:web/src/components/LoginForm.tsx#LoginForm",
-              "type": "renders"
+              "from": "route:POST /login",
+              "to": "go:shop/internal/auth.(*Handler).Login",
+              "type": "calls"
             },
             "children": [
               {
-                "id": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+                "id": "go:shop/internal/auth.(*Handler).checkPassword",
                 "via": {
-                  "from": "ts:web/src/components/LoginForm.tsx#LoginForm",
-                  "to": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
+                  "from": "go:shop/internal/auth.(*Handler).Login",
+                  "to": "go:shop/internal/auth.(*Handler).checkPassword",
                   "type": "calls"
                 },
                 "children": [
                   {
-                    "id": "ts:web/src/api/auth.ts#login",
+                    "id": "table:users",
                     "via": {
-                      "from": "ts:web/src/components/LoginForm.tsx#LoginForm.onSubmit",
-                      "to": "ts:web/src/api/auth.ts#login",
-                      "type": "calls"
-                    },
-                    "support": 1,
-                    "reaches": [
-                      {
-                        "to": "route:POST /login",
-                        "type": "fetches"
-                      },
-                      {
-                        "to": "table:users",
-                        "type": "reads"
-                      }
-                    ]
+                      "from": "go:shop/internal/auth.(*Handler).checkPassword",
+                      "to": "table:users",
+                      "type": "reads",
+                      "detail": "SELECT id, password_hash FROM users WHERE email = $1"
+                    }
                   }
                 ]
               }
-            ]
+            ],
+            "support": 1
           }
-        ],
-        "support": 1
+        ]
       }
-    ]
+    ],
+    "support": 1
   }
 }

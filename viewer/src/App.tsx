@@ -10,6 +10,7 @@ import {
   getState,
   load,
   select,
+  storyOf,
   setMode,
   setState,
   subscribe,
@@ -120,7 +121,7 @@ function Search() {
     const box = m.node.get(h.id)?.box.id ?? h.id;
     const c = new Set(s.collapsed);
     c.delete(box);
-    select(h.id);
+    select(h.id, true);
     setState({ collapsed: c, centerOn: h.id, ...(s.view.k < 0.55 ? { view: { ...s.view, k: 0.9 } } : {}) });
   };
   return (
@@ -332,6 +333,8 @@ export function App() {
       if (t.id === 'p-body' || t.id === 'pl-q') return;
       if (!s.sel.length && !s.form && s.mode === 'propose' && s.pslug) return setState({ pslug: null, editing: false });
       if (!s.sel.length && !s.form && s.mode === 'propose') return setMode('explore');
+      // a step of a story goes back to the story
+      if (s.story && s.sel[0] !== s.story && storyOf(s)) return setState({ sel: [s.story], form: null, hover: null });
       setState({ sel: [], form: null, hover: null, focus: false, splitting: null });
     };
     window.addEventListener('keydown', onKey);
