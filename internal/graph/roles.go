@@ -57,7 +57,7 @@ var (
 	pathLiteral     = regexp.MustCompile(`['"` + "`" + `]/(api/)?[a-z]\w*`)
 	generatedHeader = regexp.MustCompile(`(?m)^// Code generated .* DO NOT EDIT\.$`)
 	ctorName        = regexp.MustCompile(`^(New|new)([A-Z0-9_].*)?$`)
-	initName        = regexp.MustCompile(`^init(#\d+)?$`)
+	initName        = regexp.MustCompile(`^init(#\d+| \(package vars\))?$`) // a declared init, or a Go package's variable initialisers
 	// registration APIs: wiring code reaches the rest of the program by passing
 	// handlers to these, so calling them doesn't stop a function being wiring.
 	registerPrefix = regexp.MustCompile(`^(Register|Subscribe|Handle|Mount|Schedule|AddRoute|AddFunc|AddJob|AddHandler)`)
@@ -208,17 +208,37 @@ func AssignRoles(g *Graph, read ReadFile) map[string]int {
 	// entries reach at least half its functions. Entry points the extractors
 	// don't see (framework callbacks, CLI actions held in struct fields) can
 	// leave most code with no path, and then a missing path means little.
+	//
+	// A package's init functions (declared ones, and the initialisers of its
+	// package-level variables) run whenever a program containing the package
+	// starts, so they count as reached once anything in their module is.
 	seen := map[string]bool{}
 	var q []string
 	for id := range entry {
 		seen[id] = true
 		q = append(q, id)
 	}
+	inits := map[string][]string{} // module → its init functions
+	for _, n := range g.Nodes {
+		if n.Kind == KindFunction && !n.External && langOf(n.ID) == "go" && initName.MatchString(n.Label) {
+			inits[n.Module] = append(inits[n.Module], n.ID)
+		}
+	}
 	for len(q) > 0 {
 		id := q[0]
 		q = q[1:]
-		if n := ix.Node[id]; n != nil && n.External && !entry[id] {
+		n := ix.Node[id]
+		if n != nil && n.External && !entry[id] {
 			continue
+		}
+		if n != nil && langOf(id) == "go" && inits[n.Module] != nil {
+			for _, i := range inits[n.Module] {
+				if !seen[i] {
+					seen[i] = true
+					q = append(q, i)
+				}
+			}
+			delete(inits, n.Module)
 		}
 		for _, e := range ix.Out[id] {
 			if !seen[e.To] {

@@ -4,7 +4,9 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"net"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/blatessa/codemap/internal/graph"
@@ -46,14 +48,30 @@ type rpart struct {
 var hole = rpart{kind: pHole}
 
 // reqTmpl is a request helper's request: its method and URL in terms of its
-// parameters.
+// parameters, and where the request is finally made.
 type reqTmpl struct {
 	method rpart
 	url    []rpart
+	origin reqOrigin
+	// valueOnly: the helper's parameters are only values in the path
+	// (User(name) requesting "/users/"+name), so the helper is itself the
+	// function deciding the URL and its callers' requests are only matched
+	// against the repo's routes.
+	valueOnly bool
+	file      string
+	line      int
+}
+
+// reqOrigin is the net/http call a request is finally made by.
+type reqOrigin struct {
+	pkgPath, pkgName string // its package
+	site             string // file:line
+	direct           bool   // the request is the call's own, not a helper's caller's
 }
 
 func (t reqTmpl) key() string {
 	var b strings.Builder
+	b.WriteString(t.origin.site + "\x00")
 	for _, p := range append([]rpart{t.method}, t.url...) {
 		switch p.kind {
 		case pLit:
@@ -67,11 +85,16 @@ func (t reqTmpl) key() string {
 	return b.String()
 }
 
-// request is a call to the repo's own API, waiting to be matched to a route.
+// request is an HTTP request the repo's code makes, waiting to be matched to
+// one of its routes (a call to its own API) or else to become a call to
+// another service (outbound).
 type request struct {
-	from, method string
-	segs         [][]rpart // path segments, each literal text and holes
+	from, method string    // method is "" when not known
+	url          []rpart   // the whole URL, literal text and holes
+	segs         [][]rpart // path segments, each literal text and holes; nil when the URL can't be one of the repo's routes
 	prefix       bool      // the URL starts with something unknown (a base URL)
+	origin       reqOrigin
+	valueOnly    bool // see reqTmpl
 	file         string
 	line         int
 }
@@ -347,7 +370,11 @@ func (l *load) httpRequest(c *fnCtx, call *ast.CallExpr, callee *types.Func, fil
 	if method.lit == "" {
 		method = l.reqMethod(c, call.Args[urlArg-1])
 	}
-	l.reqFinish(c, reqTmpl{method: method, url: l.reqEval(c, call.Args[urlArg], 0)}, file, line)
+	origin := reqOrigin{pkgPath: c.p.PkgPath, pkgName: c.p.Name, site: file + ":" + strconv.Itoa(line), direct: true}
+	if l.fieldRequest(c, call.Args[urlArg], call.Args[max(urlArg-1, 0)], method, origin, file, line) {
+		return
+	}
+	l.reqFinish(c, reqTmpl{method: method, url: l.reqEval(c, call.Args[urlArg], 0), origin: origin}, file, line)
 }
 
 func (l *load) reqMethod(c *fnCtx, e ast.Expr) rpart {
@@ -369,44 +396,58 @@ func (l *load) reqFinish(c *fnCtx, t reqTmpl, file string, line int) {
 		param = param || p.kind == pParam
 	}
 	if param {
-		if c.fn != nil {
-			f := c.fn.Origin()
-			k := t.key()
-			if l.reqSeen[f] == nil {
-				l.reqSeen[f] = map[string]bool{}
-			}
-			if !l.reqSeen[f][k] && len(l.reqSeen[f]) < 8 {
-				l.reqSeen[f][k] = true
-				l.reqWrappers[f] = append(l.reqWrappers[f], t)
-			}
-		}
 		// A parameter right after a "/" is a value in the path (User(name)
 		// requesting "/users/"+name), not the path itself (do(path)
 		// requesting c.URL+path): the function is a request of its own too,
 		// with a hole for the value.
 		var url []rpart
+		self := t.method.kind != pParam
 		for i, p := range t.url {
 			if p.kind == pParam {
 				if i == 0 || t.url[i-1].kind != pLit || !strings.HasSuffix(t.url[i-1].lit, "/") {
-					return
+					self = false
 				}
 				p = hole
 			}
 			url = append(url, p)
 		}
-		if t.method.kind == pParam {
+		if c.fn != nil {
+			f := c.fn.Origin()
+			w := t
+			w.valueOnly = w.valueOnly || self
+			w.file, w.line = file, line
+			k := w.key()
+			if l.reqSeen[f] == nil {
+				l.reqSeen[f] = map[string]bool{}
+			}
+			if !l.reqSeen[f][k] && len(l.reqSeen[f]) < 8 {
+				l.reqSeen[f][k] = true
+				l.reqWrappers[f] = append(l.reqWrappers[f], w)
+			}
+		}
+		if !self {
 			return
 		}
 		t.url = url
 	}
-	if t.method.kind != pLit || t.method.lit == "" || !l.x.b.has(c.id) {
+	l.addRequest(c.id, t, file, line)
+}
+
+// addRequest records a request of the function with ID from.
+func (l *load) addRequest(from string, t reqTmpl, file string, line int) {
+	if !l.x.b.has(from) {
 		return
 	}
-	segs, prefix, ok := reqPath(t.url)
-	if !ok {
-		return
+	r := request{from: from, url: t.url, origin: t.origin, valueOnly: t.valueOnly, file: file, line: line}
+	if t.method.kind == pLit {
+		r.method = t.method.lit
 	}
-	l.x.requests = append(l.x.requests, request{from: c.id, method: t.method.lit, segs: segs, prefix: prefix, file: file, line: line})
+	if r.method != "" {
+		if segs, prefix, ok := reqPath(t.url); ok {
+			r.segs, r.prefix = segs, prefix
+		}
+	}
+	l.x.requests = append(l.x.requests, r)
 }
 
 // trimQuery drops a URL's query string and fragment, and empty literals.
@@ -479,8 +520,41 @@ func reqPath(url []rpart) (segs [][]rpart, prefix bool, ok bool) {
 
 // reqWrapperCalls follows requests through request helpers: a call to one is
 // its request with the call's arguments for the helper's parameters.
+//
+// A helper whose URL comes from its parameters but that no repo code calls
+// directly (only tests, or through an interface or a function value) makes
+// its requests itself, with holes for the parameters.
 func (l *load) reqWrapperCalls() {
 	done := map[*types.Func]int{} // templates already applied
+	called := map[*types.Func]bool{}
+	defer func() {
+		var fs []*types.Func
+		for f := range l.reqWrappers {
+			if !called[f] {
+				fs = append(fs, f)
+			}
+		}
+		sort.Slice(fs, func(i, j int) bool { return fs[i].Pos() < fs[j].Pos() })
+		for _, f := range fs {
+			for _, t := range l.reqWrappers[f] {
+				if t.valueOnly {
+					continue // already a request of its own (reqFinish)
+				}
+				nt := t
+				nt.url = nil
+				if nt.method.kind == pParam {
+					nt.method = hole
+				}
+				for _, p := range t.url {
+					if p.kind == pParam {
+						p = hole
+					}
+					nt.url = append(nt.url, p)
+				}
+				l.addRequest(l.funcID(f), nt, t.file, t.line)
+			}
+		}
+	}()
 	for round := 0; round < 5; round++ {
 		todo := map[*types.Func][]reqTmpl{}
 		for f, ts := range l.reqWrappers {
@@ -509,6 +583,7 @@ func (l *load) reqWrapperCalls() {
 				if len(ts) == 0 {
 					return true
 				}
+				called[callee.Origin()] = true
 				sig := callee.Signature()
 				file, line := l.pos(call.Pos())
 				arg := func(i int) []rpart {
@@ -518,8 +593,8 @@ func (l *load) reqWrapperCalls() {
 					return l.reqEval(c, call.Args[i], 0)
 				}
 				for _, t := range ts {
-					var nt reqTmpl
-					nt.method = t.method
+					nt := reqTmpl{method: t.method, origin: t.origin, valueOnly: t.valueOnly}
+					nt.origin.direct = false
 					if t.method.kind == pParam {
 						nt.method = hole
 						if t.method.param < len(call.Args) {
@@ -576,7 +651,12 @@ func (x *extractor) linkRequests() {
 		routes = append(routes, route{id, m, segs})
 	}
 	sort.Slice(routes, func(i, j int) bool { return routes[i].id < routes[j].id })
-	for _, r := range x.requests {
+	ownSite := map[string]bool{} // net/http calls some request reaches the repo's routes through
+	matched := make([]bool, len(x.requests))
+	for ri, r := range x.requests {
+		if r.segs == nil {
+			continue
+		}
 		var best []string
 		bestExact, bestLits := false, 0
 		need := 0 // literal agreement required
@@ -630,7 +710,112 @@ func (x *extractor) linkRequests() {
 		for _, to := range best {
 			x.b.addEdge(graph.Edge{From: r.from, To: to, Type: graph.Fetches, Detail: detail, File: r.file, Line: r.line})
 		}
+		if len(best) > 0 {
+			matched[ri] = true
+			ownSite[r.origin.site] = true
+		}
 	}
+	// Functions only tests call (a mock server, a test helper in a non-test
+	// file) don't talk to other services.
+	prodCalled, testCalled := map[string]bool{}, map[string]bool{}
+	for k := range x.b.edges {
+		if k[2] != graph.Calls {
+			continue
+		}
+		if n := x.b.nodes[k[0]]; n != nil && n.Kind == graph.KindTest {
+			testCalled[k[1]] = true
+		} else {
+			prodCalled[k[1]] = true
+		}
+	}
+	for ri, r := range x.requests {
+		if testCalled[r.from] && !prodCalled[r.from] {
+			continue
+		}
+		// A request with a path through a net/http call that reaches the
+		// repo's own routes is taken for a call to its own API that no route
+		// matches (a missing route, a method no route has), not another service.
+		if matched[ri] || r.valueOnly || r.segs != nil && ownSite[r.origin.site] {
+			continue
+		}
+		x.outbound(r)
+	}
+}
+
+// outbound adds an edge for a request that reaches none of the repo's routes:
+// to ext:<host> when the URL starts with a constant scheme and host, or else,
+// when the URL isn't known statically, to ext:http:<package>, the web reached
+// through the package making the request. Constant relative URLs (requests
+// handled in-process) and requests to localhost add nothing.
+func (x *extractor) outbound(r request) {
+	parts := trimQuery(r.url)
+	if len(parts) == 0 {
+		return
+	}
+	method := r.method
+	if method == "" {
+		method = "?"
+	}
+	constant := true
+	for _, p := range parts {
+		constant = constant && p.kind == pLit
+	}
+	first := parts[0]
+	if first.kind == pLit {
+		scheme, rest, ok := strings.Cut(first.lit, "://")
+		if !ok || scheme == "" || strings.ContainsAny(scheme, "/?#") {
+			return // relative: handled in-process, or a helper adds the base URL
+		}
+		hostEnd := strings.IndexAny(rest, "/?#")
+		host := rest
+		if hostEnd >= 0 {
+			host = rest[:hostEnd]
+		}
+		name := host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			name = h
+		} else if i := strings.LastIndexByte(host, ':'); i >= 0 && !strings.Contains(host, "]") {
+			name = host[:i] // a port still to come
+		}
+		if name == "localhost" || name == "127.0.0.1" || name == "[::1]" || name == "0.0.0.0" {
+			return
+		}
+		if hostEnd >= 0 || len(parts) == 1 {
+			if constant && r.origin.direct {
+				return // httpCall has it
+			}
+			if host == "" {
+				return
+			}
+			id := graph.ExternalID(host)
+			x.ensureService(id, host, map[string]any{"url": scheme + "://" + host})
+			p := "/"
+			if hostEnd >= 0 {
+				p = renderURL(append([]rpart{{kind: pLit, lit: rest[hostEnd:]}}, parts[1:]...))
+			}
+			x.b.addEdge(graph.Edge{From: r.from, To: id, Type: graph.Calls, Detail: method + " " + p, File: r.file, Line: r.line})
+			return
+		}
+	}
+	if constant {
+		return
+	}
+	id := graph.ExternalID("http:" + r.origin.pkgPath)
+	x.ensureService(id, "HTTP · "+r.origin.pkgName, map[string]any{"via": r.origin.pkgPath})
+	x.b.addEdge(graph.Edge{From: r.from, To: id, Type: graph.Calls, Detail: method + " " + renderURL(parts), File: r.file, Line: r.line})
+}
+
+// renderURL writes an evaluated URL with {} for holes.
+func renderURL(parts []rpart) string {
+	var b strings.Builder
+	for _, p := range parts {
+		if p.kind == pLit {
+			b.WriteString(p.lit)
+		} else if !strings.HasSuffix(b.String(), "{}") {
+			b.WriteString("{}")
+		}
+	}
+	return b.String()
 }
 
 func (r request) path() string {

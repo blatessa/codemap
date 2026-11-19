@@ -115,7 +115,27 @@ func (l *load) eachFunc(f func(c *fnCtx, body ast.Node)) {
 							if lit := funcLit(v); lit != nil {
 								if fn := l.ssaFor(lit, p); fn != nil && l.varClosures[fn] != "" {
 									f(newFnCtx(p, l.varClosures[fn], mod, nil, lit.Type, lit.Body), lit.Body)
+									continue
 								}
+							}
+							if d.Tok != token.VAR {
+								continue
+							}
+							// literals stored in the variable are its node's code
+							// (addVarClosures); the rest runs in the package's init
+							rest := []ast.Expr{v}
+							if lits, r := varParts(v); len(lits) > 0 {
+								rest = r
+								for _, lit := range lits {
+									if fn := l.ssaFor(lit, p); fn != nil && l.varClosures[fn] != "" {
+										f(newFnCtx(p, l.varClosures[fn], mod, nil, lit.Type, lit.Body), lit.Body)
+									} else {
+										rest = append(rest, lit)
+									}
+								}
+							}
+							for _, e := range rest {
+								f(newFnCtx(p, initID(p.PkgPath), mod, nil, &ast.FuncType{Params: &ast.FieldList{}}, e), e)
 							}
 						}
 					}
@@ -283,6 +303,7 @@ func (l *load) scanCalls() {
 		})
 	})
 	l.queryWrappers()
+	l.fieldRequests()
 	l.reqWrapperCalls()
 	l.ormWrappers()
 	l.ormLocalAccesses()
@@ -381,11 +402,15 @@ func (x *extractor) ensureTable(id, name string) {
 }
 
 func (l *load) ensureService(id, label string, fields map[string]any) {
-	if l.x.b.has(id) {
+	l.x.ensureService(id, label, fields)
+}
+
+func (x *extractor) ensureService(id, label string, fields map[string]any) {
+	if x.b.has(id) {
 		return
 	}
-	l.x.b.addModule(graph.Module{ID: servicesModule, Label: "external services", External: true})
-	l.x.b.addNode(graph.Node{ID: id, Kind: graph.KindService, Label: label, Module: servicesModule, External: true, Fields: fields})
+	x.b.addModule(graph.Module{ID: servicesModule, Label: "external services", External: true})
+	x.b.addNode(graph.Node{ID: id, Kind: graph.KindService, Label: label, Module: servicesModule, External: true, Fields: fields})
 }
 
 // isRepoPkg reports whether an import path belongs to one of the repo's modules.

@@ -156,6 +156,7 @@ type load struct {
 	plainSSA    map[*ssa.Package]bool
 	bySyntax    map[ast.Node][]*ssa.Function
 	varClosures map[*ssa.Function]string // closures assigned to package-level vars → node ID
+	storedVars  map[string][]storedVar   // package → variables holding function literals in a composite literal
 	pkgByTypes  map[*types.Package]*packages.Package
 
 	// sites maps a call's Lparen position to its resolved callees (plain variants only).
@@ -165,9 +166,11 @@ type load struct {
 	queryParams map[*types.Func]int // functions passing a parameter to a DB method → its index
 	sqlSeen     map[sqlKey]bool     // queries already classified as DB method arguments
 
-	reqWrappers map[*types.Func][]reqTmpl // request helpers → their requests (requests.go)
-	reqSeen     map[*types.Func]map[string]bool
-	strHelpers  map[*types.Func][]rpart // functions building a string from their parameters (requests.go)
+	reqWrappers  map[*types.Func][]reqTmpl // request helpers → their requests (requests.go)
+	reqSeen      map[*types.Func]map[string]bool
+	strHelpers   map[*types.Func][]rpart            // functions building a string from their parameters (requests.go)
+	fieldReqs    map[*types.Func][]*fieldReq        // request builders: methods requesting a receiver field's URL (fieldreq.go)
+	fieldSetters map[*types.Func]map[*types.Var]int // functions storing a parameter in such a field → its index
 
 	ormParams  map[*types.Func][]ormWrap // ORM wrappers → the parameters naming their model
 	ormIfaces  map[*types.Interface]*ormPreset
@@ -199,6 +202,7 @@ func (x *extractor) extractModule(dir string) (err error) {
 		plainSSA:    map[*ssa.Package]bool{},
 		bySyntax:    map[ast.Node][]*ssa.Function{},
 		varClosures: map[*ssa.Function]string{},
+		storedVars:  map[string][]storedVar{},
 		pkgByTypes:  map[*types.Package]*packages.Package{},
 		sites:       map[token.Pos][]*ssa.Function{},
 		files:       map[string][]byte{},
@@ -207,6 +211,7 @@ func (x *extractor) extractModule(dir string) (err error) {
 		reqWrappers: map[*types.Func][]reqTmpl{},
 		reqSeen:     map[*types.Func]map[string]bool{},
 		strHelpers:  map[*types.Func][]rpart{},
+		fieldReqs:   map[*types.Func][]*fieldReq{},
 		ormParams:   map[*types.Func][]ormWrap{},
 		ormIfaces:   map[*types.Interface]*ormPreset{},
 		tableNames:  map[*types.TypeName]string{},
@@ -276,6 +281,7 @@ func (x *extractor) extractModule(dir string) (err error) {
 	l.scanRenders()
 	l.addRoutes()
 	l.addCommands()
+	l.addBackgroundJobs()
 	return nil
 }
 
@@ -350,8 +356,10 @@ func top(fn *ssa.Function) *ssa.Function {
 
 // idOf returns the node ID fn's code belongs to: its own ID, the enclosing
 // function's for closures, or a package-level variable's for closures assigned
-// to one. It returns "" for synthetic functions (package initializers, wrappers).
-// The ID may not be a node (dependencies, test code).
+// to one. A package initializer's code (the package-level variables'
+// initialisers) belongs to the package's init node (initID). It returns "" for
+// other synthetic functions (wrappers, thunks). The ID may not be a node
+// (dependencies, test code, a package whose initialisers call nothing).
 func (l *load) idOf(fn *ssa.Function) string {
 	for f := fn; f != nil; f = f.Parent() {
 		if id, ok := l.varClosures[f]; ok {
@@ -359,6 +367,9 @@ func (l *load) idOf(fn *ssa.Function) string {
 		}
 	}
 	t := top(fn)
+	if t.Pkg != nil && t.Synthetic == "package initializer" && t.Name() == "init" {
+		return initID(t.Pkg.Pkg.Path())
+	}
 	if t.Synthetic != "" || t.Pkg == nil {
 		return ""
 	}
@@ -445,7 +456,89 @@ func (l *load) addModulesAndFunctions() {
 				}
 			}
 		}
+		l.addInitNode(p, mod.ID)
 	}
+}
+
+// initID is the ID of a package's init node: the code initialising its
+// package-level variables (var ormWrites = set(…)), which runs when a program
+// importing the package starts. Declared init functions are "init#1" and so
+// on, so the IDs don't collide.
+func initID(pkgPath string) string { return graph.GoFuncID(pkgPath, "init") }
+
+// initLabel is the label of a package's init node.
+const initLabel = "init (package vars)"
+
+// addInitNode adds a package's init node when its package-level variable
+// initialisers call repo functions or external-service SDKs. Its calls edges
+// come from the call graph like any function's (addCallEdges), and its code
+// is scanned like a function body (eachFunc).
+func (l *load) addInitNode(p *packages.Package, modID string) {
+	sp := l.ssaPkg[p]
+	if sp == nil {
+		return
+	}
+	init := sp.Func("init")
+	if init == nil {
+		return
+	}
+	file, line := "", 0 // the first call site, as edges pick theirs
+	var visit func(f *ssa.Function)
+	visit = func(f *ssa.Function) {
+		if _, ok := l.varClosures[f]; ok {
+			return // a node of its own
+		}
+		if n := l.cg.Nodes[f]; n != nil {
+			for _, e := range n.Out {
+				if e.Site == nil {
+					continue
+				}
+				pos := e.Site.Common().Pos()
+				for _, t := range l.resolve(e.Callee.Func, 0) {
+					useful := false
+					if t.Pkg != nil && l.isRepoPkg(t.Pkg.Pkg.Path()) {
+						useful = l.repoCode(t) && !l.isTestCode(t) && !strings.HasPrefix(t.Name(), "init#")
+					} else if t.Pkg != nil {
+						_, useful = l.x.ext.lookup(t.Pkg.Pkg.Path())
+					}
+					if f, ln := l.pos(pos); useful && f != "" && (file == "" || f < file || f == file && ln < line) {
+						file, line = f, ln
+					}
+				}
+			}
+		}
+		for _, a := range f.AnonFuncs {
+			visit(a)
+		}
+	}
+	visit(init)
+	stored := l.storedVars[p.PkgPath]
+	for _, v := range stored {
+		if file == "" || v.file < file || v.file == file && v.line < line {
+			file, line = v.file, v.line
+		}
+	}
+	if file == "" || l.fileExcluded(file) {
+		return
+	}
+	l.x.b.addNode(graph.Node{
+		ID: initID(p.PkgPath), Kind: graph.KindFunction, Label: initLabel, Module: modID,
+		File: file, Line: line, EndLine: line,
+	})
+	// Function literals stored in variables (a table of migrations, a
+	// sync.Pool's New) are handed to whatever reads the variable, which the
+	// call graph often can't see; like a function passed to a dependency
+	// (callbacks.go), the code storing them calls them.
+	for _, v := range stored {
+		l.x.b.addEdge(graph.Edge{From: initID(p.PkgPath), To: v.id, Type: graph.Calls, File: v.file, Line: v.line})
+	}
+}
+
+// storedVar is a package-level variable whose initialiser stores function
+// literals in a composite literal.
+type storedVar struct {
+	id, file string
+	line     int
 }
 
 // addVarClosures makes nodes for function literals assigned to package-level
@@ -457,16 +550,25 @@ func (l *load) addVarClosures(p *packages.Package, modID, file string, d *ast.Ge
 	for _, s := range d.Specs {
 		vs := s.(*ast.ValueSpec)
 		for i, v := range vs.Values {
-			lit := funcLit(v)
-			if lit == nil || i >= len(vs.Names) || vs.Names[i].Name == "_" {
+			if i >= len(vs.Names) || vs.Names[i].Name == "_" {
 				continue
 			}
-			fn := l.ssaFor(lit, p)
-			if fn == nil {
-				continue
+			lits := []*ast.FuncLit{funcLit(v)}
+			stored := lits[0] == nil
+			if stored {
+				lits, _ = varParts(v)
 			}
 			id := graph.GoFuncID(p.PkgPath, vs.Names[i].Name)
-			l.varClosures[fn] = id
+			found := false
+			for _, lit := range lits {
+				if fn := l.ssaFor(lit, p); fn != nil {
+					l.varClosures[fn] = id
+					found = true
+				}
+			}
+			if !found {
+				continue
+			}
 			_, line := l.pos(vs.Pos())
 			_, end := l.pos(vs.End())
 			doc := vs.Doc
@@ -477,8 +579,44 @@ func (l *load) addVarClosures(p *packages.Package, modID, file string, d *ast.Ge
 				ID: id, Kind: graph.KindFunction, Label: vs.Names[i].Name, Module: modID,
 				File: file, Line: line, EndLine: end, Doc: docText(doc),
 			})
+			if stored {
+				l.storedVars[p.PkgPath] = append(l.storedVars[p.PkgPath], storedVar{id, file, line})
+			}
 		}
 	}
+}
+
+// varParts splits a package-level variable's initialiser into the function
+// literals stored in it (var migrations = []func(*sql.Tx) error{func…, func…},
+// var handlers = map[string]Handler{"a": {Run: func…}}), which run when the
+// program calls them, and the rest, which runs in the package's init.
+func varParts(e ast.Expr) (lits []*ast.FuncLit, rest []ast.Expr) {
+	var walk func(e ast.Expr)
+	walk = func(e ast.Expr) {
+		switch v := e.(type) {
+		case *ast.FuncLit:
+			lits = append(lits, v)
+		case *ast.CompositeLit:
+			for _, el := range v.Elts {
+				walk(el)
+			}
+		case *ast.KeyValueExpr:
+			rest = append(rest, v.Key)
+			walk(v.Value)
+		case *ast.ParenExpr:
+			walk(v.X)
+		case *ast.UnaryExpr:
+			if v.Op == token.AND {
+				walk(v.X)
+			} else {
+				rest = append(rest, e)
+			}
+		default:
+			rest = append(rest, e)
+		}
+	}
+	walk(e)
+	return lits, rest
 }
 
 // funcLit returns the function literal e is, possibly wrapped in a conversion
@@ -648,6 +786,9 @@ func (l *load) addCallEdges() {
 				to := l.idOf(t)
 				if to == "" || !l.repoCode(t) || l.isTestCode(t) {
 					continue
+				}
+				if t.Parent() == nil && strings.HasPrefix(t.Name(), "init#") {
+					continue // the package initializer running declared inits: see roles' reachability
 				}
 				file, line := l.pos(site)
 				l.x.b.addEdge(graph.Edge{From: from, To: to, Type: graph.Calls, File: file, Line: line})

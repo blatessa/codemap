@@ -116,3 +116,52 @@ func TestRolesPassthroughAndEffects(t *testing.T) {
 		t.Errorf("forward with one callee: %q", got)
 	}
 }
+
+// TestRolesPackageInit: a package's init functions run when anything in the
+// package is part of the program, so what they call is reached; a package
+// nothing reaches keeps its init's callees unreachable.
+func TestRolesPackageInit(t *testing.T) {
+	init1 := fn("go:x.init#1", "a", "a.go", 91, 95)
+	init1.Label = "init"
+	g := &Graph{
+		Nodes: []Node{
+			{ID: "route:GET /x", Kind: KindRoute, Label: "GET /x", Module: "a", Entry: true},
+			fn("go:x.handle", "a", "a.go", 1, 30),
+			fn("go:x.a1", "a", "a.go", 31, 60),
+			{ID: "go:x.init", Kind: KindFunction, Label: "init (package vars)", Module: "a", File: "a.go", Line: 61, EndLine: 61},
+			fn("go:x.build", "a", "a.go", 62, 90),
+			init1,
+			fn("go:x.setup", "a", "a.go", 96, 120),
+			{ID: "go:y.init", Kind: KindFunction, Label: "init (package vars)", Module: "b", File: "b.go", Line: 1, EndLine: 1},
+			fn("go:y.dead", "b", "b.go", 2, 30),
+		},
+		Edges: []Edge{
+			{From: "route:GET /x", To: "go:x.handle", Type: Calls},
+			{From: "go:x.handle", To: "go:x.a1", Type: Calls},
+			{From: "go:x.init", To: "go:x.build", Type: Calls},
+			{From: "go:x.init#1", To: "go:x.setup", Type: Calls},
+			{From: "go:y.init", To: "go:y.dead", Type: Calls},
+			// effects, so none of them is wiring
+			{From: "go:x.build", To: "table:t", Type: Writes},
+			{From: "go:x.setup", To: "table:t", Type: Writes},
+			{From: "go:y.dead", To: "table:t", Type: Writes},
+		},
+	}
+	g.Nodes = append(g.Nodes, Node{ID: "table:t", Kind: KindTable, Label: "t", External: true})
+	AssignRoles(g, nil)
+	for id, want := range map[string]string{
+		"go:x.init":   RoleWiring,
+		"go:x.init#1": RoleWiring,
+		"go:y.init":   RoleWiring,
+		"go:y.dead":   RoleUnreachable,
+	} {
+		if got := roleOf(g, id); got != want {
+			t.Errorf("%s: role %q, want %q", id, got, want)
+		}
+	}
+	for _, id := range []string{"go:x.build", "go:x.setup"} {
+		if got := roleOf(g, id); got == RoleUnreachable {
+			t.Errorf("%s is unreachable", id)
+		}
+	}
+}
