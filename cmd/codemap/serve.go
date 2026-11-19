@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/blatessa/codemap/internal/build"
 	"github.com/blatessa/codemap/internal/server"
@@ -40,7 +41,7 @@ func runServe(args []string) error {
 	if fset.NArg() > 0 {
 		return fmt.Errorf("serve: unexpected argument %q", fset.Arg(0))
 	}
-	srv, err := server.New(server.Options{Root: *root, GraphFile: *graphFile, Assets: viewerAssets(), Addr: *addr})
+	srv, err := server.New(server.Options{Root: *root, GraphFile: *graphFile, Assets: viewerAssets(), Addr: *addr, Deferred: *graphFile == ""})
 	if errors.Is(err, build.ErrNoExtractors) {
 		return errors.New("serve: no extractors are wired in yet; pass --graph FILE (for example testdata/shop.expected.json)")
 	}
@@ -67,6 +68,16 @@ func runServe(args []string) error {
 	if !*noOpen {
 		openBrowser(url)
 	}
+	// Build after the listener is up: the browser opens at once and shows the
+	// map as soon as the first build finishes.
+	go func() {
+		start := time.Now()
+		if err := srv.Build(); err != nil {
+			fmt.Fprintf(os.Stderr, "codemap: build: %v\n", err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "codemap: built the map in %s\n", time.Since(start).Round(time.Millisecond))
+	}()
 	hs := &http.Server{Handler: srv.Handler()}
 	go func() {
 		<-ctx.Done()

@@ -3,7 +3,7 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { qn, type MEdge, type Model, type Row } from './model';
-import { currentProposal, newProposal, removeProposalEdge, removeProposalModule, removeProposalNode, select, setState, updateProposal, useStore } from './store';
+import { currentProposal, newProposal, removeProposalEdge, renameProposal, removeProposalModule, removeProposalNode, select, setState, updateProposal, useStore } from './store';
 import { Section } from './panel/common';
 import type { Proposal } from './types';
 
@@ -123,7 +123,10 @@ export function ProposalView({ m }: { m: Model }) {
             autoComplete="off"
             aria-label="Proposal name"
             onChange={(e) => updateProposal(p.slug, { name: e.target.value })}
-            onBlur={(e) => !e.target.value.trim() && updateProposal(p.slug, { name: 'Untitled' })}
+            onBlur={(e) => {
+              if (!e.target.value.trim()) updateProposal(p.slug, { name: 'Untitled' });
+              void renameProposal(p.slug);
+            }}
           />
         </div>
         <button className="x" aria-label="Back to the proposals" title="Back to the proposals" onClick={() => setState({ pslug: null, editing: false })}>

@@ -59,7 +59,10 @@ func LoadFS(fsys fs.FS) (*Project, error) {
 		}
 		pr, err := ParseProposal(b)
 		if err != nil {
-			return nil, fmt.Errorf("proposals/%s: %w", e.Name(), err)
+			// One malformed proposal (an agent's typo) must not hide the others
+			// or freeze the live view.
+			p.Warnings = append(p.Warnings, fmt.Sprintf("proposals/%s: %v (skipped)", e.Name(), err))
+			continue
 		}
 		pr.Slug = strings.TrimSuffix(e.Name(), ".md")
 		p.Proposals = append(p.Proposals, pr)

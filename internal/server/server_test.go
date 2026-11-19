@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"io"
@@ -508,14 +509,11 @@ func TestEvents(t *testing.T) {
 		t.Errorf("proposals after edit: %d", len(st.Project.Proposals))
 	}
 
-	// A broken file keeps the last good state and reports the error.
+	// A broken proposal is skipped; the others stay live.
 	os.WriteFile(file, []byte("+++\nname = [unclosed\n+++\n"), 0o644)
-	e = ev.wait(t, "project-changed")
-	if e.Data.Error == "" {
-		t.Errorf("expected an error: %+v", e.Data)
-	}
-	if st := getState(t, ts); len(st.Project.Proposals) != 3 {
-		t.Errorf("should keep the last good proposals: %d", len(st.Project.Proposals))
+	ev.wait(t, "project-changed")
+	if st := getState(t, ts); len(st.Project.Proposals) != 2 {
+		t.Errorf("a broken proposal should be skipped, not freeze the rest: %d", len(st.Project.Proposals))
 	}
 
 	// Fix it again before the next steps.
@@ -568,5 +566,67 @@ func TestSkipper(t *testing.T) {
 		if got := k.skip(p); got != want {
 			t.Errorf("skip(%q) = %v", p, got)
 		}
+	}
+}
+
+func TestRenameProposal(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".codemap/proposals")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "untitled.md"), []byte("+++\nname = \"Refund flow\"\n+++\nBody.\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "refund-flow.md"), []byte("+++\nname = \"Other\"\n+++\n"), 0o644)
+	s := &Server{root: root, log: log.New(io.Discard, "", 0)}
+	req := httptest.NewRequest("POST", "/api/proposals/untitled/rename", nil)
+	req.SetPathValue("slug", "untitled")
+	w := httptest.NewRecorder()
+	s.handleRenameProposal(w, req)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"slug":"refund-flow-2"`) {
+		t.Fatalf("rename: %d %s", w.Code, w.Body)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "refund-flow-2.md")); err != nil {
+		t.Error(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "untitled.md")); err == nil {
+		t.Error("old file should be gone")
+	}
+}
+
+func TestStateGzipped(t *testing.T) {
+	_, ts, _ := setup(t)
+	req, _ := http.NewRequest("GET", ts.URL+"/api/state", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+	tr := &http.Transport{DisableCompression: true}
+	r, err := (&http.Client{Transport: tr}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Body.Close()
+	if r.Header.Get("Content-Encoding") != "gzip" {
+		t.Fatalf("not compressed: %v", r.Header)
+	}
+	zr, err := gzip.NewReader(r.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st state
+	if err := json.NewDecoder(zr).Decode(&st); err != nil || len(st.Project.Proposals) == 0 {
+		t.Fatalf("decode: %v %+v", err, st)
+	}
+}
+
+func TestDeferredBuild(t *testing.T) {
+	root := t.TempDir()
+	s, err := New(Options{Root: root, Deferred: true, Logger: log.New(io.Discard, "", 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	r, _ := http.Get(ts.URL + "/api/state")
+	if r.StatusCode != 503 {
+		t.Fatalf("while building: %d", r.StatusCode)
+	}
+	if _, err := s.worktreeGraph(); err == nil {
+		t.Error("worktreeGraph should fail while building")
 	}
 }

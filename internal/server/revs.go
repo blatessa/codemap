@@ -151,6 +151,9 @@ func (s *Server) handleRevs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) worktreeGraph() (*graph.Graph, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if s.graph == nil {
+		return nil, errors.New("the map is still being built")
+	}
 	c := *s.graph
 	return &c, nil
 }

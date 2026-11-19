@@ -141,7 +141,7 @@ test('the panel: sections fold, everywhere, and its edge drags', async ({ page }
   expect(Math.round((await d.boundingBox())!.width)).toBe(440);
 });
 
-test('search runs commands; switching selections keeps one panel', async ({ page }) => {
+test('search: switching selections keeps one panel', async ({ page }) => {
   await open(page);
   for (const q of ['web/src/api', 'internal/auth', 'Handler.Login']) await search(page, q);
   await expect(page.locator('#drawer .dhead')).toHaveCount(1);

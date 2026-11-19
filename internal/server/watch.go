@@ -178,7 +178,7 @@ func (s *Server) apply(paths []string) {
 			if name == "config.toml" {
 				rebuild = true
 			}
-		default:
+		case affectsGraph(p):
 			srcFiles = append(srcFiles, p)
 			rebuild = true
 		}
@@ -271,4 +271,17 @@ func globMatch(pattern, s string) bool {
 		}
 	}
 	return false
+}
+
+// quiet are files no extractor reads: saving a README or an image shouldn't
+// cost a rebuild of the whole map.
+var quiet = map[string]bool{
+	".md": true, ".txt": true, ".log": true, ".lock": true, ".map": true, ".pdf": true,
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true, ".ico": true,
+	".woff": true, ".woff2": true, ".ttf": true, ".swp": true, ".swx": true, ".orig": true,
+}
+
+func affectsGraph(rel string) bool {
+	base := path.Base(rel)
+	return !quiet[strings.ToLower(path.Ext(base))] && !strings.HasSuffix(base, "~")
 }

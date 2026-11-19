@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { openInEditor } from './api';
 import { CompareControl, SummaryPanel } from './Compare';
 import { Drawer } from './Drawer';
 import { compare, presets, start as startRevs, stopCompare, useCompare } from './revs';
 import { PartMap, zoomCenter } from './PartMap';
-import { qn } from './model';
+import { Search as SearchBox } from './Search';
 import {
   currentProposal,
   getState,
@@ -18,7 +18,8 @@ import {
   useStore,
 } from './store';
 
-// ---- commands: what ⌘K and the right-click menus can do ----
+// ---- commands: what the right-click menus can do ----
+
 
 interface Cmd {
   id: string;
@@ -47,127 +48,8 @@ function useMapCommands(): Cmd[] {
   ].filter((c) => !c.off);
 }
 
-// ---- search, with commands: / or ⌘K ----
-
 function Search() {
-  const m = useModel();
-  const cmds = useMapCommands();
-  const [q, setQ] = useState('');
-  const [open, setOpen] = useState(false);
-  const [act, setAct] = useState(0);
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = document.activeElement?.tagName;
-      const typing = t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT';
-      if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !typing)) {
-        e.preventDefault();
-        ref.current?.focus();
-        ref.current?.select();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-  // tier: features first, then data and outside systems, modules, functions, support code
-  type Hit = { id: string; text: string; where: string; score: number; tier: number; cmd?: Cmd };
-  const hits = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return [] as Hit[];
-    const out: Hit[] = [];
-    for (const [id, { row, box }] of m.node) {
-      if (row.ghost) continue;
-      const text = qn(m, id);
-      const n = row.node;
-      const lab = text.toLowerCase();
-      let score = lab === s ? 0 : lab.startsWith(s) || row.label.toLowerCase().startsWith(s) ? 1 : lab.includes(s) ? 2 : -1;
-      if (score < 0) {
-        const hay = (box.label + ' ' + (n.file ?? '') + ' ' + (n.doc ?? '')).toLowerCase();
-        if (!hay.includes(s)) continue;
-        score = 3;
-      }
-      out.push({ id, text, where: box.label, score, tier: n.entry ? 0 : n.external ? 1 : row.role ? 4 : 3 });
-    }
-    for (const b of m.boxes) {
-      const lab = b.label.toLowerCase();
-      if (b.ghost || !lab.includes(s)) continue;
-      out.push({ id: b.id, text: b.label, where: 'module', score: lab === s ? 0 : lab.endsWith('/' + s) || lab.startsWith(s) ? 1 : 2, tier: 2 });
-    }
-    const words = s.split(/\s+/);
-    for (const c of cmds) {
-      const l = c.label.toLowerCase();
-      if (words.every((w) => l.includes(w))) out.push({ id: 'cmd:' + c.id, text: c.label, where: '', score: l.startsWith(s) ? 1.5 : 2.5, tier: 2, cmd: c });
-    }
-    // an exact name first, then name matches by tier, then the rest by tier
-    const bucket = (h: Hit) => (h.score === 0 ? 0 : h.score < 3 ? 1 : 2);
-    return out.sort((a, b) => bucket(a) - bucket(b) || a.tier - b.tier || a.score - b.score || a.text.localeCompare(b.text)).slice(0, 9);
-  }, [q, m, cmds]);
-  const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const go = (h: Hit) => {
-    setQ('');
-    setOpen(false);
-    ref.current?.blur();
-    if (h.cmd) return h.cmd.run();
-    select(h.id, true);
-  };
-  return (
-    <div className="search">
-      <input
-        id="q"
-        ref={ref}
-        type="search"
-        placeholder="Search or run a command"
-        autoComplete="off"
-        aria-label="Search the map"
-        value={q}
-        onChange={(e) => {
-          clearTimeout(closeTimer.current);
-          setQ(e.target.value);
-          setOpen(true);
-          setAct(0);
-        }}
-        onFocus={() => {
-          clearTimeout(closeTimer.current);
-          setOpen(true);
-        }}
-        onBlur={() => {
-          clearTimeout(closeTimer.current);
-          closeTimer.current = setTimeout(() => setOpen(false), 150);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && hits[act]) {
-            e.preventDefault();
-            go(hits[act]);
-          } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setAct((a) => Math.min(a + 1, hits.length - 1));
-          } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setAct((a) => Math.max(a - 1, 0));
-          } else if (e.key === 'Escape') {
-            setQ('');
-            setOpen(false);
-            ref.current?.blur();
-          }
-        }}
-      />
-      <kbd className="kbd">{MOD}K</kbd>
-      <div className="results" id="results" hidden={!open || !q.trim()}>
-        {hits.length ? (
-          hits.map((h, i) => (
-            <button key={h.id} className={`res ${i === act ? 'act' : ''} ${h.cmd ? 'cmd' : ''}`} data-go={h.id} onMouseDown={(e) => e.preventDefault()} onClick={() => go(h)}>
-              <span>{h.text}</span>
-              <span className="m">{h.cmd ? 'command' : h.where}</span>
-            </button>
-          ))
-        ) : (
-          <div className="res">
-            <span className="m">No matches</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  return <SearchBox mod={MOD} />;
 }
 
 // ---- map controls, bottom right ----
@@ -328,7 +210,7 @@ export function App() {
       </header>
       <div className="stage">
         <div className={`canvas${drawerOpen ? ' dopen' : ''}`} onContextMenu={onContext}>
-          {status === 'ready' ? <PartMap drawerOpen={drawerOpen} /> : <div className="loading">{status === 'error' ? error : 'Loading…'}</div>}
+          {status === 'ready' ? <PartMap drawerOpen={drawerOpen} /> : <div className="loading">{status === 'error' ? error : status === 'building' ? 'Building the map… this can take a while on a large repo.' : 'Loading…'}</div>}
           {status === 'ready' && <MapControls />}
           {menu && <ContextMenu menu={menu} close={() => setMenu(null)} />}
         </div>

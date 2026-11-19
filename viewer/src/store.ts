@@ -15,7 +15,7 @@ export interface S {
   rev: string;
   readOnly: boolean; // viewing a past rev or comparing: no writes (revs.ts)
   baseGraph: Graph | null; // an archived proposal's base, drawn under it (revs.ts)
-  status: 'loading' | 'ready' | 'error';
+  status: 'loading' | 'building' | 'ready' | 'error';
   error: string;
   graph: Graph;
   proposals: Proposal[];
@@ -203,8 +203,18 @@ export async function load() {
     for (const p of s.proposals) if (pending.has('proposals/' + p.slug) && !server.some((x) => x.slug === p.slug)) next.proposals.push(p);
     set(next);
     if (first) set({ fitSeq: get().fitSeq + 1 });
+    // load the graph into the walks while the browser is idle, not at the first click
+    setTimeout(() => {
+      try {
+        modelOf(get()).walk.warm();
+      } catch {
+        /* the walks load on first use instead */
+      }
+    }, 0);
   } catch (e) {
-    if (get().status !== 'ready') set({ status: 'error', error: String(e) });
+    if (e instanceof api.Building) {
+      if (get().status !== 'ready') set({ status: 'building' });
+    } else if (get().status !== 'ready') set({ status: 'error', error: String(e) });
   }
 }
 
@@ -258,6 +268,35 @@ export function persistProposal(slug: string, ms = 400) {
     },
     ms,
   );
+}
+
+// renameProposal gives the proposal's file the proposal's name. It saves the
+// pending edit first, and runs when the name field is left, not on each key,
+// so the editor isn't remounted mid-typing.
+export async function renameProposal(slug: string) {
+  if (get().rev !== 'worktree' || get().readOnly) return;
+  const key = 'proposals/' + slug;
+  clearTimeout(timers.get(key));
+  timers.delete(key);
+  pending.add(key);
+  try {
+    const p = get().proposals.find((x) => x.slug === slug);
+    if (!p) return;
+    const v = await api.putProposal(p, get().versions[key]);
+    const r = await api.renameProposal(slug, v);
+    if (r.slug === slug) return set({ versions: { ...get().versions, [key]: v } });
+    const { [key]: _old, ...versions } = get().versions;
+    set({
+      versions: { ...versions, ['proposals/' + r.slug]: r.version },
+      proposals: get().proposals.map((x) => (x.slug === slug ? { ...x, slug: r.slug } : x)),
+      pslug: get().pslug === slug ? r.slug : get().pslug,
+    });
+  } catch (e) {
+    if (!(e instanceof api.Conflict)) console.error(e);
+  } finally {
+    pending.delete(key);
+    void load();
+  }
 }
 
 // ---- selection ----

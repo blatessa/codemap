@@ -74,6 +74,15 @@ export class Walker {
   private memo = new Map<string, unknown>();
   constructor(private graph: Graph) {}
 
+  // warm loads the graph into the module ahead of the first question, so the
+  // first click on a big graph doesn't pay for it.
+  warm() {
+    if (!this.h) {
+      this.h = api().load(JSON.stringify(this.graph));
+      freed.register(this, this.h);
+    }
+  }
+
   private ask<T>(key: string, f: (h: number) => string): T {
     if (this.memo.has(key)) return this.memo.get(key) as T;
     if (!this.h) {

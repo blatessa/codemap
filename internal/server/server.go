@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing/fstest"
 	"time"
 
@@ -41,6 +42,10 @@ type Options struct {
 	// Addr is the address the server listens on. A specific non-loopback IP is
 	// added to the allowed Host values; loopback names are always allowed.
 	Addr string
+	// Deferred makes New return before the first build; call Build to run it.
+	// Until it finishes, /api/state answers 503 and the viewer shows that the
+	// map is being built, so the browser opens at once on a large repo.
+	Deferred bool
 	// Debounce is the watcher's quiet period. Zero means 300ms.
 	Debounce time.Duration
 	// Logger receives rebuild errors and similar. Nil uses log.Default().
@@ -61,6 +66,10 @@ type Server struct {
 	graphRaw []byte // graph.Encode output, cached per build
 	proj     *project.Project
 	versions map[string]string
+
+	buildMu  sync.Mutex
+	firstErr atomic.Value // string: why the first build failed
+	building atomic.Bool  // the first build hasn't finished
 
 	writeMu sync.Mutex // serialises writes to .codemap/
 
@@ -130,7 +139,9 @@ func New(opt Options) (*Server, error) {
 			s.hosts[strings.ToLower(host)] = true
 		}
 	}
-	if err := s.rebuildGraph(); err != nil {
+	if opt.Deferred {
+		s.building.Store(true)
+	} else if err := s.rebuildGraph(); err != nil {
 		return nil, err
 	}
 	if err := s.reloadProject(); err != nil {
@@ -141,6 +152,19 @@ func New(opt Options) (*Server, error) {
 		s.repo = repo
 	}
 	return s, nil
+}
+
+// Build runs the first build of a Deferred server and tells the viewers.
+func (s *Server) Build() error {
+	err := s.rebuildGraph()
+	data := EventData{Files: []string{}}
+	if err != nil {
+		s.log.Printf("build: %v", err)
+		data.Error = err.Error()
+		s.firstErr.Store(err.Error())
+	}
+	s.events.publish(Event{Name: "graph-changed", Data: data})
+	return err
 }
 
 // Close removes the temporary worktrees used to build revisions.
@@ -164,6 +188,8 @@ func (s *Server) Root() string { return s.root }
 // previous graph is kept. It uses the current .codemap/ if it loads, and the last
 // good project otherwise, so a broken .codemap file doesn't block rebuilds.
 func (s *Server) rebuildGraph() error {
+	s.buildMu.Lock() // one build at a time
+	defer s.buildMu.Unlock()
 	proj, err := project.Load(s.root)
 	if err != nil {
 		s.mu.RLock()
@@ -181,6 +207,7 @@ func (s *Server) rebuildGraph() error {
 	s.mu.Lock()
 	s.graph, s.graphRaw = g, buf.Bytes()
 	s.mu.Unlock()
+	s.building.Store(false)
 	return nil
 }
 
@@ -190,6 +217,9 @@ func (s *Server) reloadProject() error {
 	p, v, err := readProject(s.root)
 	if err != nil {
 		return err
+	}
+	for _, w := range p.Warnings {
+		s.log.Printf(".codemap: %s", w)
 	}
 	s.mu.Lock()
 	s.proj, s.versions = p, v
@@ -275,6 +305,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/proposals", s.handleListProposals)
 	mux.HandleFunc("PUT /api/proposals/{slug}", s.handlePutProposal)
 	mux.HandleFunc("DELETE /api/proposals/{slug}", s.handleDeleteProposal)
+	mux.HandleFunc("POST /api/proposals/{slug}/rename", s.handleRenameProposal)
 	mux.HandleFunc("GET /api/source", s.handleSource)
 	mux.HandleFunc("GET /api/source/diff", s.handleSourceDiff)
 	mux.HandleFunc("GET /api/revs", s.handleRevs)

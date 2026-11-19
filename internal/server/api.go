@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,24 @@ import (
 )
 
 const maxBody = 10 << 20
+
+// gzipJSON compresses a JSON response for clients that accept it: the graph
+// of a large repo is megabytes of repetitive text.
+func gzipJSON(w http.ResponseWriter, r *http.Request, status int, b []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Add("Vary", "Accept-Encoding")
+	if len(b) > 4096 && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.WriteHeader(status)
+		zw, _ := gzip.NewWriterLevel(w, gzip.BestSpeed)
+		zw.Write(b)
+		zw.Close()
+		return
+	}
+	w.WriteHeader(status)
+	w.Write(b)
+}
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	var buf bytes.Buffer
@@ -76,10 +95,25 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		s.handleRevState(w, r)
 		return
 	}
+	if s.building.Load() {
+		if e, _ := s.firstErr.Load().(string); e != "" {
+			writeError(w, http.StatusInternalServerError, "building the map failed: "+e)
+			return
+		}
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "building the map", "building": true})
+		return
+	}
 	s.mu.RLock()
 	g, p, v := s.graphRaw, s.proj, s.versions
 	s.mu.RUnlock()
-	writeJSON(w, http.StatusOK, stateResponse{Graph: g, Project: projectJSON(p), Versions: v})
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(stateResponse{Graph: g, Project: projectJSON(p), Versions: v}); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	gzipJSON(w, r, http.StatusOK, buf.Bytes())
 }
 
 type conflict struct {
@@ -180,6 +214,55 @@ func (s *Server) handlePutProposal(w http.ResponseWriter, r *http.Request) {
 	}
 	s.afterWrite()
 	writeJSON(w, http.StatusOK, map[string]string{"version": version(data)})
+}
+
+// handleRenameProposal moves proposals/<slug>.md to proposals/<slugified name>.md,
+// so the file is named for the proposal. A taken name gets -2, -3, ….
+func (s *Server) handleRenameProposal(w http.ResponseWriter, r *http.Request) {
+	slug, ok := proposalSlug(w, r)
+	if !ok || !writeRev(w, r) {
+		return
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	cur, b, err := s.fileVersion("proposals/" + slug + ".md")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if cur == Missing {
+		writeError(w, http.StatusNotFound, "no proposal "+strconv.Quote(slug))
+		return
+	}
+	if m := ifMatch(r); m != "" && m != cur {
+		writeJSON(w, http.StatusConflict, conflict{Version: cur, Value: parseProposalFile(slug, b)})
+		return
+	}
+	p, err := project.ParseProposal(b)
+	if err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	want := project.Slugify(p.Name)
+	to := want
+	for i := 2; to != slug; i++ {
+		if v, _, err := s.fileVersion("proposals/" + to + ".md"); err == nil && v == Missing {
+			break
+		}
+		to = want + "-" + strconv.Itoa(i)
+	}
+	if to != slug {
+		if err := project.WriteFile(s.root, "proposals/"+to+".md", b); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := os.Remove(filepath.Join(s.root, project.Dir, "proposals", slug+".md")); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		s.afterWrite()
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"slug": to, "version": version(b)})
 }
 
 func (s *Server) handleDeleteProposal(w http.ResponseWriter, r *http.Request) {
