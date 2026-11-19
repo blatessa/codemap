@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import * as api from './api';
 import { escapeGlob, slugify } from './blocks';
-import { layoutUnplaced, type Pos } from './layout';
+import { layoutMap, type Pos } from './layout';
 import { buildGrouping, isGroup, layoutH, topOf, type Grouping } from './groups';
 import { buildModel, selectionOf, type Model, type Sel } from './model';
 import type { Block, Graph, Loose, Proposal } from './types';
@@ -218,7 +218,7 @@ export async function ensureLayout() {
   const run = ++layoutRun;
   const at = (id: string) => topOf(G, id);
   const links: [string, string][] = m.edges.map((e) => [at(m.node.get(e.from)!.box.id), at(m.node.get(e.to)!.box.id)]);
-  const res = await layoutUnplaced(
+  const res = layoutMap(
     items.map((b) => ({ id: b.id, w: b.w, h: layoutH(b), entry: b.hasEntry, external: b.external, shared: b.shared })),
     links,
     Object.fromEntries(items.filter((b) => fixed[b.id]).map((b) => [b.id, fixed[b.id]])),

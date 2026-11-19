@@ -1,7 +1,7 @@
 // The map: SVG with boxes (modules/blocks), folder groups and edges. Pan, zoom, drag.
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GROUP_H, chain, isGroup, layoutH, type Group, type Grouping } from './groups';
-import { innerLayout, layoutUnplaced, type LBox } from './layout';
+import { innerLayout, layoutPath, type LBox } from './layout';
 import { FAR, FARH, HEAD, MORE, ROW, heightOf, type Box, type MEdge, type Model, type Row, type Sel } from './model';
 import {
   currentProposal,
@@ -47,6 +47,7 @@ export interface DBox {
   open: boolean;
   tgl: boolean; // has rows to collapse or expand
   lift: boolean; // drawn above the others: taller than its laid-out height, hovered, or dragged
+  settled: number; // its height without hover: what it pushes the boxes below it down by
   sub: string;
   far?: FarText;
   inG?: string; // the open top-level group it's drawn in
@@ -300,10 +301,14 @@ function buildDisp(
     const cap = Math.max(FARH, fh + 20);
     const room = !!subT && withSub <= cap;
     const h = room ? Math.max(FARH, withSub) : Math.max(FARH, Math.min(cap, py * 2 + fn * 1.2));
-    let name = fitText(b.label, tw, fn, MONO, true);
+    // a group's name is its folder's, with "/*" kept on the end
+    const star = b.group ? '/*' : '';
+    const label = star ? b.label.slice(0, -2) : b.label;
+    let name = fitText(label, tw - star.length * fn * MONO, fn, MONO, true);
     // a cut name hides what tells boxes apart: show the last path segment whole,
     // past the box if need be (declutter hides names that would collide)
-    if (!name || name.endsWith('…')) name = b.label.split('/').pop() || b.label;
+    if (!name || name.endsWith('…')) name = label.split('/').pop() || label;
+    name += star;
     return {
       h,
       far: { name, sub: room ? subT : '', fn, fs, px: px + nx * fn, nb: (room ? py : (h - fn * 1.2) / 2) + fn * 0.95, sb: py + fn * 1.2 + fs },
@@ -323,6 +328,7 @@ function buildDisp(
       y: p[1],
       w: b.w,
       h,
+      settled: collapsed.has(b.id) ? HEAD : hOf(visible(b, false)),
       fullH: fh,
       rows: v.rows,
       col: !!k || collapsed.has(b.id) || (!v.rows.length && !v.more),
@@ -348,7 +354,7 @@ function buildDisp(
     let h = GROUP_NEAR;
     let far: FarText | undefined;
     if (k) ({ h, far } = farText(b, b.sub, GROUP_H - 20, 0.9));
-    const d: DBox = { b, x: p[0], y: p[1], w: b.w, h, fullH: GROUP_NEAR, rows: [], col: true, more: 0, moreWord: '', open: false, tgl: false, lift: false, sub: b.sub, far, inG };
+    const d: DBox = { b, x: p[0], y: p[1], w: b.w, h, fullH: GROUP_NEAR, rows: [], col: true, more: 0, moreWord: '', open: false, tgl: false, lift: false, settled: h, sub: b.sub, far, inG };
     boxes.push(d);
     byId.set(b.id, d);
     for (const r of b.rows) row.set(r.id, { d, idx: -1 });
@@ -359,9 +365,11 @@ function buildDisp(
     const left = boxes.length ? Math.min(...boxes.map((d) => d.x)) : 20;
     add(b, [left, bottom + 70]);
   }
-  // Show all: boxes grow to every row, and push the boxes below them down by as
-  // much, so nothing overlaps and the map keeps its shape.
-  if (connecting && !k) pushDown(boxes.filter((d) => !d.inG), (d) => (G ? layoutH(d.b) : d.b.defH));
+  // A box that grows for the selection (its path, an opened module, picking
+  // a proposal's target) pushes the boxes below it down by as much, so nothing
+  // is covered and the map keeps its shape. A hovered box only draws on top:
+  // the map doesn't move under the pointer.
+  if (!k) pushDown(boxes.filter((d) => !d.inG), (d) => (G ? layoutH(d.b) : d.b.defH));
   // At rest the map is boxes only. Calls draw for the selection and for the
   // hovered box (in and out), and while sketching a proposal, its own calls.
   const edges = m.edges.filter((e) => {
@@ -386,7 +394,7 @@ function pushDown(ds: DBox[], base: (d: DBox) => number) {
   const order = [...ds].sort((a, b) => a.y - b.y);
   const orig = new Map(order.map((d) => [d, d.y]));
   for (const a of order) {
-    const grow = a.h - base(a);
+    const grow = a.settled - base(a); // hover never moves the map
     if (grow <= 0) continue;
     const bottom = orig.get(a)! + base(a);
     for (const b of order) if (b !== a && orig.get(b)! >= bottom - 1 && b.x < a.x + a.w && b.x + b.w > a.x) b.y += grow;
@@ -768,7 +776,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       if (a && b && a !== b) links.push([a, b]);
     }
     let live = true;
-    void layoutUnplaced(items, links, {}).then((p) => {
+    void layoutPath(items, links, {}).then((p) => {
       if (!live) return;
       setFocusPos(p);
       setState({ fitSeq: getState().fitSeq + 1 });

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { areasGraph, bigGraph } from './synth';
+import { bigGraph } from './synth';
 
 // One test per thing a programmer comes to codemap for, against the mock API
 // serving testdata/shop. Details belong in unit tests.
@@ -28,15 +28,26 @@ async function search(page: Page, text: string) {
   await page.keyboard.press('Enter');
 }
 
-test('detail follows what you select: overview, a module, a trace', async ({ page }) => {
+test('detail follows what you select: at rest, hovered, a module, a trace', async ({ page }) => {
   await open(page);
-  // at rest: entry points show, internals wait behind "N more"
-  await expect(node(page, 'route:POST /orders')).toBeVisible();
-  await expect(page.locator(`#map [data-node="${INSERT}"]`)).toHaveCount(0);
-  await expect(page.locator(`#map [data-more="${ORDERS}"]`)).toBeVisible();
+  // at rest: boxes only, each its name and what it holds; no rows, no calls, no "N more"
+  await expect(box(page, ORDERS)).toContainText('13 functions');
+  await expect(page.locator('#map [data-node]')).toHaveCount(0);
+  await expect(page.locator('#map .edge')).toHaveCount(0);
+  await expect(page.locator('#map [data-more]')).toHaveCount(0);
+  // hovering a box shows its rows and its calls in and out
+  await box(page, ORDERS).locator('.box').first().hover({ force: true });
+  await expect(page.locator('#map')).toHaveAttribute('data-hover', ORDERS);
+  await expect(node(page, INSERT)).toBeVisible();
+  await expect(page.locator('#map .edge').first()).toBeAttached();
+  await expect(page.locator(`#map [data-node="${TOTAL}"]`)).toHaveCount(0);
+  await page.mouse.move(5, 940);
+  await expect(page.locator('#map .edge')).toHaveCount(0);
+  await expect(page.locator('#map [data-node]')).toHaveCount(0);
   // a module shows its public surface (what other modules call, and what
   // touches a table), never its internals
-  await page.locator(`#map [data-more="${ORDERS}"]`).click();
+  await search(page, 'internal/orders');
+  await page.mouse.move(5, 940);
   await expect(node(page, INSERT)).toBeVisible();
   await expect(page.locator(`#map [data-node="${TOTAL}"]`)).toHaveCount(0);
   // a function shows its path, down to the table
@@ -53,27 +64,8 @@ test('detail follows what you select: overview, a module, a trace', async ({ pag
 
 test('search runs commands; switching selections keeps one panel', async ({ page }) => {
   await open(page);
-  await search(page, 'collapse all');
-  await expect(page.locator(`#map [data-more="${ORDERS}"]`)).toHaveCount(0); // folded to its header
   for (const q of ['web/src/api', 'internal/auth', 'Handler.Login']) await search(page, q);
   await expect(page.locator('#drawer .dhead')).toHaveCount(1);
-});
-
-test('a new area, with a module dragged in', async ({ page }) => {
-  await open(page);
-  await search(page, 'new area');
-  await page.locator('#a-name').fill('Payments flow');
-  await page.locator('#fit').click(); // the new area goes under everything
-  const area = page.locator('#map [data-area-box="Payments flow"] .arect');
-  const a = (await area.boundingBox())!,
-    s = (await page.locator('#map [data-mod="mod:go:shop/internal/sched"]').boundingBox())!;
-  await page.mouse.move(s.x + 10, s.y + 6);
-  await page.mouse.down();
-  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2, { steps: 8 });
-  await page.mouse.up();
-  await expect
-    .poll(async () => (await (await page.request.get('/api/state')).json()).project.areas.find((x: { name: string }) => x.name === 'Payments flow')?.modules)
-    .toEqual(['mod:go:shop/internal/sched']);
 });
 
 test('proposals: open one, sketch a function and a call, move one, comment', async ({ page }) => {
@@ -87,9 +79,25 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
   await page.locator('#f-name').fill('Service.Cancel');
   await page.locator('#f-name').press('Enter');
   await page.getByRole('button', { name: 'Add a call' }).click();
+  // every row shows while picking the target: pan to it
+  const at = (await node(page, INSERT).boundingBox())!;
+  if (at.y > 700) {
+    await page.mouse.move(30, 900);
+    await page.mouse.down();
+    await page.mouse.move(30, 900 - (at.y - 400), { steps: 6 });
+    await page.mouse.up();
+  }
   await node(page, INSERT).click();
   await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Cancel', module: ORDERS });
-  // drag a function to another module: the proposal moves it
+  await page.locator("#fit").click();
+  // drag a function to another module: the proposal moves it (once the fit
+  // has finished moving the map)
+  await expect.poll(async () => {
+    const a = await node(page, INSERT).boundingBox();
+    await page.waitForTimeout(100);
+    const b = await node(page, INSERT).boundingBox();
+    return !!a && !!b && a.x === b.x && a.y === b.y;
+  }).toBe(true);
   const row = (await node(page, INSERT).boundingBox())!,
     to = (await page.locator('#map [data-mod="mod:go:shop/internal/payments"]').boundingBox())!;
   await page.mouse.move(row.x + 20, row.y + row.height / 2);
@@ -125,44 +133,30 @@ test('on a branch the map opens on what changed, and the summary jumps to it', a
   await expect(page.locator('#cmp')).not.toContainText('vs main');
 });
 
-test('a big map folds folders into groups, and a trace opens the ones it runs through', async ({ page }) => {
+test('folders of many side-by-side modules fold into a group that opens on click, and a trace opens the ones it runs through', async ({ page }) => {
   await page.request.put('/__mock/load', { data: bigGraph() });
   await page.goto('/#rev=worktree');
   await expect(box(page, 'group:internal/plugins')).toBeVisible();
+  await expect(box(page, 'group:internal/plugins')).toContainText('20 modules');
   await expect(box(page, 'mod:go:big/internal/plugins/p3')).toHaveCount(0);
+  // the rest of the map shows whole
+  await expect(box(page, 'mod:go:big/internal/api')).toBeVisible();
+  // a click on its caret opens it in place
+  await page.locator('#map [data-gtoggle="group:internal/plugins"]').first().click({ force: true });
+  await expect(page.locator('#map [data-group-box="group:internal/plugins"]')).toBeVisible();
+  await expect(box(page, 'mod:go:big/internal/plugins/p7')).toBeVisible();
+  await page.locator('#map [data-gtoggle="group:internal/plugins"]').first().click({ force: true });
+  await expect(box(page, 'mod:go:big/internal/plugins/p7')).toHaveCount(0);
   await search(page, '/feed');
   await expect(box(page, 'mod:go:big/internal/plugins/p3')).toBeVisible();
   await expect(box(page, 'mod:go:big/internal/plugins/p5')).toHaveCount(0);
 });
 
-
-test('when an agent changes areas.toml, the open map lays out again with the new areas', async ({ page }) => {
+test('a repo with an old areas.toml still opens, without areas', async ({ page }) => {
   await open(page);
-  const st = await (await page.request.get('/api/state')).json();
-  const areas = (st.project.areas as { name: string; modules: string[] }[]).map((a) => ({
-    ...a,
-    modules: a.name === 'Web app' ? [...a.modules, 'mod:go:shop/internal/sched'] : a.modules.filter((m) => m !== 'mod:go:shop/internal/sched'),
-  }));
-  await page.request.put('/api/project/areas', { data: areas, headers: { 'If-Match': st.versions.areas } });
-  const inside = async () => {
-    const a = await page.locator('#map [data-area-box="Web app"] .arect').boundingBox();
-    const b = await page.locator('#map [data-box="mod:go:shop/internal/sched"]').first().boundingBox();
-    return !!a && !!b && b.x >= a.x && b.y >= a.y && b.x + b.width <= a.x + a.width + 1 && b.y + b.height <= a.y + a.height + 1;
-  };
-  await expect.poll(inside).toBe(true);
-});
-
-test('on a map too big for one layout pass, areas keep their modules together and never overlap', async ({ page }) => {
-  const { graph, areas } = areasGraph();
-  await page.request.put('/__mock/load', { data: graph });
-  await page.request.put('/api/project/areas', { data: areas });
-  await page.goto('/#rev=worktree');
-  const rects = page.locator('#map [data-area-box] .arect');
-  await expect(rects).toHaveCount(areas.length);
-  const rs = await rects.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON() as DOMRect));
-  for (let i = 0; i < rs.length; i++)
-    for (let j = i + 1; j < rs.length; j++) {
-      const [a, b] = [rs[i], rs[j]];
-      expect(a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height, `areas ${i} and ${j} overlap`).toBe(false);
-    }
+  await expect(page.locator('#map [data-area-box]')).toHaveCount(0);
+  expect((await (await page.request.get('/api/state')).json()).project.areas).toBeUndefined();
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('area');
+  await expect(page.locator('[data-cmd="area"]')).toHaveCount(0);
 });

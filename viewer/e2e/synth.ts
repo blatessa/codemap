@@ -1,6 +1,6 @@
-// A synthetic map big enough to fold into folder groups: a handful of top-level
-// packages, plus two folders of many similar packages (internal/plugins/*,
-// internal/reader/*). api.Serve calls reader.r0.Parse, which calls plugins.p3.Run,
+// A synthetic map with folders of many side-by-side packages, which fold into
+// groups: a handful of top-level packages, plus internal/plugins/* and
+// internal/reader/*. api.Serve calls reader.r0.Parse, which calls plugins.p3.Run,
 // which writes the items table.
 export function bigGraph() {
   const modules: object[] = [],
@@ -30,29 +30,4 @@ export function bigGraph() {
   for (let i = 0; i < 20; i++) e('internal/jobs.Serve', `internal/plugins/p${i}.Run`);
   for (let i = 1; i < 20; i++) e('internal/jobs.helper', `internal/reader/r${i}.Parse`);
   return { version: 1, rev: 'worktree', modules, nodes, edges };
-}
-
-// A map with more modules than the layout hands ELK in one pass (150), all in
-// areas: six areas of 30 packages, each a chain from one shared entry point.
-export function areasGraph() {
-  const names = ['api', 'store', 'auth', 'jobs', 'search', 'web'];
-  const modules: object[] = [],
-    nodes: object[] = [],
-    edges: object[] = [];
-  const areas = names.map((a) => ({ name: `Area ${a}`, modules: [] as string[] }));
-  names.forEach((a, ai) => {
-    for (let i = 0; i < 30; i++) {
-      const path = `${a}/p${i}`,
-        id = `mod:go:many/${path}`;
-      modules.push({ id, label: path, lang: 'go', path });
-      nodes.push({ id: `go:many/${path}.Run`, kind: 'function', label: 'Run', module: id, file: `${path}/x.go`, line: 1 });
-      areas[ai].modules.push(id);
-      if (i) edges.push({ from: `go:many/${a}/p${i - 1}.Run`, to: `go:many/${path}.Run`, type: 'calls' });
-    }
-    // every area starts at the same entry point, so their modules are equally
-    // far from it and a layout that ignores areas mixes them up
-    edges.push({ from: 'route:GET /x', to: `go:many/${a}/p0.Run`, type: 'calls' });
-  });
-  nodes.push({ id: 'route:GET /x', kind: 'route', label: '/x', module: areas[0].modules[0], entry: true, fields: { method: 'GET' } });
-  return { graph: { version: 1, rev: 'worktree', modules, nodes, edges }, areas };
 }
