@@ -1,7 +1,27 @@
 import { expect, test, type Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fixtureRoot } from '../scripts/server.ts';
 
-// One test per thing a programmer comes to codemap for, against the mock API
-// serving testdata/shop. Details belong in unit tests.
+// One test per thing a programmer comes to codemap for, against codemap serve
+// on a git copy of testdata/shop (scripts/server.ts). Details belong in unit tests.
+
+const root = fixtureRoot(Number(process.env.CODEMAP_E2E_PORT) || 7782);
+
+// reset puts .codemap back as committed and waits for the server to see it.
+async function reset(page: Page) {
+  execFileSync('git', ['checkout', '-q', '--', '.codemap'], { cwd: root });
+  execFileSync('git', ['clean', '-qfd', '.codemap'], { cwd: root });
+  const want = createHash('sha256').update(readFileSync(path.join(root, '.codemap/proposals/refunds.md'))).digest('hex').slice(0, 16);
+  await expect
+    .poll(async () => {
+      const v = ((await (await page.request.get('/api/state')).json()) as { versions: Record<string, string> }).versions;
+      return Object.keys(v).length === 2 && v['proposals/refunds'] === want;
+    })
+    .toBe(true);
+}
 
 const node = (page: Page, id: string) => page.locator(`#map [data-node="${id}"]`).first();
 const box = (page: Page, id: string) => page.locator(`#map [data-box="${id}"]`).first();
@@ -11,10 +31,10 @@ const INSERT = 'go:shop/internal/orders.(*Repo).Insert';
 type P = { slug: string; body: string; nodes?: { id: string; module?: string }[] };
 const refunds = async (page: Page) => ((await (await page.request.get('/api/proposals')).json()) as P[]).find((p) => p.slug === 'refunds')!;
 
-// The mock is on a branch, which opens on "this branch vs main"; #rev=worktree
-// opens the plain map.
+// The fixture is on a branch, which opens on "this branch vs main";
+// #rev=worktree opens the plain map.
 async function open(page: Page, hash = '#rev=worktree') {
-  await page.request.post('/__mock/reset');
+  await reset(page);
   await page.goto('/' + hash);
   await expect(page.locator('#map [data-box]').first()).toBeVisible();
 }

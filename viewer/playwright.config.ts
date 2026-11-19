@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Runs against the Vite dev server, whose mock API serves testdata/shop.
+// Runs against the Vite dev server, which starts codemap serve on a git copy of
+// testdata/shop (scripts/server.ts).
 // CODEMAP_E2E_PORT picks another port (say, when two checkouts run e2e at once).
 const port = Number(process.env.CODEMAP_E2E_PORT) || 7782;
 export default defineConfig({
@@ -14,8 +15,9 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1500, height: 950 } } }],
   webServer: {
     command: `npx vite --port ${port} --strictPort`,
+    env: { VITE_PORT: String(port) },
     url: `http://localhost:${port}/api/state`,
     reuseExistingServer: true,
-    timeout: 60_000,
+    timeout: 120_000,
   },
 });

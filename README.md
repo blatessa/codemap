@@ -90,6 +90,10 @@ go test -short ./...                         # fast; drop -short to include git 
 (cd viewer && npx vitest run && npx playwright test)
 ```
 
+`npm run dev` and the browser tests run the real `codemap serve` on a git copy of
+`testdata/shop` (a `main` branch and a branch with one change), with Vite
+forwarding `/api` to it. Set `CODEMAP_ROOT` to point it at another repo.
+
 Releases: push a `v*` tag and the `release` workflow builds the binaries with GoReleaser.
 
 ## License

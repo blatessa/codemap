@@ -1,6 +1,6 @@
 // Writes a synthetic graph.json for performance checks:
 //   node scripts/synth.mjs out.json [modules=300] [functionsPerModule=10]
-// Run the dev server on it with CODEMAP_MOCK_GRAPH=out.json CODEMAP_MOCK_ROOT=<empty dir>.
+// Run the dev server on it with CODEMAP_GRAPH=out.json CODEMAP_ROOT=<empty dir>.
 import { writeFileSync } from 'node:fs';
 
 const [out, M = '300', F = '10'] = process.argv.slice(2);
