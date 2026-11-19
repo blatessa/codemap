@@ -6,13 +6,6 @@
     "match": "label"
   },
   {
-    "id": "mod:go:shop/internal/orders",
-    "kind": "module",
-    "label": "internal/orders",
-    "file": "internal/orders",
-    "match": "label"
-  },
-  {
     "id": "page:/orders/:id",
     "kind": "page",
     "label": "/orders/:id",
@@ -34,6 +27,13 @@
     "label": "/orders",
     "file": "cmd/server/routes.go",
     "line": 13,
+    "match": "label"
+  },
+  {
+    "id": "mod:go:shop/internal/orders",
+    "kind": "module",
+    "label": "internal/orders",
+    "file": "internal/orders",
     "match": "label"
   }
 ]

@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
+	"sort"
+	"strings"
 
 	"github.com/blatessa/codemap/internal/cli"
 	"github.com/blatessa/codemap/internal/graph"
@@ -55,18 +58,32 @@ func runShow(w io.Writer, args []string) error {
 		tests = ix.TestsReaching(id)
 	}
 
+	// A table, service, topic or screen: which features use it and how, and
+	// the code that does it.
+	var users map[string][]string
+	if n.External {
+		users = cli.Users(ix, id)
+	}
 	if c.JSON {
-		return cli.WriteJSON(w, map[string]any{
+		out := map[string]any{
 			"node":      n,
 			"tree":      tree,
 			"reachedBy": nonNil(reachedBy),
 			"tests":     nonNil(tests),
-		})
+		}
+		if users != nil {
+			out["users"] = users
+		}
+		return cli.WriteJSON(w, out)
 	}
 	cli.WriteHeader(w, ix, id)
-	fmt.Fprintln(w)
-	cli.WriteTree(w, ix, tree, cli.TreeOptions{})
-	if !n.Entry {
+	if n.External {
+		writeUsers(w, ix, id, users)
+	} else {
+		fmt.Fprintln(w)
+		cli.WriteTree(w, ix, tree, cli.TreeOptions{})
+	}
+	if !n.Entry && !n.External {
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Reached by:")
 		if len(reachedBy) == 0 {
@@ -80,6 +97,42 @@ func runShow(w io.Writer, args []string) error {
 	fmt.Fprintln(w, "Tests:")
 	writeTests(w, ix, tests)
 	return nil
+}
+
+// userKinds words how features use an external node, in reading order.
+var userKinds = []struct{ typ, title string }{
+	{graph.Writes, "Written by"}, {graph.Reads, "Read by"}, {graph.Renders, "Shown by"},
+	{graph.Publishes, "Published by"}, {graph.Calls, "Called by"}, {graph.Fetches, "Fetched by"},
+}
+
+func writeUsers(w io.Writer, ix *graph.Index, id string, users map[string][]string) {
+	direct := map[string][]string{}
+	for _, e := range ix.In[id] {
+		if ix.IsEffect(e) {
+			direct[e.Type] = append(direct[e.Type], cli.Name(ix, e.From))
+		}
+	}
+	any := false
+	for _, k := range userKinds {
+		fs, code := users[k.typ], direct[k.typ]
+		if len(fs) == 0 && len(code) == 0 {
+			continue
+		}
+		any = true
+		fmt.Fprintln(w)
+		fmt.Fprintf(w, "%s:\n", k.title)
+		for _, f := range fs {
+			fmt.Fprintln(w, "  "+cli.Name(ix, f))
+		}
+		if len(code) > 0 {
+			sort.Strings(code)
+			fmt.Fprintf(w, "  in code: %s\n", strings.Join(slices.Compact(code), ", "))
+		}
+	}
+	if !any {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "(no features use it)")
+	}
 }
 
 func writeTests(w io.Writer, ix *graph.Index, tests []graph.TestReach) {

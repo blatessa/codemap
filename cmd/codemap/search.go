@@ -9,6 +9,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/blatessa/codemap/internal/cli"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 func init() {
@@ -25,6 +26,27 @@ type searchHit struct {
 	Line  int    `json:"line,omitempty"`
 	Match string `json:"match"` // which field matched first: label, id, file or doc
 	rank  int
+	tier  int
+}
+
+// tierOf orders hits by what helps understand a system first: features, then
+// the data and outside systems they touch, modules, functions, support code,
+// tests.
+func tierOf(ix *graph.Index, id string) int {
+	n := ix.Node[id]
+	switch {
+	case n == nil:
+		return 2 // a module
+	case n.Kind == graph.KindTest:
+		return 5
+	case n.Entry:
+		return 0
+	case n.External:
+		return 1
+	case cli.RoleOf(ix, id) != "":
+		return 4
+	}
+	return 3
 }
 
 func runSearch(w io.Writer, args []string) error {
@@ -63,6 +85,7 @@ func runSearch(w io.Writer, args []string) error {
 		default:
 			return
 		}
+		h.tier = tierOf(ix, id)
 		hits = append(hits, h)
 	}
 	for _, n := range ix.G.Nodes {
@@ -71,11 +94,23 @@ func runSearch(w io.Writer, args []string) error {
 	for _, m := range ix.G.Modules {
 		add(m.ID, "module", m.Label, m.Path, 0, m.Doc)
 	}
+	// an exact name first, then any name match by tier, then the rest by tier
+	bucket := func(h searchHit) int { return min(h.rank, 2) }
 	sort.Slice(hits, func(i, j int) bool {
-		if hits[i].rank != hits[j].rank {
-			return hits[i].rank < hits[j].rank
+		a, b := hits[i], hits[j]
+		if (a.rank == 0) != (b.rank == 0) {
+			return a.rank == 0
 		}
-		return hits[i].ID < hits[j].ID
+		if bucket(a) != bucket(b) {
+			return bucket(a) < bucket(b)
+		}
+		if a.tier != b.tier {
+			return a.tier < b.tier
+		}
+		if a.rank != b.rank {
+			return a.rank < b.rank
+		}
+		return a.ID < b.ID
 	})
 	total := len(hits)
 	if *limit > 0 && len(hits) > *limit {
@@ -91,7 +126,11 @@ func runSearch(w io.Writer, args []string) error {
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, h := range hits {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", h.ID, h.Kind, cli.Location(h.File, h.Line), h.Match)
+		name := h.Label
+		if _, ok := ix.Node[h.ID]; ok {
+			name = cli.Name(ix, h.ID)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", name, h.Kind, cli.Location(h.File, h.Line))
 	}
 	tw.Flush()
 	if total > len(hits) {

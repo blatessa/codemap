@@ -123,5 +123,13 @@
         ]
       }
     ]
+  },
+  "users": {
+    "calls": [
+      "go:shop/cmd/server.main",
+      "page:/checkout",
+      "route:POST /orders",
+      "route:POST /webhooks/stripe"
+    ]
   }
 }

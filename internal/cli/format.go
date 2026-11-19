@@ -6,6 +6,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/blatessa/codemap/internal/graph"
 )
@@ -131,8 +132,56 @@ func WriteHeader(w io.Writer, ix *graph.Index, id string) {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
+		if k == "columns" {
+			continue
+		}
 		kv(k, fieldText(n.Fields[k]))
 	}
+	if cols, ok := n.Fields["columns"].([]any); ok && len(cols) > 0 {
+		fmt.Fprintln(w, "columns:")
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+		for _, c := range cols {
+			if row, ok := c.([]any); ok {
+				parts := make([]string, len(row))
+				for i, x := range row {
+					parts[i] = fmt.Sprint(x)
+				}
+				fmt.Fprintln(tw, "  "+strings.Join(parts, "\t"))
+			}
+		}
+		tw.Flush()
+	}
+}
+
+// Users splits the entry points whose features touch an external node (a
+// table, a service, a topic, a screen) by how: the features that write it and
+// the ones that only read it, say, keyed by edge type.
+func Users(ix *graph.Index, id string) map[string][]string {
+	out := map[string][]string{}
+	for _, n := range ix.G.Nodes {
+		if !n.Entry || n.Kind == graph.KindTest || n.ID == id {
+			continue
+		}
+		types := map[string]bool{}
+		for _, f := range ix.EffectsBeneath(n.ID) {
+			if f.To == id {
+				types[f.Type] = true
+			}
+		}
+		switch {
+		case types[graph.Writes]:
+			out[graph.Writes] = append(out[graph.Writes], n.ID)
+		case len(types) > 0:
+			for t := range types {
+				out[t] = append(out[t], n.ID)
+				break
+			}
+		}
+	}
+	for _, l := range out {
+		sort.Strings(l)
+	}
+	return out
 }
 
 func fieldText(v any) string {

@@ -7,19 +7,12 @@ links:  [{"label":"Dashboard","url":"https://dashboard.stripe.com"},{"label":"AP
 owner:  Payments team
 setup:  Live and test accounts; key in STRIPE_SECRET_KEY
 
-api.stripe.com [service]
-  POST /webhooks/stripe  declared: sends payment_intent.succeeded
-    payments.Handler.HandleWebhook
-      orders.Service.MarkPaid
-        notify.Mailer.SendReceipt  ...  → calls postmark
-        orders.Repo.UpdateStatus  ...  → writes orders
-      payments.Handler.verifySignature  (+1)  → calls api.stripe.com
-
-Reached by:
+Called by:
   server.main
   page /checkout
   POST /orders
   POST /webhooks/stripe
+  in code: payments.Client.Charge, payments.Handler.verifySignature, payments.NewClient
 
 Tests:
   test:go:shop/internal/orders.TestPlace_ChargesAndInserts  internal/orders/service_test.go:53  via orders.Service.Place

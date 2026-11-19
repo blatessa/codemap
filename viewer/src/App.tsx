@@ -95,7 +95,8 @@ function Search() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
-  type Hit = { id: string; text: string; where: string; score: number; cmd?: Cmd };
+  // tier: features first, then data and outside systems, modules, functions, support code
+  type Hit = { id: string; text: string; where: string; score: number; tier: number; cmd?: Cmd };
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return [] as Hit[];
@@ -111,19 +112,21 @@ function Search() {
         if (!hay.includes(s)) continue;
         score = 3;
       }
-      out.push({ id, text, where: box.label, score });
+      out.push({ id, text, where: box.label, score, tier: n.entry ? 0 : n.external ? 1 : row.role ? 4 : 3 });
     }
     for (const b of m.boxes) {
       const lab = b.label.toLowerCase();
       if (b.ghost || !lab.includes(s)) continue;
-      out.push({ id: b.id, text: b.label, where: 'module', score: lab === s ? 0 : lab.endsWith('/' + s) || lab.startsWith(s) ? 1 : 2 });
+      out.push({ id: b.id, text: b.label, where: 'module', score: lab === s ? 0 : lab.endsWith('/' + s) || lab.startsWith(s) ? 1 : 2, tier: 2 });
     }
     const words = s.split(/\s+/);
     for (const c of cmds) {
       const l = c.label.toLowerCase();
-      if (words.every((w) => l.includes(w))) out.push({ id: 'cmd:' + c.id, text: c.label, where: '', score: l.startsWith(s) ? 1.5 : 2.5, cmd: c });
+      if (words.every((w) => l.includes(w))) out.push({ id: 'cmd:' + c.id, text: c.label, where: '', score: l.startsWith(s) ? 1.5 : 2.5, tier: 2, cmd: c });
     }
-    return out.sort((a, b) => a.score - b.score || a.text.localeCompare(b.text)).slice(0, 9);
+    // an exact name first, then name matches by tier, then the rest by tier
+    const bucket = (h: Hit) => (h.score === 0 ? 0 : h.score < 3 ? 1 : 2);
+    return out.sort((a, b) => bucket(a) - bucket(b) || a.tier - b.tier || a.score - b.score || a.text.localeCompare(b.text)).slice(0, 9);
   }, [q, m, cmds]);
   const closeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const go = (h: Hit) => {
