@@ -67,7 +67,7 @@ codemap proposal archive refunds --pr 91        # once it's built or dropped
 
 Then edit `.codemap/proposals/<slug>.md`: TOML frontmatter for the sketch, Markdown for the reasoning. See [reference/proposals.md](reference/proposals.md) for the format.
 
-To review or work through a proposal, run `codemap proposal show <slug>`. It lists what the sketch changes part by part with each new call, checks it (a call to something that isn't in the code, a new function nothing calls), then prints the user's notes and the document. Notes are what the user wants you to know that the sketch can't say: each is pinned to a node or to lines of code, with the code as it was when they wrote it (and a warning if it has changed since). They are the things to address. You can pin notes yourself with `[[note]]` tables; see the reference.
+To review or work through a proposal, run `codemap proposal show <slug>`. It lists what the sketch changes part by part with each new call, checks it (a call to something that isn't in the code, a new function nothing calls), then prints the user's comments on code and the document. Each comment is pinned to lines of code, quoted as they were when written (with a warning if the code has changed since). They are the things to address. Give every new node a one-line `doc` saying what it does: it is how the user and the next agent read your intent.
 
 ## Make the map better
 

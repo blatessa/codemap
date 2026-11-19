@@ -80,6 +80,7 @@ status = 'open'
 id = 'new:orders.Service.Audit'
 kind = 'function'
 label = 'Service.Audit'
+doc = 'Records who changed an order.'
 module = 'mod:go:shop/internal/orders'
 
 [[edge]]
@@ -111,7 +112,7 @@ Why.
 	}
 	got := out.String()
 	for _, want := range []string{
-		"+ orders.Service.Audit",
+		"+ orders.Service.Audit\n        Records who changed an order.",
 		`a call mentions "table:nope"`,
 		"nothing calls orders.Service.Audit",
 		"1. orders.Service.Audit\n     Write one row per change.",

@@ -160,9 +160,11 @@ export function ProposalView({ m }: { m: Model }) {
           <Markdown text={p.body} />
         )}
       </Section>
-      <Section title="Notes" count={p.notes?.length || undefined}>
-        <NotesList m={m} notes={p.notes ?? []} />
-      </Section>
+      {!!p.notes?.length && (
+        <Section title="Comments" count={p.notes.length}>
+          <NotesList m={m} notes={p.notes} />
+        </Section>
+      )}
       <Section title="Changes" count={count || undefined}>
         {groups.length ? (
           <div className="pgroups">

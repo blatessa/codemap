@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { openInEditor } from './api';
 import { CompareControl } from './Compare';
+import { ConnectPill, MapPopup } from './MapPopup';
 import { Drawer } from './Drawer';
 import { compare, presets, start as startRevs, stopCompare, useCompare } from './revs';
 import { PartMap, zoomCenter } from './PartMap';
@@ -40,7 +41,7 @@ function useMapCommands(): Cmd[] {
   const spec = useCompare((c) => c.spec);
   const propose = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
   return [
-    { id: 'addmod', label: 'Propose a new module', run: () => setState({ form: { type: 'mod' }, sel: null, connectFrom: null }), off: !propose || ro },
+    { id: 'addmod', label: 'Propose a new module', run: () => setState({ form: { type: 'mod', x: 24, y: 24 }, sel: null, connectFrom: null }), off: !propose || ro },
     { id: 'fit', label: 'Fit map to screen', hint: '0', run: fit },
     { id: 'proposals', label: 'Proposals', run: () => setMode('propose') },
     ...presets(revs).map((p) => ({ id: 'cmp-' + p.id, label: 'Compare: ' + p.label, run: () => void compare(p.from, p.to) })),
@@ -99,7 +100,6 @@ interface Menu {
 
 function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
   const m = useModel();
-  const ro = useStore((s) => s.readOnly);
   const map = useMapCommands();
   const ref = useOutside<HTMLDivElement>(true, close);
   let items: (Cmd | null)[] = [];
@@ -107,14 +107,12 @@ function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
     const x = m.node.get(menu.id)!;
     const n = x.row.node;
     items = [
-      { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('note-text')?.focus(), 50)), off: ro },
       { id: 'editor', label: 'Open in editor', run: () => void openInEditor(n.file!, n.line ?? 1), off: !n.file },
       { id: 'copy', label: 'Copy ID', run: () => void navigator.clipboard?.writeText(menu.id) },
     ];
   } else if (menu.kind === 'box') {
     items = [
       { id: 'open', label: 'Show what’s inside', run: () => select(menu.id) },
-      { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('note-text')?.focus(), 50)), off: ro },
     ];
   } else items = map.filter((c) => !c.id.startsWith('cmp-') && c.id !== 'proposals');
   const shown = items.filter((c) => c === null || !c.off);
@@ -162,7 +160,7 @@ export function App() {
   const error = useStore((s) => s.error);
   const comparing = useCompare((c) => !!c.spec);
   const summary = useStore((s) => comparing && !s.sel && !s.form && s.mode === 'explore');
-  const drawerOpen = useStore((s) => !!s.sel || !!s.form || s.mode === 'propose') || summary;
+  const drawerOpen = useStore((s) => !!s.sel || s.mode === 'propose') || summary;
   const [menu, setMenu] = useState<Menu | null>(null);
   const m = useModel();
   useEffect(() => {
@@ -177,6 +175,7 @@ export function App() {
       if (e.key !== 'Escape') return;
       if (t.id === 'q') return;
       const s = getState();
+      if (s.form) return setState({ form: null });
       if (s.connectFrom) return setState({ connectFrom: null });
       if (t.id === 'p-body' || t.id === 'pl-q') return;
       if (!s.sel && !s.form && s.mode === 'propose' && s.pslug) return setState({ pslug: null, editing: false });
@@ -212,6 +211,8 @@ export function App() {
         <div className={`canvas${drawerOpen ? ' dopen' : ''}`} onContextMenu={onContext}>
           {status === 'ready' ? <PartMap drawerOpen={drawerOpen} /> : <div className="loading">{status === 'error' ? error : status === 'building' ? 'Building the map… this can take a while on a large repo.' : 'Loading…'}</div>}
           {status === 'ready' && <MapControls />}
+          {status === 'ready' && <ConnectPill m={m} />}
+          {status === 'ready' && <MapPopup m={m} />}
           {menu && <ContextMenu menu={menu} close={() => setMenu(null)} />}
         </div>
         {status === 'ready' && <Drawer />}

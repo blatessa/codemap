@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addLabel, linksOf, isFolder, markChar, markOf, type Item, type Link, type Parts, type Rect } from './parts';
 import type { Model, Sel } from './model';
-import { getState, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
+import { getState, proposeEdge, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
 import { boxCls, rowCls } from './revs';
 
 // what's lit: the selection's things and lines, or the hovered thing's
@@ -245,12 +245,31 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
     const v = getState().view;
     drag.current = { x: e.clientX, y: e.clientY, vx: v.x, vy: v.y, moved: false };
   };
+  // where a popup opens: where you clicked, kept inside the map
+  const popAt = (e: React.MouseEvent) => {
+    const r = svgRef.current!.getBoundingClientRect();
+    return { x: Math.max(8, Math.min(e.clientX - r.left + 10, r.width - 290)), y: Math.max(8, Math.min(e.clientY - r.top + 10, r.height - 260)) };
+  };
   const onClick = (e: React.MouseEvent) => {
     if (drag.current?.moved) return;
     const t = e.target as Element;
     const add = (t.closest('[data-add]') as HTMLElement | null)?.dataset.add;
-    if (add) return setState({ form: { type: 'fn', box: add }, sel: null, connectFrom: null });
+    if (add) return setState({ form: { type: 'fn', box: add, ...popAt(e) }, sel: null, connectFrom: null });
     const id = target(t);
+    // connecting: a click on the map says what the selected thing calls
+    const from = getState().connectFrom;
+    if (from) {
+      if (!id) return setState({ connectFrom: null, form: null });
+      if (id === from) return;
+      const to = m.node.get(id);
+      if (to && to.row.node.external) return setState({ form: { type: 'edge', from, to: id, ...popAt(e) } });
+      if (to) {
+        proposeEdge(from, id);
+        return setState({ form: null });
+      }
+      if (m.box.has(id)) return setState({ form: { type: 'target', box: id, from, ...popAt(e) } });
+      return;
+    }
     if (!id) return setState({ sel: null, form: null, connectFrom: null });
     select(id);
   };

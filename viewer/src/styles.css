@@ -431,6 +431,7 @@ kbd,.kbd{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px 
 /* panel: heading, sections, type */
 .drawer{gap:0}
 .drawer>*+*{margin-top:14px}
+.drawer>*{flex:none}
 .sec{border-top:1px solid var(--line);padding-top:12px;margin-top:18px}
 .sec h3{font-size:12.5px;font-weight:600;margin:0 0 8px;color:var(--ink);display:flex;gap:8px;align-items:baseline}
 .sec h3 .cnt{font-weight:400;color:var(--muted);font-size:12px}
@@ -589,7 +590,6 @@ details.test .code{margin:4px 0 8px}
 /* notes: pinned to code or a node, where they're about */
 .notebox{display:block;width:100%;resize:none;font:inherit;font-size:13px;line-height:1.4;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:inherit;box-sizing:border-box;margin:6px 0 2px}
 .notebox:focus{outline:none;border-color:var(--plan)}
-.noteto{font:inherit;font-size:12px;color:var(--plan);background:none;border:0;padding:0;margin-top:6px;cursor:pointer}
 .note{position:relative;display:block;margin:6px 0;padding:7px 28px 7px 11px;border-left:3px solid var(--plan);background:color-mix(in srgb,var(--plan) 7%,var(--surface));border-radius:0 6px 6px 0;font-size:13px;line-height:1.45}
 .note p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .note .prm{position:absolute;top:5px;right:6px}
@@ -603,10 +603,23 @@ details.test .code{margin:4px 0 8px}
 .code .ln{cursor:pointer;display:inline-block;min-width:1.6em}
 .code .ln:hover,.code .ln.sel{color:var(--plan);font-weight:600}
 .code .ln.sel{background:color-mix(in srgb,var(--plan) 14%,transparent)}
-/* the call picker */
-.picks{flex-direction:column;align-items:stretch;gap:2px}
-.picks .lnk{text-align:left;padding:4px 7px;border-radius:5px}
-.picks .lnk.on{background:var(--bg);box-shadow:inset 2px 0 var(--plan)}
-.picks .lnk.mk{color:var(--plan)}
-.wired{display:flex;flex-direction:column;gap:1px;margin:8px 0 2px;font-size:12px;color:var(--muted);font-family:var(--mono)}
-.hint{font-size:11px;color:var(--muted);margin:8px 0 0}
+
+/* popups on the map */
+.mpop{position:absolute;z-index:30;width:270px;display:flex;flex-direction:column;gap:7px;padding:10px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 30px rgba(10,20,40,.18)}
+.mpop .mhd{display:flex;align-items:baseline;gap:6px;font-size:12.5px;min-width:0}
+.mpop .mhd b{font-family:var(--mono);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpop .mhd span{color:var(--muted);font-size:12px;white-space:nowrap}
+.mpop .mhd .x{margin-left:auto}
+.mpop .mrow{display:flex;gap:6px}
+.mpop input,.mpop select{width:100%;box-sizing:border-box;font-family:var(--mono);font-size:12.5px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+.mpop input:focus,.mpop select:focus{outline:none;border-color:var(--plan)}
+.mpop .mfoot{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.mpop .mlist{display:flex;flex-direction:column;gap:1px;max-height:220px;overflow:auto}
+.mpop .mlist button{all:unset;cursor:pointer;font-family:var(--mono);font-size:12px;padding:4px 7px;border-radius:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpop .mlist button.on{background:var(--bg);box-shadow:inset 2px 0 var(--plan)}
+.mpop .mlist button.mk{color:var(--plan)}
+.mpop .seg{align-self:flex-start}
+.cpill{position:absolute;z-index:20;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:6px 8px 6px 14px;background:var(--plan);color:var(--surface);border-radius:999px;font-size:12.5px;box-shadow:0 6px 20px rgba(10,20,40,.2)}
+.cpill b{font-family:var(--mono);font-weight:600}
+.cpill .x{color:var(--surface);font-size:12px;padding:3px 9px;background:rgba(255,255,255,.18)}
+.cpill .x:hover{background:rgba(255,255,255,.3)}

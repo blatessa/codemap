@@ -6,9 +6,18 @@ import { partsOf, type Parts } from './parts';
 import type { Graph, Loose, Note, Proposal } from './types';
 
 export type Mode = 'explore' | 'propose';
+// Form is the popup open on the map, where it was clicked (x, y are in the map's own pixels):
+//   fn      add something to a part (box)
+//   mod     add a part
+//   target  what does `from` call in this part (box)? pick one of its rows, or name a new one
+//   edge    how does `from` use `to` (reads or writes, with what query)?
 export interface Form {
-  type: 'fn' | 'mod';
+  type: 'fn' | 'mod' | 'target' | 'edge';
+  x: number;
+  y: number;
   box?: string;
+  from?: string;
+  to?: string;
 }
 
 export interface S {
@@ -30,7 +39,6 @@ export interface S {
   view: { x: number; y: number; k: number };
   touchedView: boolean;
   connectFrom: string | null;
-  wireBox: string | null; // the part the last typed-in node went to: where the next one goes
   form: Form | null;
   pslug: string | null;
   cslug: string | null; // the proposal comments go to: the last one opened
@@ -60,7 +68,6 @@ export const useStore = create<S>(() => ({
   view: { x: 0, y: 0, k: 1 },
   touchedView: false,
   connectFrom: null,
-  wireBox: null,
   form: null,
   pslug: null,
   cslug: readCslug(),
@@ -348,10 +355,9 @@ function uniqueNewId(base: string, p: Proposal) {
   return id;
 }
 
-// proposeNode adds a node to a part of the open proposal and returns its id.
-// With `from`, the new node is also called by it (or calls it, with `into`), so
-// a node and its wiring are one step.
-export function proposeNode(box: string, label: string, kind: string, method: string, external: boolean, wire?: { from: string; into?: boolean }): string | null {
+// proposeNode adds a node to a part of the open proposal and returns its id. With
+// `from`, the new node is also called by it, so a node and its wiring are one step.
+export function proposeNode(box: string, label: string, kind: string, method: string, external: boolean, opt: { from?: string; doc?: string; select?: boolean } = {}): string | null {
   const p = currentProposal(get());
   if (!p) return null;
   const entry = ['route', 'page', 'job', 'subscriber', 'command'].includes(kind);
@@ -360,9 +366,12 @@ export function proposeNode(box: string, label: string, kind: string, method: st
   if (entry) n.entry = true;
   if (external) n.external = true;
   if (method && entry) n.method = method;
-  const edges = wire ? [...(p.edges ?? []), wire.into ? { from: id, to: wire.from } : { from: wire.from, to: id }] : p.edges;
-  updateProposal(p.slug, { nodes: [...(p.nodes ?? []), n], ...(wire ? { edges } : {}) });
-  set({ form: null, wireBox: external ? get().wireBox : box, ...(wire ? {} : { sel: id }) });
+  if (opt.doc?.trim()) n.doc = opt.doc.trim();
+  updateProposal(p.slug, {
+    nodes: [...(p.nodes ?? []), n],
+    ...(opt.from ? { edges: [...(p.edges ?? []), { from: opt.from, to: id }] } : {}),
+  });
+  set({ form: null, ...(opt.select === false ? {} : { sel: id }) });
   return id;
 }
 
@@ -375,11 +384,14 @@ export function proposeModule(label: string) {
   set({ form: null, sel: id });
 }
 
-export function proposeEdge(from: string, to: string) {
+export function proposeEdge(from: string, to: string, type = 'calls', detail = '') {
   const p = currentProposal(get());
   if (!p || from === to) return;
-  if ((p.edges ?? []).some((e) => e.from === from && e.to === to)) return;
-  updateProposal(p.slug, { edges: [...(p.edges ?? []), { from, to }] });
+  if ((p.edges ?? []).some((e) => e.from === from && e.to === to && (e.type ?? 'calls') === type)) return;
+  const e: Loose = { from, to };
+  if (type !== 'calls') e.type = type;
+  if (detail.trim()) e.detail = detail.trim();
+  updateProposal(p.slug, { edges: [...(p.edges ?? []), e] });
 }
 
 // moveNode records that the proposal moves an existing node to another module, as

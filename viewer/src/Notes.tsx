@@ -1,6 +1,6 @@
-// Notes: what the author wants an agent to know that the sketch can't say. They
-// sit where they're about: under a line of code, or on the node's panel. Select
-// something and press `c`, or click a line number, and type; Enter adds it.
+// Notes are comments on code: click a line number (shift-click for a range) and
+// type; Enter adds it, right under those lines. They go in the open proposal, and
+// agents read them with codemap proposal show.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { qn, type Model } from './model';
 import { removeNote, select, useStore, commentTarget } from './store';
@@ -71,7 +71,6 @@ export const where = (n: Note) => (n.file ? n.file + (n.from ? ':' + n.from + (n
 // NotesList is every note of a proposal, in the proposal's panel: the whole
 // brief in one place, each opening what it's about.
 export function NotesList({ m, notes }: { m: Model; notes: Note[] }) {
-  const can = useCanNote();
   return (
     <div className="notelist">
       {notes.map((n, i) => (
@@ -88,7 +87,6 @@ export function NotesList({ m, notes }: { m: Model; notes: Note[] }) {
           {n.quote && <pre className="nquote">{n.quote}</pre>}
         </NoteBubble>
       ))}
-      {!notes.length && <p className="none">{can ? 'Nothing yet. Select a part and press c, or click a line number in the code.' : 'None.'}</p>}
-    </div>
+          </div>
   );
 }

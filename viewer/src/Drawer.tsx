@@ -7,13 +7,11 @@ import { SummaryPanel } from './Compare';
 import { useCompare } from './revs';
 import { NodePanel } from './panel/NodePanel';
 import { GroupPanel } from './panel/GroupPanel';
-import { FormPanel } from './panel/FormPanel';
 
 export function Drawer() {
   const m = useModel();
   const P = useParts();
   const sel = useStore((s) => s.sel);
-  const form = useStore((s) => s.form);
   const mode = useStore((s) => s.mode);
   const pslug = useStore((s) => s.pslug);
   const comparing = useCompare((c) => !!c.spec);
@@ -33,8 +31,7 @@ export function Drawer() {
 
   let content: ReactNode = null;
   let wide = false;
-  if (form) content = <FormPanel key={form.type + form.box} m={m} />;
-  else if (sel && m.node.has(sel)) content = <NodePanel key={sel} m={m} P={P} id={sel} />;
+  if (sel && m.node.has(sel)) content = <NodePanel key={sel} m={m} P={P} id={sel} />;
   else if (sel && (m.box.has(sel) || isFolder(sel))) content = <GroupPanel key={sel} m={m} P={P} id={sel} />;
   else if (comparing && mode === 'explore') content = <SummaryPanel m={m} />;
   else if (mode === 'propose' && !pslug) content = <ProposalList />;
@@ -68,7 +65,7 @@ export function Drawer() {
         }}
         onMouseLeave={() => getState().hover && setState({ hover: null })}
       >
-        {mode === 'propose' && pslug && (sel || form) && <ProposalBack />}
+        {mode === 'propose' && pslug && sel && <ProposalBack />}
         {content}
       </aside>
     </>

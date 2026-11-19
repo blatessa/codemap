@@ -28,7 +28,7 @@ const box = (page: Page, id: string) => page.locator(`#map [data-box="${id}"]`).
 const ORDERS = 'mod:go:shop/internal/orders';
 const INSERT = 'go:shop/internal/orders.(*Repo).Insert';
 
-type P = { slug: string; body: string; nodes?: { id: string; module?: string }[]; notes?: { on?: string; file?: string; from?: number; text: string }[] };
+type P = { slug: string; body: string; nodes?: { id: string; module?: string; doc?: string }[]; notes?: { on?: string; file?: string; from?: number; text: string }[] };
 const refunds = async (page: Page) => ((await (await page.request.get('/api/proposals')).json()) as P[]).find((p) => p.slug === 'refunds')!;
 
 // The fixture is on a branch, which opens on "this branch vs main";
@@ -153,22 +153,29 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
   await page.locator('.pitem[data-slug="refunds"]').click();
   // the parts it changes are marked, with what it proposes counted
   await expect(page.locator('#map .mod.pchg').first()).toContainText('proposed');
-  // a proposed function in a part, calling real code
+  // add to a part from a popup on the map, with what it does
   await page.locator(`#map [data-add="${ORDERS}"]`).click();
   await page.locator('#f-name').fill('Service.Cancel');
-  await page.locator('#f-name').press('Enter');
-  // adding a function asks what it calls: an existing one, then a new one typed in and wired in a step
-  await page.locator('#pick-q').fill('Repo.Insert');
-  await page.locator('#pick-q').press('Enter');
-  await page.locator('#pick-q').fill('Audit.Write @payments');
-  await page.locator('#pick-q').press('Enter');
-  await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Audit.Write', kind: 'function', label: 'Audit.Write', module: 'mod:go:shop/internal/payments' });
-  await expect.poll(async () => ((await refunds(page)) as P & { edges?: { from: string; to: string }[] }).edges).toContainEqual({ from: 'new:Service.Cancel', to: 'new:Audit.Write' });
-  await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Cancel', module: ORDERS });
+  await page.locator('#f-doc').fill('Cancels an order and gives back its stock.');
+  await page.locator('#f-doc').press('Enter');
+  await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Cancel', module: ORDERS, doc: 'Cancels an order and gives back its stock.' });
+  // then click what it calls: a function in a part...
+  await expect(page.locator('.cpill')).toContainText('Service.Cancel');
+  await page.locator(`#map [data-box="${ORDERS}"]`).first().click({ position: { x: 20, y: 10 } });
+  await page.locator('#t-q').fill('Repo.Insert');
+  await page.locator('#t-q').press('Enter');
   await expect.poll(async () => ((await refunds(page)) as P & { edges?: { from: string; to: string }[] }).edges).toContainEqual({ from: 'new:Service.Cancel', to: INSERT });
+  // ...or a table, with how it's used
+  await page.locator('#map [data-node="table:orders"]').click();
+  await page.getByRole('button', { name: 'writes' }).click();
+  await page.locator('#e-detail').fill('UPDATE orders SET status');
+  await page.locator('#e-detail').press('Enter');
+  await expect
+    .poll(async () => ((await refunds(page)) as P & { edges?: { from: string; to: string; type?: string; detail?: string }[] }).edges)
+    .toContainEqual({ from: 'new:Service.Cancel', to: 'table:orders', type: 'writes', detail: 'UPDATE orders SET status' });
+  await page.keyboard.press('Escape');
   // it's drawn inside its part, and listed under it in the proposal's changes
   await expect(page.locator('#map .padd[data-node="new:Service.Cancel"]')).toBeVisible();
-  await page.locator('#drawer .pback').click();
   await expect(page.locator('#drawer .pchange', { hasText: 'Service.Cancel' })).toContainText('orders.Repo.Insert');
   await page.locator('#drawer .pchange .iname', { hasText: 'Service.Cancel' }).click();
   await expect(page.locator('#drawer h2')).toHaveText('Service.Cancel');
@@ -177,23 +184,16 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
   await search(page, 'Repo.Insert');
   await page.locator('#move-to').selectOption('mod:go:shop/internal/payments');
   await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: INSERT, module: 'mod:go:shop/internal/payments' });
-  // notes: `c` and type to pin one to the node; a line number to pin one to the code under it
+  // a comment on code: click a line number and type; it sits under the line
   await search(page, 'Service.Place');
   await expect(page.locator('#drawer h2')).toHaveText('Service.Place');
-  await page.keyboard.press('c');
-  await expect(page.locator('#note-text')).toBeFocused();
-  await page.keyboard.type('Reserve after payment.');
-  await page.keyboard.press('Enter');
-  const PLACE = 'go:shop/internal/orders.(*Service).Place';
-  await expect.poll(async () => (await refunds(page)).notes).toContainEqual({ on: PLACE, text: 'Reserve after payment.' });
-  await expect(page.locator('#drawer .note', { hasText: 'Reserve after payment.' })).toBeVisible();
   await page.locator('#drawer .code .ln').first().click();
   await page.keyboard.type('Why is this a transaction?');
   await page.keyboard.press('Enter');
   await expect(page.locator('#drawer .lined .note', { hasText: 'Why is this a transaction?' })).toBeVisible();
   await expect
     .poll(async () => (await refunds(page)).notes?.find((n) => n.text === 'Why is this a transaction?'))
-    .toMatchObject({ on: PLACE, file: 'internal/orders/service.go' });
+    .toMatchObject({ on: 'go:shop/internal/orders.(*Service).Place', file: 'internal/orders/service.go' });
 });
 
 test('on a branch the map opens on what changed, and the summary jumps to it', async ({ page }) => {

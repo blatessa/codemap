@@ -216,6 +216,9 @@ func (r *reviewer) writeChanges(w io.Writer) {
 				mark = "↳ moved from " + cli.ModuleLabel(r.ix, r.ix.Node[id].Module) + ":"
 			}
 			fmt.Fprintf(w, "    %s %s\n", mark, r.name(id))
+			if d := str(r.node[id]["doc"]); d != "" {
+				fmt.Fprintf(w, "        %s\n", d)
+			}
 			for _, l := range out[id] {
 				fmt.Fprintf(w, "        %s\n", l)
 			}

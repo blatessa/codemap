@@ -16,7 +16,6 @@ import { ScreenOutline } from './ScreenOutline';
 import { Diagram } from './Diagram';
 import { entryPointsOf } from './connections';
 import { CallPicker } from './CallPicker';
-import { NodeNotes } from './NodeNotes';
 
 // MoveTo: the part a proposal moves a function to.
 function MoveTo({ m, id, at }: { m: Model; id: string; at: string }) {
@@ -98,7 +97,6 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
           )}
         </Section>
       )}
-      <NodeNotes m={m} id={id} />
       {propose && connecting && <CallPicker m={m} from={id} />}
       {propose && !connecting && (
         <div className="btns">
