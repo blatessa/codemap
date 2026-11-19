@@ -2,12 +2,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Source, Where } from './Code';
 import { Fields } from './Fields';
-import { HEAD, PAD, ROW, effectSummary, entriesReaching, isEffect, onScreen, screenRoot, trace, type TreeRow, qn, sharedFn, shortMod, testsReaching, type Effect, type MEdge, type Model } from './model';
+import { effectSummary, entriesReaching, isEffect, onScreen, screenRoot, trace, type TreeRow, qn, sharedFn, shortMod, testsReaching, type Effect, type MEdge, type Model } from './model';
 import { ProposalList, ProposalView } from './Proposals';
 import {
   currentProposal,
   getState,
   mergeBlock,
+  moveNode,
+  proposeEdge,
   proposeModule,
   proposeNode,
   removeProposalNode,
@@ -16,9 +18,7 @@ import {
   storyOf,
   setState,
   splitBlock,
-  toggleExpanded,
   toggleMulti,
-  useGrouping,
   useModel,
   useSel,
   useStore,
@@ -42,7 +42,7 @@ function Head({ eyebrow, plan, title, children }: { eyebrow: string; plan?: bool
         <h2>{title}</h2>
         {children}
       </div>
-      <button className="x" aria-label="Close" onClick={() => setState({ sel: [], form: null, connectFrom: null, focus: false, splitting: null })}>
+      <button className="x" aria-label="Close" onClick={() => setState({ sel: [], form: null, connectFrom: null, splitting: null })}>
         ×
       </button>
     </div>
@@ -295,10 +295,69 @@ function ScreenOutline({ m, id }: { m: Model; id: string }) {
   );
 }
 
+// CallPicker: what a proposed call goes to, found by name.
+function CallPicker({ m, from }: { m: Model; from: string }) {
+  const [q, setQ] = useState('');
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => ref.current?.focus(), []);
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = words.length
+    ? [...m.node.keys()]
+        .filter((x) => x !== from)
+        .map((x) => ({ id: x, name: qn(m, x) }))
+        .filter((h) => words.every((w) => h.name.toLowerCase().includes(w)))
+        .sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name))
+        .slice(0, 8)
+    : [];
+  const pick = (to: string) => {
+    proposeEdge(from, to);
+    setState({ connectFrom: null });
+  };
+  return (
+    <Section title={`${qn(m, from)} calls…`}>
+      <input
+        ref={ref}
+        id="pick-q"
+        className="pick"
+        placeholder="Function, table or service"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && hits[0]) pick(hits[0].id);
+          if (e.key === 'Escape') setState({ connectFrom: null });
+        }}
+      />
+      <div className="links">
+        {hits.map((h) => (
+          <button key={h.id} className="lnk" data-pick={h.id} onClick={() => pick(h.id)}>
+            {h.name}
+          </button>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+// MoveTo: the part a proposal moves a function to.
+function MoveTo({ m, id, at }: { m: Model; id: string; at: string }) {
+  return (
+    <select className="pick" id="move-to" aria-label="Move to" value={at} onChange={(e) => moveNode(id, e.target.value)}>
+      {m.boxes
+        .filter((b) => !b.external && !b.ghost && !b.block)
+        .map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.id === at ? `In ${b.label}` : `Move to ${b.label}`}
+          </option>
+        ))}
+    </select>
+  );
+}
+
 function NodePanel({ m, id }: { m: Model; id: string }) {
   const S = useSel();
   const propose = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
   const story = useStore(storyOf);
+  const connecting = useStore((s) => s.connectFrom === id);
   const { row, box } = m.node.get(id)!;
   const n = row.node;
   const method = typeof n.fields?.method === 'string' ? (n.fields.method as string).toUpperCase() : '';
@@ -430,15 +489,17 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
           )}
         </div>
       )}
-      {row.moved && <p className="where plan">Moved here from {row.moved} by the proposal. Drag it back to undo.</p>}
+      {row.moved && <p className="where plan">Moved here from {row.moved} by the proposal.</p>}
       {n.doc && <p className="doc">{n.doc}</p>}
-      {propose && (
+      {propose && connecting && <CallPicker m={m} from={id} />}
+      {propose && !connecting && (
         <div className="btns">
           {!n.external && !row.ghost && (
             <button className="btn primary" onClick={() => setState({ connectFrom: id })}>
               Add a call
             </button>
           )}
+          {!n.external && !row.ghost && !box.external && <MoveTo m={m} id={id} at={box.block ? box.from! : box.id} />}
           {row.prop && (
             <button
               className="btn danger"
@@ -460,7 +521,6 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
 function BoxPanel({ m, id }: { m: Model; id: string }) {
   const b = m.box.get(id)!;
   const splitting = useStore((s) => s.splitting === id);
-  const pos = useStore((s) => s.pos);
   const use = new Map<string, string>(),
     dep = new Map<string, string>();
   for (const e of m.edges) {
@@ -524,12 +584,13 @@ function BoxPanel({ m, id }: { m: Model; id: string }) {
           <SplitForm
             rows={own.map((r) => ({ id: r.id, label: r.prefix && r.node.fields?.method ? r.prefix + ' ' + r.label : r.label }))}
             defName={(b.label.split('/').pop() ?? b.label) + ' · '}
-            onSplit={(ids, name) => {
-              const p = pos[id] ?? [0, 0];
-              const left = own.length - ids.length;
-              const labels = ids.map((x) => m.node.get(x)!.row.node.label);
-              splitBlock(id, labels, name, [p[0], p[1] + HEAD + left * ROW + PAD + 34]);
-            }}
+            onSplit={(ids, name) =>
+              splitBlock(
+                id,
+                ids.map((x) => m.node.get(x)!.row.node.label),
+                name,
+              )
+            }
           />
         ) : (
           <div className="btns">
@@ -577,52 +638,8 @@ function SplitForm({ rows, defName, onSplit }: { rows: { id: string; label: stri
   );
 }
 
-function GroupPanel({ m, id }: { m: Model; id: string }) {
-  const G = useGrouping();
-  const open = useStore((s) => s.expanded.has(id));
-  const g = G?.groups.get(id);
-  if (!g) return null;
-  const mine = new Set(g.members);
-  const use = new Map<string, string>(),
-    dep = new Map<string, string>();
-  for (const e of m.edges) {
-    const a = m.node.get(e.from)!.box,
-      c = m.node.get(e.to)!.box;
-    if (mine.has(a.id) === mine.has(c.id)) continue;
-    if (mine.has(a.id)) dep.set(c.id, c.label);
-    else use.set(a.id, a.label);
-  }
-  const mlist = (map: Map<string, string>) =>
-    map.size ? (
-      <div className="links">
-        {[...map].map(([k, v]) => (
-          <button key={k} className="lnk" onClick={() => select(k)}>
-            {v}
-          </button>
-        ))}
-      </div>
-    ) : (
-      <p>—</p>
-    );
-  return (
-    <>
-      <Head eyebrow="Folder" title={g.path} />
-      <div className="cols">
-        <Section title="Used by">{mlist(use)}</Section>
-        <Section title="Depends on">{mlist(dep)}</Section>
-      </div>
-      <Section title="Modules">{mlist(new Map(g.members.map((x) => [x, m.box.get(x)!.label])))}</Section>
-      <div className="btns">
-        <button className="btn" onClick={() => toggleExpanded(id)}>
-          {open ? 'Close' : 'Open'}
-        </button>
-      </div>
-    </>
-  );
-}
 
 function MultiPanel({ m, ids }: { m: Model; ids: string[] }) {
-  const pos = useStore((s) => s.pos);
   const name = (id: string) => (m.node.has(id) ? qn(m, id) : m.box.get(id)?.label ?? id);
   const fnIds = ids.filter((id) => m.node.has(id));
   const srcs = new Set(fnIds.map((id) => m.node.get(id)!.box.id));
@@ -647,12 +664,13 @@ function MultiPanel({ m, ids }: { m: Model; ids: string[] }) {
         {canSplit && (
           <button
             className="btn"
-            onClick={() => {
-              const p = pos[src!.id] ?? [0, 0];
-              const left = own.length - fnIds.length;
-              const labels = fnIds.map((x) => m.node.get(x)!.row.node.label);
-              splitBlock(src!.id, labels, (src!.label.split('/').pop() ?? src!.label) + ' · new', [p[0], p[1] + HEAD + left * ROW + PAD + 34]);
-            }}
+            onClick={() =>
+              splitBlock(
+                src!.id,
+                fnIds.map((x) => m.node.get(x)!.row.node.label),
+                (src!.label.split('/').pop() ?? src!.label) + ' · new',
+              )
+            }
           >
             Split into a new block
           </button>
@@ -666,7 +684,6 @@ const KINDS = ['function', 'route', 'page', 'job', 'subscriber', 'command', 'com
 
 function FormPanel({ m }: { m: Model }) {
   const form = useStore((s) => s.form)!;
-  const pos = useStore((s) => s.pos);
   const b = form.box ? m.box.get(form.box) : undefined;
   const common = (() => {
     const c = new Map<string, number>();
@@ -682,21 +699,7 @@ function FormPanel({ m }: { m: Model }) {
   const submit = () => {
     const v = name.trim();
     if (!v) return;
-    if (form.type === 'mod') {
-      // place under everything
-      let at: [number, number] = [20, 80];
-      let low = -1;
-      for (const bx of m.boxes) {
-        const p = pos[bx.id];
-        if (!p) continue;
-        const bottom = p[1] + bx.defH;
-        if (bottom > low) {
-          low = bottom;
-          at = [p[0], bottom + 70];
-        }
-      }
-      proposeModule(v, at);
-    } else if (b) proposeNode(b.id, v, kind, kind === 'route' ? method : '', b.external);
+    if (form.type === 'mod') proposeModule(v); else if (b) proposeNode(b.id, v, kind, kind === 'route' ? method : '', b.external);
   };
   const cancel = () => setState({ form: null });
   return (
@@ -751,7 +754,6 @@ export function Drawer() {
   let wide = false;
   if (form) content = <FormPanel key={form.type + form.box} m={m} />;
   else if (sel.length > 1) content = <MultiPanel m={m} ids={sel} />;
-  else if (sel.length === 1 && sel[0].startsWith('group:')) content = <GroupPanel m={m} id={sel[0]} />;
   else if (sel.length === 1 && m.node.has(sel[0])) content = <NodePanel m={m} id={sel[0]} />;
   else if (sel.length === 1 && m.box.has(sel[0])) content = <BoxPanel key={sel[0]} m={m} id={sel[0]} />;
   else if (mode === 'propose' && !pslug) content = <ProposalList />;

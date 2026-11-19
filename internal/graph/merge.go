@@ -69,6 +69,9 @@ func mergeModule(a, b Module) Module {
 	if b.Doc != "" {
 		a.Doc = b.Doc
 	}
+	if b.Program != "" {
+		a.Program = b.Program
+	}
 	a.External = a.External || b.External
 	return a
 }

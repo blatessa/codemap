@@ -29,6 +29,9 @@ type Module struct {
 	Path     string `json:"path,omitempty"`
 	Doc      string `json:"doc,omitempty"`
 	External bool   `json:"external,omitempty"`
+	// Program is the program the module is part of: a server, a web app, a CLI
+	// (see build.Programs). External modules have none.
+	Program string `json:"program,omitempty"`
 }
 
 // Node is anything on the map. Only ID, Kind, Label and Module are required.

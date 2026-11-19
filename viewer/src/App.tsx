@@ -3,8 +3,8 @@ import { openInEditor } from './api';
 import { CompareControl, SummaryPanel } from './Compare';
 import { Drawer } from './Drawer';
 import { compare, presets, start as startRevs, useCompare, view as viewRev } from './revs';
-import { MapView, zoomCenter } from './MapView';
-import { qn, type Model } from './model';
+import { PartMap, zoomCenter } from './PartMap';
+import { qn } from './model';
 import {
   currentProposal,
   getState,
@@ -14,7 +14,6 @@ import {
   setMode,
   setState,
   subscribe,
-  tidyLayout,
   useModel,
   useStore,
 } from './store';
@@ -33,23 +32,15 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 const MOD = isMac ? '⌘' : 'Ctrl ';
 
 const fit = () => setState({ fitSeq: getState().fitSeq + 1, touchedView: false });
-const collapseAll = (m: Model) => {
-  const c = getState().collapsed;
-  setState({ collapsed: c.size ? new Set() : new Set(m.boxes.filter((b) => !b.hasEntry).map((b) => b.id)) });
-};
 
 function useMapCommands(): Cmd[] {
-  const m = useModel();
   const ro = useStore((s) => s.readOnly);
-  const collapsed = useStore((s) => s.collapsed.size > 0);
   const revs = useCompare((c) => c.revs);
   const spec = useCompare((c) => c.spec);
   const propose = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
   return [
     { id: 'addmod', label: 'Propose a new module', run: () => setState({ form: { type: 'mod' }, sel: [], connectFrom: null }), off: !propose || ro },
     { id: 'fit', label: 'Fit map to screen', hint: '0', run: fit },
-    { id: 'collapse', label: collapsed ? 'Expand all modules' : 'Collapse all modules', run: () => collapseAll(m) },
-    { id: 'tidy', label: 'Tidy layout', run: tidyLayout },
     { id: 'proposals', label: 'Proposals', run: () => setMode('propose') },
     ...presets(revs).map((p) => ({ id: 'cmp-' + p.id, label: 'Compare: ' + p.label, run: () => void compare(p.from, p.to) })),
     { id: 'cmp-off', label: 'Stop comparing', run: () => void viewRev('worktree'), off: !spec },
@@ -117,12 +108,7 @@ function Search() {
     setOpen(false);
     ref.current?.blur();
     if (h.cmd) return h.cmd.run();
-    const s = getState();
-    const box = m.node.get(h.id)?.box.id ?? h.id;
-    const c = new Set(s.collapsed);
-    c.delete(box);
     select(h.id, true);
-    setState({ collapsed: c, centerOn: h.id, ...(s.view.k < 0.55 ? { view: { ...s.view, k: 0.9 } } : {}) });
   };
   return (
     <div className="search">
@@ -232,7 +218,6 @@ interface Menu {
 function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
   const m = useModel();
   const ro = useStore((s) => s.readOnly);
-  const collapsed = useStore((s) => s.collapsed);
   const map = useMapCommands();
   const ref = useOutside<HTMLDivElement>(true, close);
   let items: (Cmd | null)[] = [];
@@ -240,7 +225,6 @@ function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
     const x = m.node.get(menu.id)!;
     const n = x.row.node;
     items = [
-      { id: 'trace', label: 'Show only this path', hint: 'F', run: () => (select(menu.id), setState({ focus: true })) },
       { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('c-text')?.focus(), 50)), off: ro },
       { id: 'editor', label: 'Open in editor', run: () => void openInEditor(n.file!, n.line ?? 1), off: !n.file },
       { id: 'copy', label: 'Copy ID', run: () => void navigator.clipboard?.writeText(menu.id) },
@@ -249,12 +233,6 @@ function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
     items = [
       { id: 'open', label: 'Show what’s inside', run: () => select(menu.id) },
       { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('c-text')?.focus(), 50)), off: ro },
-      { id: 'collapse', label: collapsed.has(menu.id) ? 'Expand' : 'Collapse', run: () => {
-        const c = new Set(getState().collapsed);
-        if (c.has(menu.id)) c.delete(menu.id);
-        else c.add(menu.id);
-        setState({ collapsed: c });
-      } },
     ];
   } else items = map.filter((c) => !c.id.startsWith('cmp-') && c.id !== 'proposals');
   const shown = items.filter((c) => c === null || !c.off);
@@ -296,16 +274,6 @@ function ProposalsButton() {
   );
 }
 
-function Banner() {
-  const m = useModel();
-  const from = useStore((s) => s.connectFrom);
-  if (!from) return null;
-  return (
-    <div className="banner" id="banner">
-      {(m.node.get(from)?.row.label ?? from) + ' calls…'}
-    </div>
-  );
-}
 
 export function App() {
   const status = useStore((s) => s.status);
@@ -322,9 +290,7 @@ export function App() {
       const t = e.target as HTMLElement;
       const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName);
       if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        const s = getState();
         if (e.key === '0') return fit();
-        if ((e.key === 'f' || e.key === 'F') && s.sel.length) return setState({ focus: !s.focus });
       }
       if (e.key !== 'Escape') return;
       if (t.id === 'q') return;
@@ -335,7 +301,7 @@ export function App() {
       if (!s.sel.length && !s.form && s.mode === 'propose') return setMode('explore');
       // a step of a story goes back to the story
       if (s.story && s.sel[0] !== s.story && storyOf(s)) return setState({ sel: [s.story], form: null, hover: null });
-      setState({ sel: [], form: null, hover: null, focus: false, splitting: null });
+      setState({ sel: [], form: null, hover: null, splitting: null });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -362,9 +328,8 @@ export function App() {
       </header>
       <div className="stage">
         <div className={`canvas${drawerOpen ? ' dopen' : ''}`} onContextMenu={onContext}>
-          {status === 'ready' ? <MapView drawerOpen={drawerOpen} /> : <div className="loading">{status === 'error' ? error : 'Loading…'}</div>}
+          {status === 'ready' ? <PartMap drawerOpen={drawerOpen} /> : <div className="loading">{status === 'error' ? error : 'Loading…'}</div>}
           {status === 'ready' && <MapControls />}
-          <Banner />
           {menu && <ContextMenu menu={menu} close={() => setMenu(null)} />}
         </div>
         {status === 'ready' && (summary ? <SummaryPanel /> : <Drawer />)}

@@ -1,16 +1,6 @@
-// Lays boxes out left to right in dependency flow: entry points left, data and
-// external systems right. The map (layoutMap) and an open folder group
-// (innerLayout) go in columns, one per step of the flow, the same way on every
-// map: at rest every box is the same short height, so columns read well, and
-// it's instant for any number of boxes. A focused path (layoutPath) is laid
-// out by ELK, in a Web Worker: it's small and draws its calls, so ELK's
-// crossing minimisation pays off there. Boxes with a position never move.
-import ELK from 'elkjs/lib/elk-api.js';
-import type { ElkNode, ElkExtendedEdge } from 'elkjs/lib/elk-api.js';
-import workerUrl from 'elkjs/lib/elk-worker.min.js?url';
-
-let elk: InstanceType<typeof ELK> | null = null;
-const getElk = () => (elk ??= new ELK({ workerUrl }));
+// Lays a program's parts out left to right in dependency flow, entry points
+// left (parts.ts): columns, one per step of the flow. Every part is the same
+// height, so columns read well, and it's instant for any number of parts.
 
 export interface LBox {
   id: string;
@@ -18,7 +8,6 @@ export interface LBox {
   h: number; // laid-out height
   entry?: boolean;
   external?: boolean;
-  shared?: boolean; // goes in the bottom row
 }
 export type Pos = Record<string, [number, number]>;
 
@@ -60,7 +49,7 @@ function flowOrder(boxes: LBox[], links: [string, string][]): { order: Map<strin
 // sits just left of what it calls. External systems take the last column.
 // Within a column boxes sit near the boxes that call them. A column wraps when
 // it gets taller than a roughly 16:9 block would allow (at least `minH`).
-function flowColumns(items: LBox[], links: [string, string][], minH: number, GAPX: number, GAPY: number): Pos {
+export function flowColumns(items: LBox[], links: [string, string][], minH: number, GAPX: number, GAPY: number): Pos {
   if (!items.length) return {};
   const ids = new Set(items.map((b) => b.id));
   const inner = links.filter(([a, b]) => a !== b && ids.has(a) && ids.has(b));
@@ -142,164 +131,5 @@ function flowColumns(items: LBox[], links: [string, string][], minH: number, GAP
     }
     x += w + GAPX;
   }
-  return out;
-}
-
-// innerLayout places what an open folder group shows, at once and in place.
-export function innerLayout(items: LBox[], links: [string, string][]): { pos: Pos; w: number; h: number } {
-  if (!items.length) return { pos: {}, w: 0, h: 0 };
-  const pos = flowColumns(items, links, 0, 50, 24);
-  let w = 0,
-    h = 0;
-  for (const b of items) {
-    w = Math.max(w, pos[b.id][0] + b.w);
-    h = Math.max(h, pos[b.id][1] + b.h);
-  }
-  return { pos, w, h };
-}
-
-// layoutMap places the map's boxes that have no position yet.
-export function layoutMap(boxes: LBox[], links: [string, string][], fixed: Pos): Pos {
-  const unplaced = boxes.filter((b) => !fixed[b.id]);
-  if (!unplaced.length) return {};
-  // shared modules go in a row along the bottom, out of the flow
-  const bottom = unplaced.filter((b) => b.shared);
-  const low = new Set(bottom.map((b) => b.id));
-  const todo = unplaced.filter((b) => !low.has(b.id));
-  const out = flowColumns(todo, links.filter(([a, b]) => !low.has(a) && !low.has(b)), 1000, 90, 28);
-  sharedRow(out, todo, bottom, links);
-  return offset(out, boxes, fixed);
-}
-
-// layoutPath lays a focused path out with ELK.
-export async function layoutPath(boxes: LBox[], links: [string, string][], fixed: Pos): Promise<Pos> {
-  const todo0 = boxes.filter((b) => !fixed[b.id]);
-  if (!todo0.length) return {};
-  const { order } = flowOrder(boxes, links);
-  const todo = todo0.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
-  return offset(await layoutFlow(todo, links), boxes, fixed);
-}
-
-// sharedRow places shared boxes in a row under everything else, each as close
-// as it can get to below the middle of the boxes that use it.
-function sharedRow(out: Pos, placed: LBox[], bottom: LBox[], links: [string, string][]) {
-  if (!bottom.length) return;
-  const wOf = new Map(placed.map((b) => [b.id, b]));
-  let y = 0,
-    x0 = 0;
-  const ps = placed.filter((b) => out[b.id]);
-  if (ps.length) {
-    y = Math.max(...ps.map((b) => out[b.id][1] + b.h)) + 90;
-    x0 = Math.min(...ps.map((b) => out[b.id][0]));
-  }
-  const want = new Map<string, number>();
-  for (const b of bottom) {
-    const xs = links.filter(([f, t]) => t === b.id && f !== t && out[f] && wOf.has(f)).map(([f]) => out[f][0] + wOf.get(f)!.w / 2);
-    want.set(b.id, xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length - b.w / 2 : 1e9);
-  }
-  const sorted = [...bottom].sort((a, b) => want.get(a.id)! - want.get(b.id)! || a.id.localeCompare(b.id));
-  let x = x0;
-  for (const b of sorted) {
-    const w = want.get(b.id)!;
-    x = Math.max(x, w < 1e8 ? Math.round(w) : x);
-    out[b.id] = [x, y];
-    x += b.w + 40;
-  }
-}
-
-// layoutFlow lays the boxes out left to right with ELK in one pass, one edge
-// per pair of boxes that call each other.
-async function layoutFlow(todo: LBox[], links: [string, string][]): Promise<Pos> {
-  const ids = new Set(todo.map((b) => b.id));
-  const children: ElkNode[] = todo.map((b) => ({ id: b.id, width: b.w, height: b.h }));
-  const seen = new Set<string>();
-  const edges: ElkExtendedEdge[] = [];
-  for (const [a, b] of links) {
-    if (a === b || !ids.has(a) || !ids.has(b) || seen.has(a + '\0' + b)) continue;
-    seen.add(a + '\0' + b);
-    edges.push({ id: 'e' + edges.length, sources: [a], targets: [b] });
-  }
-  const opts = {
-    'elk.algorithm': 'layered',
-    'elk.direction': 'RIGHT',
-    'elk.layered.spacing.nodeNodeBetweenLayers': '70',
-    'elk.spacing.nodeNode': '28',
-    'elk.spacing.componentComponent': '60',
-    'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
-    'elk.layered.cycleBreaking.strategy': 'MODEL_ORDER',
-    'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
-    // spreads tall layers over more columns, so the path is wider than it is tall
-    'elk.layered.layering.strategy': 'STRETCH_WIDTH',
-    'elk.edgeRouting': 'POLYLINE', // routes aren't used; the map draws its own curves
-  };
-  const res = await getElk().layout({ id: 'root', layoutOptions: opts, children, edges });
-  const out: Pos = {};
-  for (const c of res.children ?? []) out[c.id] = [Math.round(c.x ?? 0), Math.round(c.y ?? 0)];
-  return pack(out, todo, links);
-}
-
-// pack lays ELK's connected components out in rows, roughly as wide as a
-// screen, instead of one tall stack.
-function pack(out: Pos, todo: LBox[], links: [string, string][]): Pos {
-  const up = new Map<string, string>();
-  const find = (x: string): string => {
-    while (up.has(x)) x = up.get(x)!;
-    return x;
-  };
-  const join = (a: string, b: string) => {
-    const ra = find(a),
-      rb = find(b);
-    if (ra !== rb) up.set(ra, rb);
-  };
-  for (const [a, b] of links) if (out[a] && out[b]) join(a, b);
-  const comps = new Map<string, { ids: string[]; x0: number; y0: number; x1: number; y1: number }>();
-  for (const b of todo) {
-    const p = out[b.id];
-    if (!p) continue;
-    const r = find(b.id);
-    const c = comps.get(r) ?? comps.set(r, { ids: [], x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9 }).get(r)!;
-    c.ids.push(b.id);
-    c.x0 = Math.min(c.x0, p[0]);
-    c.y0 = Math.min(c.y0, p[1]);
-    c.x1 = Math.max(c.x1, p[0] + b.w);
-    c.y1 = Math.max(c.y1, p[1] + b.h);
-  }
-  const list = [...comps.values()];
-  if (list.length < 2) return out;
-  const GAP = 90;
-  const area = list.reduce((s, c) => s + (c.x1 - c.x0 + GAP) * (c.y1 - c.y0 + GAP), 0);
-  const maxW = Math.max(Math.sqrt(area * 1.7), ...list.map((c) => c.x1 - c.x0));
-  // biggest first, then ELK's order
-  list.sort((a, b) => b.ids.length - a.ids.length || a.y0 - b.y0);
-  const res: Pos = {};
-  let x = 0,
-    y = 0,
-    rowH = 0;
-  for (const c of list) {
-    const w = c.x1 - c.x0,
-      h = c.y1 - c.y0;
-    if (x > 0 && x + w > maxW) {
-      x = 0;
-      y += rowH + GAP;
-      rowH = 0;
-    }
-    for (const id of c.ids) res[id] = [Math.round(out[id][0] - c.x0 + x), Math.round(out[id][1] - c.y0 + y)];
-    x += w + GAP;
-    rowH = Math.max(rowH, h);
-  }
-  return res;
-}
-
-// offset moves newly placed boxes below whatever is already placed.
-function offset(out: Pos, boxes: LBox[], fixed: Pos): Pos {
-  const placed = Object.entries(fixed);
-  let oy = 80,
-    ox = 20;
-  if (placed.length) {
-    const hOf = new Map(boxes.map((b) => [b.id, b.h]));
-    oy = Math.max(...placed.map(([k, [, y]]) => y + (hOf.get(k) ?? 100))) + 110;
-    ox = Math.min(...placed.map(([, [x]]) => x));
-  }
-  for (const k in out) out[k] = [out[k][0] + ox, out[k][1] + oy];
   return out;
 }

@@ -2,12 +2,12 @@
 [hidden]{display:none!important}
 body{margin:0}
 #root{flex:1;display:flex;flex-direction:column;min-height:0}
-.revpick{font-family:var(--mono);font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted)}
+
 .mod.ghost .box{fill:transparent;stroke:var(--line);stroke-dasharray:3 4}
 .mod.ghost .mname{fill:var(--muted)}
 .fn.ghost{opacity:.5}
 .fn.ghost .hit{stroke:var(--muted);stroke-dasharray:3 3;stroke-width:1}
-.fn.ghost .lbl{fill:var(--muted)}
+
 .where.open{cursor:pointer}
 .where.open:hover{color:var(--ink);text-decoration:underline}
 .facts ul{margin:0;padding-left:16px}
@@ -18,21 +18,12 @@ body{margin:0}
 .kv dt{color:var(--muted)}
 .kv dd{margin:0;min-width:0;word-break:break-word}
 .edge.ghost{opacity:.5}
-.tools .tool,.tools>*{pointer-events:auto}
+
 .more{cursor:pointer}
 .more text{font-family:var(--sans);font-size:11px;fill:var(--muted)}
 .more:hover .hit{fill:var(--bg)}
 .more:hover text{fill:var(--ink)}
-.grect{fill:var(--lane);stroke:var(--line);stroke-width:1}
-.grp.reveal .grect{fill:transparent;stroke-dasharray:6 5}
-.grp.gsel .grect{stroke:var(--accent);stroke-width:1.5}
-.ghead{cursor:move}
-.ghead:hover .alabel{fill:var(--ink)}
-.mod.dim .box.stack{opacity:.55}
-.farlabels{pointer-events:none}
-.farlabels.halo text{paint-order:stroke;stroke:var(--surface);stroke-linejoin:round}
-.hovname{paint-order:stroke;stroke:var(--bg);stroke-linejoin:round;pointer-events:none}
-.rowdrop{fill:none;stroke:var(--plan);stroke-width:2;stroke-dasharray:5 4;pointer-events:none}
+
 .comment{position:sticky;bottom:-24px;margin:auto -18px -24px;padding:10px 18px 14px;background:var(--surface);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
 .comment .chead{display:flex;gap:8px;align-items:center;font-size:12px}
 .comment select{font:inherit;font-size:12px;color:var(--plan);background:none;border:0;padding:0;cursor:pointer}

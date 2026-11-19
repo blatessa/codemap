@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { blockFor, escapeGlob, globMatch, pathMatch } from './blocks';
 import { classify, humanize } from './fields';
-import { FOLD_AT, buildGrouping, chain } from './groups';
+import { atRest, linksOf, partSub, partsOf } from './parts';
 import { SYNTH, buildModel, selectionOf, testsReaching, trace } from './model';
 import type { Graph } from './types';
 
@@ -112,14 +112,13 @@ describe('model on the shop fixture', () => {
   });
 });
 
-describe('public rows and shared modules', () => {
+describe('public rows', () => {
   const g = JSON.parse(readFileSync(new URL('../../testdata/shop.expected.json', import.meta.url), 'utf8')) as Graph;
 
   test('internal rows are the ones with no edge leaving their box', () => {
     const m = buildModel(g, [], null);
     const orders = m.box.get('mod:go:shop/internal/orders')!;
     expect(orders.rows.filter((r) => !r.pub).map((r) => r.label).sort()).toEqual(['CreateOrder.Total', 'writeError', 'writeJSON']);
-    expect(orders.pub).toBe(orders.rows.length - 3);
     // a block boundary counts as a module boundary
     const mb = buildModel(g, [{ id: 'block:repo', name: 'repo', from: 'mod:go:shop/internal/orders', match: ['Repo.*'] }], null);
     expect(mb.box.get('block:repo')!.rows.every((r) => r.pub)).toBe(true);
@@ -133,108 +132,6 @@ describe('public rows and shared modules', () => {
     expect(S.path.has('go:shop/internal/orders.writeJSON')).toBe(false);
     // selecting a module doesn't open up its internals
     expect(selectionOf(m, ['mod:go:shop/internal/orders'])!.path.size).toBe(0);
-  });
-
-  test('no shop module is shared', () => {
-    expect(buildModel(g, [], null).boxes.filter((b) => b.shared)).toEqual([]);
-  });
-
-  test('a module most others call, and that calls nothing back, is shared', () => {
-    const mods = ['a', 'b', 'c', 'd', 'core'].map((x) => ({ id: 'mod:' + x, label: x }));
-    const nodes = mods.map((mo) => ({ id: mo.label + '.F', kind: 'function', label: 'F', module: mo.id }));
-    nodes.push({ id: 'core.T', kind: 'test', label: 'T', module: 'mod:core' });
-    const edges = [
-      { from: 'a.F', to: 'b.F', type: 'calls' },
-      { from: 'a.F', to: 'core.F', type: 'calls' },
-      { from: 'b.F', to: 'core.F', type: 'calls' },
-      { from: 'c.F', to: 'core.F', type: 'calls' },
-      { from: 'd.F', to: 'c.F', type: 'calls' },
-    ];
-    const m = buildModel({ version: 1, modules: mods, nodes, edges }, [], null);
-    expect(m.box.get('mod:core')!.shared).toBe(true);
-    expect(m.box.get('mod:core')!.usedBy).toBe(3);
-    expect(m.boxes.filter((b) => b.shared).map((b) => b.id)).toEqual(['mod:core']);
-    // calling out to two other modules makes it part of the flow instead
-    edges.push({ from: 'core.F', to: 'a.F', type: 'calls' }, { from: 'core.F', to: 'd.F', type: 'calls' });
-    expect(buildModel({ version: 1, modules: mods, nodes, edges }, [], null).box.get('mod:core')!.shared).toBe(false);
-  });
-});
-
-describe('folder groups', () => {
-  // calls: [from, to] paths; each module has one function, F, and `entry` ones a route
-  const graph = (paths: string[], calls: [string, string][] = [], entry: string[] = []): Graph => ({
-    version: 1,
-    modules: paths.map((p) => ({ id: 'mod:' + p, label: p, path: p, lang: 'go' })),
-    nodes: [
-      ...paths.map((p) => ({ id: p + '.F', kind: 'function', label: 'F', module: 'mod:' + p })),
-      ...entry.map((p) => ({ id: 'route:' + p, kind: 'route', label: '/' + p, module: 'mod:' + p, entry: true })),
-    ],
-    edges: calls.map(([a, b]) => ({ from: a + '.F', to: b + '.F', type: 'calls' })),
-  });
-  const group = (paths: string[], calls: [string, string][] = [], keep: string[] = [], entry: string[] = []) => {
-    const m = buildModel(graph(paths, calls, entry), [], null);
-    const links: [string, string][] = m.edges.map((e) => [m.node.get(e.from)!.box.id, m.node.get(e.to)!.box.id]);
-    return buildGrouping(m.boxes, m.box, new Set(keep), links);
-  };
-  const many = (dir: string, n: number) => Array.from({ length: n }, (_, i) => `${dir}/p${i}`);
-
-  test('a folder of many side-by-side siblings folds, whatever the size of the map', () => {
-    const G = group(['internal/integration', ...many('internal/integration', FOLD_AT)], many('internal/integration', FOLD_AT).map((p) => ['internal/integration', p]));
-    expect(G.top.sort()).toEqual(['group:internal/integration', 'mod:internal/integration']);
-    const g = G.groups.get('group:internal/integration')!;
-    expect(g.members).toHaveLength(FOLD_AT);
-    expect(g.box.label).toBe('internal/integration/*');
-    expect(chain(G, 'mod:internal/integration/p3')).toEqual(['group:internal/integration']);
-  });
-
-  test('fewer siblings than FOLD_AT stay open', () => {
-    const G = group(many('internal/integration', FOLD_AT - 1));
-    expect(G.groups.size).toBe(0);
-    expect(G.top).toHaveLength(FOLD_AT - 1);
-  });
-
-  test('siblings that call each other are a subsystem, not a set, and stay open', () => {
-    const ps = many('internal', 10);
-    const calls = ps.slice(1).map((p, i): [string, string] => [ps[i], p]); // a chain
-    const G = group(ps, calls);
-    expect(G.groups.size).toBe(0);
-  });
-
-  test('a helper several siblings use stays out; the siblings still fold', () => {
-    const ps = many('migrations', 8);
-    const G = group(['migrations/base', ...ps], ps.map((p) => [p, 'migrations/base']));
-    expect(G.top).toContain('mod:migrations/base');
-    expect(G.groups.get('group:migrations')!.members).toHaveLength(8);
-  });
-
-  test('entry points and plain modules are different kinds', () => {
-    const routes = many('routers', 3);
-    const G = group([...routes, ...many('routers/x', 0), 'routers/a', 'routers/b', 'routers/c'], [], [], routes);
-    expect(G.groups.size).toBe(0);
-    const G2 = group(many('routers', 7), [], [], many('routers', 7).slice(0, 3));
-    expect(G2.groups.size).toBe(0);
-  });
-
-  test('folds nest: an opened group holds its own folded sets', () => {
-    const fmts = many('models/packages', 7);
-    const G = group([...many('models', 7), 'models/packages', ...fmts]);
-    const outer = G.groups.get('group:models')!;
-    expect(outer).toBeTruthy();
-    expect(G.groups.get('group:models/packages')!.parent).toBe('group:models');
-    expect(outer.children).toContain('group:models/packages');
-    expect(outer.children).toContain('mod:models/packages');
-    expect(chain(G, 'mod:models/packages/p1')).toEqual(['group:models/packages', 'group:models']);
-  });
-
-  test('a one-child chain reads as one path, for TS directories too', () => {
-    const G = group([...many('frontend/apps/site/app/components', 8), 'backend/main']);
-    expect([...G.groups.keys()]).toEqual(['group:frontend/apps/site/app/components']);
-  });
-
-  test('kept (shared) modules never fold', () => {
-    const G = group(many('internal/reader', 8), [], ['mod:internal/reader/p7']);
-    expect(G.top).toContain('mod:internal/reader/p7');
-    expect(G.groups.get('group:internal/reader')!.members).not.toContain('mod:internal/reader/p7');
   });
 });
 
@@ -305,5 +202,61 @@ describe('traces on a big codebase', () => {
     expect(rows.some((r) => r.id === id('deep'))).toBe(false);
     expect(rows.find((r) => r.id === id('step4'))!.more).toBe(true);
     expect(rows.some((r) => r.id === id('step5'))).toBe(false);
+  });
+});
+
+describe('the part map', () => {
+  // the shop as codemap build writes it: modules carry their program
+  const g = JSON.parse(readFileSync(new URL('../../testdata/shop.expected.json', import.meta.url), 'utf8')) as Graph;
+  for (const mo of g.modules ?? []) if (!mo.external) mo.program = mo.id.startsWith('mod:ts:') ? 'shop-web' : 'shop';
+  const m = buildModel(g, [], null);
+  const P = partsOf(m);
+
+  test('programs are frames, the one calling the other first; resources are frames of their own', () => {
+    expect(P.frames.filter((f) => !f.resource).map((f) => f.label)).toEqual(['shop-web', 'shop']);
+    expect(P.frames.filter((f) => f.resource).map((f) => f.label)).toEqual(['database', 'topics', 'external services']);
+    const [web, server] = P.frames;
+    expect(web.x + web.w).toBeLessThan(server.x);
+  });
+
+  test('a part is a box; a table, service or topic is a box of its own; a function is never one', () => {
+    expect(P.thingOf('go:shop/internal/orders.(*Repo).Insert')).toBe('mod:go:shop/internal/orders');
+    expect(P.thingOf('table:orders')).toBe('table:orders');
+    expect(P.at.has('table:orders')).toBe(true);
+    expect(P.at.has('go:shop/internal/orders.(*Repo).Insert')).toBe(false);
+  });
+
+  test('nothing overlaps', () => {
+    const rs = [...P.at.values()];
+    for (let i = 0; i < rs.length; i++)
+      for (let j = i + 1; j < rs.length; j++) {
+        const a = rs[i],
+          b = rs[j];
+        expect(a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h).toBe(false);
+      }
+  });
+
+  test('lines are typed by how things talk, and at rest show communication between programs and over events strongly', () => {
+    const kind = (from: string, to: string) => P.links.filter((l) => l.from === from && l.to === to).map((l) => l.kind);
+    expect(kind('mod:ts:web/src/api', 'mod:go:shop/cmd/server')).toEqual(['http']);
+    expect(kind('mod:go:shop/internal/orders', 'table:orders')).toContain('writes');
+    expect(P.links.filter((l) => atRest(P, l)).map((l) => l.kind).sort()).toEqual(expect.arrayContaining(['event', 'http']));
+    expect(atRest(P, P.links.find((l) => l.kind === 'calls' && P.programOf(l.from) === P.programOf(l.to))!)).toBe(false);
+  });
+
+  test('a link stands for every function edge between its two things', () => {
+    const l = linksOf(m, m.edges).find((x) => x.from === 'mod:go:shop/cmd/server' && x.to === 'mod:go:shop/internal/orders' && x.kind === 'calls')!;
+    expect(l.edges.length).toBeGreaterThan(1);
+  });
+
+  test("a part says what it holds, by kind", () => {
+    expect(partSub(m.box.get('mod:go:shop/cmd/server')!)).toMatch(/^1 job · 4 routes · 1 subscriber · \d+ functions$/);
+    expect(partSub(m.box.get('mod:go:shop/internal/orders')!)).toBe('13 functions');
+  });
+
+  test('one layout: selecting changes what is lit, never where things are', () => {
+    const before = JSON.stringify([...P.at]);
+    selectionOf(m, ['route:POST /orders']);
+    expect(JSON.stringify([...partsOf(m).at])).toBe(before);
   });
 });

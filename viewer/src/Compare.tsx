@@ -92,10 +92,7 @@ function goTo(id: string) {
   const s = getState();
   const m = s.graph;
   if (!(m.nodes ?? []).some((n) => n.id === id) && !(m.modules ?? []).some((x) => x.id === id)) return;
-  const c = new Set(s.collapsed);
-  const n = (m.nodes ?? []).find((x) => x.id === id);
-  if (n) c.delete(n.module);
-  setState({ sel: [id], collapsed: c, centerOn: id, form: null, hover: null, ...(s.view.k < 0.55 && n ? { view: { ...s.view, k: 0.9 } } : {}) });
+  setState({ sel: [id], form: null, hover: null });
 }
 
 const refText = (r: Ref) => (r.method ? r.method + ' ' : '') + r.label;

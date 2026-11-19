@@ -2,8 +2,6 @@
 import { create } from 'zustand';
 import * as api from './api';
 import { escapeGlob, slugify } from './blocks';
-import { layoutMap, type Pos } from './layout';
-import { buildGrouping, isGroup, layoutH, topOf, type Grouping } from './groups';
 import { buildModel, selectionOf, type Model, type Sel } from './model';
 import type { Block, Graph, Loose, Proposal } from './types';
 
@@ -23,13 +21,9 @@ export interface S {
   blocks: Block[];
   proposals: Proposal[];
   versions: Record<string, string>;
-  pos: Pos; // box positions for this session: laid out automatically, then dragged
   mode: Mode;
   sel: string[];
   hover: string | null;
-  collapsed: Set<string>;
-  expanded: Set<string>; // boxes showing their internal rows too
-  focus: boolean;
   story: string | null; // the feature on the map; clicking its steps keeps it there
   view: { x: number; y: number; k: number };
   touchedView: boolean;
@@ -41,7 +35,6 @@ export interface S {
   editing: boolean;
   plist: { q: string; sort: 'updated' | 'name' | 'status'; status: 'all' | 'open' | 'archived' };
   fitSeq: number; // bump to ask the map to fit
-  centerOn: string | null;
 }
 
 const empty: Graph = { version: 1, modules: [], nodes: [], edges: [] };
@@ -56,13 +49,9 @@ export const useStore = create<S>(() => ({
   blocks: [],
   proposals: [],
   versions: {},
-  pos: {},
   mode: 'explore',
   sel: [],
   hover: null,
-  collapsed: new Set(),
-  expanded: new Set(),
-  focus: false,
   story: null,
   view: { x: 0, y: 0, k: 1 },
   touchedView: false,
@@ -74,7 +63,6 @@ export const useStore = create<S>(() => ({
   editing: false,
   plist: { q: '', sort: 'updated', status: 'all' },
   fitSeq: 0,
-  centerOn: null,
 }));
 
 // hooks.graph post-processes every loaded graph (compare.ts merges a diff in).
@@ -120,25 +108,11 @@ export function commentTarget(s: S): Proposal | null {
 
 export const currentProposal = (s: S) => (s.pslug ? s.proposals.find((p) => p.slug === s.pslug) ?? null : null);
 
-// groupingFor folds folders of many similar modules into groups (groups.ts),
-// the same way on every map. Shared modules stay on their own.
-const groupMemo = new WeakMap<Model, Grouping>();
-export function groupingFor(m: Model): Grouping {
-  const hit = groupMemo.get(m);
-  if (hit) return hit;
-  const keep = new Set(m.boxes.filter((b) => b.shared).map((b) => b.id));
-  const links: [string, string][] = m.edges.map((e) => [m.node.get(e.from)!.box.id, m.node.get(e.to)!.box.id]);
-  const G = buildGrouping(m.boxes, m.box, keep, links);
-  groupMemo.set(m, G);
-  return G;
-}
-export const groupingOf = (s: S) => groupingFor(modelOf(s));
-export const useGrouping = () => useStore(groupingOf);
 
 let selMemo: { m?: Model; sel?: string[]; S?: Sel | null } = {};
 const ofIds = (s: S, ids: string[]): Sel | null => {
   const m = modelOf(s);
-  if (selMemo.m !== m || selMemo.sel !== ids) selMemo = { m, sel: ids, S: selectionOf(m, ids, groupingOf(s).groups) };
+  if (selMemo.m !== m || selMemo.sel !== ids) selMemo = { m, sel: ids, S: selectionOf(m, ids) };
   return selMemo.S!;
 };
 const storyIds = new Map<string, string[]>();
@@ -173,9 +147,6 @@ export async function load() {
     const pr = st.project ?? ({} as never);
     if (!keep('blocks')) next.blocks = pr.blocks ?? [];
     else next.versions!.blocks = s.versions.blocks;
-    // Positions aren't stored: the map is laid out on load, and again when the
-    // blocks change on disk. Drags hold for the session.
-    if (first || !keep('blocks')) next.pos = {};
     // proposals: take the server's copy unless we're mid-edit on it
     const server = pr.proposals ?? [];
     next.proposals = server.map((p) => {
@@ -190,7 +161,6 @@ export async function load() {
     for (const p of s.proposals) if (pending.has('proposals/' + p.slug) && !server.some((x) => x.slug === p.slug)) next.proposals.push(p);
     set(next);
     if (first) set({ fitSeq: get().fitSeq + 1 });
-    await ensureLayout();
   } catch (e) {
     if (get().status !== 'ready') set({ status: 'error', error: String(e) });
   }
@@ -203,53 +173,6 @@ export function subscribe() {
   const again = () => void load();
   es.addEventListener('graph-changed', again);
   es.addEventListener('project-changed', again);
-}
-
-// ---- layout ----
-
-let layoutRun = 0;
-export async function ensureLayout() {
-  const s = get();
-  const m = modelOf({ ...s, mode: 'explore' });
-  const G = groupingFor(m);
-  // what gets laid out: the top level (closed groups and the boxes outside them)
-  const items = G.top.map((id) => (isGroup(id) ? G.groups.get(id)!.box : m.box.get(id)!));
-  const fixed: Pos = { ...s.pos };
-  // a group whose modules all have saved places goes where they were
-  for (const id of G.top) {
-      const g = G.groups.get(id);
-      if (!g || fixed[id]) continue;
-      const ps = g.members.map((x) => s.pos[x]).filter(Boolean);
-      if (!ps.length || ps.length < g.members.length) continue;
-      const cx = ps.reduce((a, p) => a + p[0], 0) / ps.length,
-        cy = ps.reduce((a, p) => a + p[1], 0) / ps.length;
-      fixed[id] = ps.reduce((a, p) => (Math.hypot(p[0] - cx, p[1] - cy) < Math.hypot(a[0] - cx, a[1] - cy) ? p : a));
-    }
-  const missing = items.filter((b) => !fixed[b.id]);
-  const placed: Pos = {};
-  for (const b of items) if (fixed[b.id] && !s.pos[b.id]) placed[b.id] = fixed[b.id];
-  if (!missing.length) {
-    if (Object.keys(placed).length) set({ pos: { ...get().pos, ...placed } });
-    return;
-  }
-  const run = ++layoutRun;
-  const at = (id: string) => topOf(G, id);
-  const links: [string, string][] = m.edges.map((e) => [at(m.node.get(e.from)!.box.id), at(m.node.get(e.to)!.box.id)]);
-  const res = layoutMap(
-    items.map((b) => ({ id: b.id, w: b.w, h: layoutH(b), entry: b.hasEntry, external: b.external, shared: b.shared })),
-    links,
-    Object.fromEntries(items.filter((b) => fixed[b.id]).map((b) => [b.id, fixed[b.id]])),
-  );
-  if (run !== layoutRun) return;
-  const hadAny = Object.keys(s.pos).length > 0;
-  set({ pos: { ...get().pos, ...placed, ...res } });
-  if (!hadAny) set({ fitSeq: get().fitSeq + 1 });
-}
-
-// tidyLayout drops this session's drags and lays the map out again.
-export function tidyLayout() {
-  set({ pos: {} });
-  void ensureLayout().then(() => set({ fitSeq: get().fitSeq + 1 }));
 }
 
 // ---- persistence ----
@@ -338,48 +261,34 @@ export function select(id: string | null, fresh = false) {
   const node = !!id && m.node.has(id) && s.mode !== 'propose'; // sketching needs the whole map
   const st = s.story && !fresh && node ? storyOf({ ...s, sel: [id!] }) : null;
   if (st) return set({ sel: [id!], hover: null, form: null, splitting: null });
-  set({ sel: id ? [id] : [], story: node ? id : null, hover: null, form: null, splitting: null, ...(id ? (node ? { focus: true } : {}) : { focus: false }) });
+  set({ sel: id ? [id] : [], story: node ? id : null, hover: null, form: null, splitting: null });
 }
 
 export function toggleMulti(id: string) {
   const s = get();
   const ids = s.sel.includes(id) ? s.sel.filter((x) => x !== id) : [...s.sel, id];
-  set({ sel: ids, form: null, splitting: null, hover: null, ...(ids.length ? {} : { focus: false }) });
+  set({ sel: ids, form: null, splitting: null, hover: null });
 }
 
 export function setMode(mode: Mode) {
-  set({ mode, connectFrom: null, form: null, focus: false, ...(mode === 'propose' ? { sel: [], pslug: null, editing: false } : {}) });
+  set({ mode, connectFrom: null, form: null, ...(mode === 'propose' ? { sel: [], pslug: null, editing: false } : {}) });
 }
 
 // ---- positions ----
 
-export function toggleExpanded(id: string) {
-  const e = new Set(get().expanded);
-  if (e.has(id)) e.delete(id);
-  else e.add(id);
-  set({ expanded: e });
-}
 
-export function movePos(updates: Pos) {
-  set({ pos: { ...get().pos, ...updates } });
-}
 
-export function moveProposalModule(id: string, at: [number, number]) {
-  const p = currentProposal(get());
-  if (!p) return;
-  updateProposal(p.slug, { modules: (p.modules ?? []).map((m) => (m.id === id ? { ...m, pos: at } : m)) }, false);
-}
 
 // ---- blocks ----
 
-export function splitBlock(from: string, labels: string[], name: string, at: [number, number]) {
+export function splitBlock(from: string, labels: string[], name: string) {
   const s = get();
   const taken = new Set(s.blocks.map((b) => b.id));
   let id = 'block:' + slugify(name),
     i = 2;
   while (taken.has(id)) id = `block:${slugify(name)}-${i++}`;
   const block: Block = { id, name, from, match: [...new Set(labels)].map(escapeGlob) };
-  set({ blocks: [...s.blocks, block], pos: { ...s.pos, [id]: at }, sel: [id], splitting: null, form: null });
+  set({ blocks: [...s.blocks, block], sel: [id], splitting: null, form: null });
   persist('blocks');
   return id;
 }
@@ -393,9 +302,7 @@ export function mergeBlock(id: string) {
   const s = get();
   const b = s.blocks.find((x) => x.id === id);
   if (!b) return;
-  const pos = { ...s.pos };
-  delete pos[id];
-  set({ blocks: s.blocks.filter((x) => x.id !== id), pos, sel: [b.from] });
+  set({ blocks: s.blocks.filter((x) => x.id !== id), sel: [b.from] });
   persist('blocks');
 }
 
@@ -440,11 +347,11 @@ export function proposeNode(box: string, label: string, kind: string, method: st
   set({ form: null, sel: [id] });
 }
 
-export function proposeModule(label: string, at: [number, number]) {
+export function proposeModule(label: string) {
   const p = currentProposal(get());
   if (!p) return;
   const id = uniqueNewId('new:mod:' + label, p);
-  const m: Loose = { id, label, pos: at };
+  const m: Loose = { id, label };
   updateProposal(p.slug, { modules: [...(p.modules ?? []), m] });
   set({ form: null, sel: [id] });
 }

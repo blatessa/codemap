@@ -8,6 +8,7 @@ export interface GModule {
   path?: string;
   doc?: string;
   external?: boolean;
+  program?: string; // the server, web app or CLI it's part of (build.Programs)
 }
 
 export interface GNode {

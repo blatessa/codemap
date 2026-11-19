@@ -89,6 +89,9 @@ func Graph(root string, proj *project.Project, opt Options) (*graph.Graph, error
 		return os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
 	})
 	graph.FoldScreens(g, screenFiles(proj.Config.TS.Screens))
+	Programs(g, func(file string) ([]byte, error) {
+		return os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+	})
 	return g, nil
 }
 

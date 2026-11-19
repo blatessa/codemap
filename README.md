@@ -23,6 +23,24 @@ codemap reads code with the tools you already have: **Go** to map Go code, **Nod
 map TypeScript, and **git** to compare revisions. Whatever's missing is skipped with a
 note.
 
+## The model
+
+codemap shows how a system's parts work together, not every function in it.
+
+- **Things.** Code at three levels: *programs* (a server, a web app, a CLI, a worker),
+  their *parts* (packages and folders), and *functions*. Outside the code: *data* (tables),
+  *services* (Stripe, other APIs) and *channels* (topics, queues).
+- **Connections**, by how things talk: calls, HTTP, publishes and subscribes, schedules,
+  reads and writes, shows (a screen). Between parts, they're the sum of their functions'.
+- **Entry points**, where work starts from outside: a route, a screen, a command, a job, a
+  subscriber.
+
+The map draws programs and parts and how they connect. Selecting something shows it on the
+same map: an entry point, its path through the system; a part, its connections; a table or
+service, who reads, writes or calls it. Functions appear only on a selected path, and in
+the panel beside the map. Supporting code (helpers, forwarding functions, a screen's own
+components) is left out of paths and counted.
+
 ## Use
 
 ```sh

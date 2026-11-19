@@ -41,7 +41,8 @@
     "label": "internal/orders",
     "lang": "go",
     "path": "internal/orders",
-    "doc": "Package orders owns the order lifecycle: placing, paying and looking up orders."
+    "doc": "Package orders owns the order lifecycle: placing, paying and looking up orders.",
+    "program": "shop"
   },
   "nodes": [
     {

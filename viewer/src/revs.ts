@@ -3,7 +3,7 @@
 // merged back in; MapView asks rowCls/boxCls/edgeCls how to colour each one.
 import { create } from 'zustand';
 import { shownRows, type Box } from './model';
-import { currentProposal, getState as getMain, groupingOf, hooks, load, modelOf, setState as setMain, useStore } from './store';
+import { currentProposal, getState as getMain, hooks, load, setState as setMain, useStore } from './store';
 import type { GEdge, GModule, GNode, Graph } from './types';
 
 // ---- API shapes ----
@@ -199,17 +199,7 @@ export function boxCls(b: Box): string {
   if (!idx) return '';
   if (!b.block && b.module && idx.addedM.has(b.id)) return 'd-add';
   if (!b.block && b.module && idx.removedM.has(b.id)) return 'd-rem';
-  if (b.group) return groupCls(b.id);
   return boxHas(b) ? 'd-has' : '';
-}
-
-export function groupCls(id: string): string {
-  if (!idx) return '';
-  const s = getMain();
-  const g = groupingOf(s)?.groups.get(id);
-  if (!g) return '';
-  const m = modelOf(s);
-  return g.members.some((x) => boxHas(m.box.get(x))) ? 'd-has' : '';
 }
 
 export function edgeCls(e: { from: string; to: string; type: string }): string {
@@ -282,7 +272,7 @@ export async function compare(from: string, to: string) {
     if (run !== seq) return;
     idx = indexOf(d);
     set({ diff: d });
-    setMain({ rev: isWorktree(d.to) ? 'worktree' : d.to, readOnly: !isWorktree(d.to), sel: [], focus: false });
+    setMain({ rev: isWorktree(d.to) ? 'worktree' : d.to, readOnly: !isWorktree(d.to), sel: [] });
     await load();
   } catch (e) {
     if (run === seq) set({ error: String(e instanceof Error ? e.message : e) });
@@ -297,7 +287,7 @@ export async function view(rev: string) {
   idx = null;
   set({ spec: null, diff: null, view: rev, busy: !isWorktree(rev), error: '', changesOnly: false });
   writeHash();
-  setMain({ rev: isWorktree(rev) ? 'worktree' : rev, readOnly: !isWorktree(rev), sel: [], focus: false, ...(isWorktree(rev) ? {} : { mode: 'explore' }) });
+  setMain({ rev: isWorktree(rev) ? 'worktree' : rev, readOnly: !isWorktree(rev), sel: [], ...(isWorktree(rev) ? {} : { mode: 'explore' }) });
   try {
     await load();
   } finally {

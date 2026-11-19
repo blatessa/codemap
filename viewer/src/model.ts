@@ -4,16 +4,6 @@
 import { blockFor } from './blocks';
 import type { Block, GEdge, GModule, GNode, Graph, Loose, Proposal } from './types';
 
-export const ROW = 28,
-  HEAD = 36,
-  PAD = 8,
-  MORE = 24, // the "+N internal" row
-  FAR = 0.55,
-  FARH = 64;
-
-// heightOf is a box's height showing `rows` rows, plus the "+N internal" row when `more`.
-export const heightOf = (rows: number, more: boolean) => HEAD + (more ? rows : Math.max(rows, 1)) * ROW + (more ? MORE : 0) + PAD;
-
 export interface Row {
   id: string;
   label: string;
@@ -31,7 +21,6 @@ export interface Row {
 export interface Box {
   id: string;
   label: string;
-  sub: string;
   doc?: string;
   external: boolean;
   block?: Block; // a split of `from`
@@ -40,14 +29,7 @@ export interface Box {
   prop: boolean;
   ghost: boolean;
   rows: Row[];
-  w: number;
   hasEntry: boolean;
-  propPos?: [number, number];
-  pub: number; // public rows
-  defH: number; // laid-out height: at rest a box shows its header only (name and count line)
-  shared: boolean; // used by most other modules; laid out along the bottom
-  usedBy: number; // modules with edges into this one
-  group?: string; // set on a folder group's box (groups.ts)
 }
 
 export interface MEdge {
@@ -121,27 +103,6 @@ export function prefixOf(n: GNode): string {
   return ENTRY_PREFIX[n.kind] ?? n.kind.toUpperCase().slice(0, 5);
 }
 
-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
-
-function subOf(rows: Row[], prop: boolean): string {
-  if (!rows.length) return prop ? 'proposed' : 'empty';
-  const kinds = new Set(rows.map((r) => r.node.kind));
-  if (kinds.size === 1) return plural(rows.length, rows[0].node.kind);
-  const e = rows.filter((r) => r.node.entry).length;
-  if (e && e < rows.length) return `${plural(e, 'entry point')} · ${rows.length - e} more`;
-  return plural(rows.length, 'item');
-}
-
-const CH = 7.25;
-function widthOf(b: Box): number {
-  let w = b.label.length * CH + 60;
-  for (const r of b.rows) {
-    const left = r.prefix ? 60 : 22;
-    const right = r.tag ? r.tag.length * 6.2 + 20 : 12;
-    w = Math.max(w, left + r.label.length * CH + right);
-  }
-  return Math.round(Math.min(440, Math.max(190, w)));
-}
 
 const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v));
 
@@ -180,7 +141,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
   const gedges = g.edges ?? [];
   const box = new Map<string, Box>();
   const mkBox = (id: string, label: string, extra: Partial<Box> = {}): Box => {
-    const b: Box = { id, label, sub: '', external: false, prop: false, ghost: false, rows: [], w: 0, hasEntry: false, pub: 0, defH: 0, shared: false, usedBy: 0, ...extra };
+    const b: Box = { id, label, external: false, prop: false, ghost: false, rows: [], hasEntry: false, ...extra };
     box.set(id, b);
     return b;
   };
@@ -231,8 +192,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
     for (const m of proposal.modules ?? []) {
       const id = str(m.id);
       if (!id || box.has(id)) continue;
-      const pos = Array.isArray(m.pos) && m.pos.length === 2 ? ([Number(m.pos[0]), Number(m.pos[1])] as [number, number]) : undefined;
-      mkBox(id, str(m.label) || id, { prop: true, propPos: pos });
+      mkBox(id, str(m.label) || id, { prop: true });
     }
     for (const raw of proposal.nodes ?? []) {
       const n = proposalNode(raw);
@@ -315,68 +275,12 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
       if (r.node.entry || r.node.external || r.prop || r.ghost) r.pub = true;
       if (shownRows.has(r.id)) r.pub = true;
     }
-    b.pub = b.rows.filter((r) => r.pub).length;
-    // layout sizes a box for what it shows at rest (MapView's visible): its
-    // header. A box showing rows (hovered, opened, on a path) draws above its neighbours.
-    b.defH = HEAD;
     b.hasEntry = b.rows.some((r) => r.node.entry);
-    b.sub = subOf(b.rows, b.prop);
-    b.w = widthOf(b);
     boxes.push(b);
   }
-  markShared(boxes, box, node, gedges, fullNode, blocks);
   return { boxes, box, node, edges, out, inn, tests, full: { out: fullOut, inn: fullInn, node: fullNode, wide }, all };
 }
 
-// markShared finds modules that most others depend on (a graph package, a config
-// package): at least 40% of the other modules in their part of the map (minimum 3)
-// have edges into them, and they call at most one other module. Callers count by
-// module, tests included, since a module's tests depend on what they call too.
-export const SHARED_SHARE = 0.4;
-function markShared(
-  boxes: Box[],
-  box: Map<string, Box>,
-  node: Map<string, { row: Row; box: Box }>,
-  gedges: GEdge[],
-  full: Map<string, GNode>,
-  blocks: Block[],
-) {
-  const cand = new Set(boxes.filter((b) => !b.external && !b.prop && !b.ghost).map((b) => b.id));
-  const boxOf = (id: string): string | undefined => {
-    const x = node.get(id);
-    if (x) return x.box.id;
-    const n = full.get(id);
-    if (!n) return undefined;
-    const b = box.get(blockFor(blocks, n) || n.module);
-    return b ? b.id : undefined;
-  };
-  const users = new Map<string, Set<string>>(),
-    calls = new Map<string, Set<string>>(),
-    parent = new Map<string, string>();
-  const find = (x: string): string => {
-    while (parent.has(x) && parent.get(x) !== x) x = parent.get(x)!;
-    return x;
-  };
-  const add = (m: Map<string, Set<string>>, k: string, v: string) => (m.get(k) ?? m.set(k, new Set()).get(k)!).add(v);
-  for (const e of gedges) {
-    const a = boxOf(e.from),
-      b = boxOf(e.to);
-    if (!a || !b || a === b || !cand.has(a) || !cand.has(b)) continue;
-    add(users, b, a);
-    if (!isTest(full.get(e.from)!)) add(calls, a, b);
-    const ra = find(a),
-      rb = find(b);
-    if (ra !== rb) parent.set(ra, rb);
-  }
-  const size = new Map<string, number>();
-  for (const id of cand) size.set(find(id), (size.get(find(id)) ?? 0) + 1);
-  for (const id of cand) {
-    const b = box.get(id)!;
-    b.usedBy = users.get(id)?.size ?? 0;
-    const others = size.get(find(id))! - 1;
-    b.shared = b.usedBy >= Math.max(3, Math.ceil(SHARED_SHARE * others)) && (calls.get(id)?.size ?? 0) <= 1;
-  }
-}
 
 export function proposalNode(raw: Loose): GNode | null {
   const id = str(raw.id);
@@ -434,7 +338,7 @@ function walkUp(m: Model, start: string): { nodes: Set<string>; edges: Set<numbe
 // SYNTH numbers a selection's synthetic edges, above any real edge index.
 export const SYNTH = 1 << 24;
 
-export function selectionOf(m: Model, ids: string[], groups?: Map<string, { members: string[] }>): Sel | null {
+export function selectionOf(m: Model, ids: string[]): Sel | null {
   const S: Sel = { nodes: new Set(), edges: new Set(), up: new Set(), down: new Set(), path: new Set(), extra: [] };
   const synth = (from: string, to: string, type: string, kind: 'skip' | 'reach') => {
     const e: MEdge = { i: SYNTH + S.extra.length, from, to, type, declared: false, prop: false, net: type === 'fetches', synth: kind };
@@ -464,16 +368,9 @@ export function selectionOf(m: Model, ids: string[], groups?: Map<string, { memb
       any = true;
       continue;
     }
-    let bs: Box[] = [];
-    if (id.startsWith('group:')) {
-      const g = groups?.get(id);
-      if (!g) continue;
-      bs = g.members.map((x) => m.box.get(x)).filter((b): b is Box => !!b);
-    } else {
-      const b = m.box.get(id);
-      if (!b) continue;
-      bs = [b];
-    }
+    const b = m.box.get(id);
+    if (!b) continue;
+    const bs = [b];
     any = true;
     const own = new Set(bs.flatMap((b) => b.rows.map((r) => r.id)));
     own.forEach((n) => S.nodes.add(n));
