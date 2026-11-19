@@ -55,7 +55,26 @@ echo "Installed $("$dir/codemap" version) to $dir/codemap"
 
 case ":$PATH:" in
   *":$dir:"*) ;;
-  *) echo "Add $dir to your PATH, for example: echo 'export PATH=\"$dir:\$PATH\"' >> ~/.profile" ;;
+  *)
+    line="export PATH=\"$dir:\$PATH\""
+    if [ "$os" = darwin ]; then
+      case "${SHELL:-}" in
+        */zsh) rc="$HOME/.zshrc" ;;
+        */bash) rc="$HOME/.bash_profile" ;;
+        *) rc="" ;;
+      esac
+    else
+      rc=""
+    fi
+    if [ -n "$rc" ]; then
+      if ! grep -qsF "$line" "$rc"; then
+        printf '\n# Added by the codemap installer\n%s\n' "$line" >> "$rc"
+      fi
+      echo "Added $dir to your PATH in $rc; open a new terminal (or run: source $rc) to pick it up."
+    else
+      echo "Add $dir to your PATH, for example: echo '$line' >> ~/.profile"
+    fi
+    ;;
 esac
 if ! command -v git >/dev/null 2>&1; then echo "Note: codemap needs git for comparing revisions."; fi
 echo "Next: cd into a repo and run 'codemap serve'."
