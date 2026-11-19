@@ -103,12 +103,12 @@ test('a part: its connections, why they exist, what starts it and what it does',
   await expect(d.locator('[data-conn="out:topic:order.placed"]')).toBeVisible();
   // opening a connection shows the calls behind it
   await d.locator('[data-conn="out:mod:go:shop/internal/payments"]').click();
-  await expect(d.locator('#conn-calls')).toContainText('orders.Service.Place');
+  await expect(d.locator('#conn-calls')).toContainText('Service.Place'); // its own code without the part
   await expect(d.locator('#conn-calls')).toContainText('payments.Client.Charge');
   await expect(d.locator('.ent', { hasText: 'POST /orders' })).toBeVisible();
-  // what it does: what other parts use, each with what it reaches
-  await expect(d.locator('.trow', { hasText: 'Service.MarkPaid' })).toContainText('writes orders');
-  await d.locator('.trow', { hasText: 'Handler.Create' }).click();
+  // its interface: what other parts use, each with what it reaches
+  await expect(d.locator('.irow', { hasText: 'Service.MarkPaid' })).toContainText('writes orders');
+  await d.locator('.iname', { hasText: 'Handler.Create' }).click();
   await expect(d.locator('h2')).toHaveText('Handler.Create');
 });
 

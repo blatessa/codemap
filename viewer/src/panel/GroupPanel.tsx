@@ -1,12 +1,13 @@
-// A part (a package or folder of code) or a folder of parts: the same shape
-// as every panel. What it does is its surface: the entry points and functions
-// other parts use, each with what it reaches. A folder lists its parts too.
+// A part (a package or folder of code) or a folder of parts. Its Interface is
+// what other parts use: entry points and functions called from outside, each
+// with what it reaches and the entry points that come through it. A folder
+// lists its parts too.
 import type { Model } from '../model';
 import { isFolder, type Parts } from '../parts';
 import { select, toggleFolder, useStore } from '../store';
-import { Section, Head, Tests, Entries, Reach } from './common';
+import { Section, Head, Tests, Entries, Fx, facts, plural } from './common';
 import { Diagram } from './Diagram';
-import { entryPointsOf, membersOf } from './connections';
+import { connectionsOf, entryPointsOf, membersOf } from './connections';
 
 export function GroupPanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   const folder = isFolder(id);
@@ -15,17 +16,24 @@ export function GroupPanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   const path = folder ? id.split(':').slice(2).join(':') : (box?.label ?? id);
   const parts = folder ? m.boxes.filter((b) => !b.external && b.label.startsWith(path + '/')) : [];
   const members = membersOf(m, P, id);
-  // its surface: entry points, and functions called from outside it
   const surface = [...members].filter((x) => {
     const r = m.node.get(x)?.row;
     if (!r || r.role) return false;
     return r.node.entry || (m.all.inn.get(x) ?? []).some((e) => !members.has(e.from));
   });
-  surface.sort((a, b) => Number(!!m.node.get(b)!.row.node.entry) - Number(!!m.node.get(a)!.row.node.entry) || m.node.get(a)!.row.label.localeCompare(m.node.get(b)!.row.label));
-  const size = folder ? `${parts.length} parts` : `${members.size} functions`;
+  const isEntry = (x: string) => !!m.node.get(x)!.row.node.entry;
+  surface.sort((a, b) => Number(isEntry(b)) - Number(isEntry(a)) || m.node.get(a)!.row.label.localeCompare(m.node.get(b)!.row.label));
+  const entries = entryPointsOf(m, P, id);
+  const tables = connectionsOf(m, P, id).out.filter((c) => c.cls === 'db').length;
+  const summary = facts(
+    folder ? plural(parts.length, 'part') : plural(members.size, 'function'),
+    surface.length > 0 && `${surface.length} used by other parts`,
+    entries.length > 0 && plural(entries.length, 'entry point'),
+    tables > 0 && `uses ${plural(tables, 'table')}`,
+  );
   return (
     <>
-      <Head eyebrow={(box?.prop ? 'Proposed part' : folder ? 'Folder' : 'Part') + ' · ' + size} plan={box?.prop} title={folder ? path + '/' : path} />
+      <Head kind={box?.prop ? 'proposed part' : folder ? 'folder' : 'part'} plan={box?.prop} title={folder ? path + '/' : path} summary={summary} />
       {box?.doc && <p className="doc">{box.doc}</p>}
       {folder && (
         <div className="btns">
@@ -35,24 +43,35 @@ export function GroupPanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
         </div>
       )}
       <Diagram m={m} P={P} id={id} />
-      <Section title="What starts it">
-        <Entries m={m} ids={entryPointsOf(m, P, id).filter((x) => !members.has(x))} />
-      </Section>
-      <Section title={`What it does · ${surface.length} used from outside`}>
-        <div className="tree">
-          {surface.map((x) => {
-            const r = m.node.get(x)!.row;
-            return (
-              <button key={x} className={`trow ${r.prop ? 'prop' : ''}`} data-node={x} onClick={() => select(x)}>
-                <span className="l">{r.prefix ? r.prefix + ' ' + r.label : r.label}</span>
-                <Reach m={m} fs={m.walk.effects(x)} />
-              </button>
-            );
-          })}
-        </div>
+      <Section title="Interface" count={surface.length ? `${surface.length} of ${members.size}` : undefined}>
+        {surface.length ? (
+          <div className="itable">
+            {surface.map((x) => {
+              const r = m.node.get(x)!.row;
+              const via = r.node.entry ? [] : m.walk.entries(x).filter((e) => !members.has(e));
+              return (
+                <div key={x} className={`irow ${r.prop ? 'prop' : ''}`}>
+                  <div className="ihead">
+                    <button className="iname" data-node={x} onClick={() => select(x)}>
+                      {r.prefix ? r.prefix + ' ' + r.label : r.label}
+                    </button>
+                    <Fx m={m} fs={m.walk.effects(x)} />
+                  </div>
+                  {via.length > 0 && (
+                    <div className="ivia">
+                      <Entries m={m} ids={via} max={3} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="none">Nothing outside uses it</p>
+        )}
       </Section>
       {folder && (
-        <Section title={`Parts · ${parts.length}`}>
+        <Section title="Parts" count={parts.length}>
           <div className="links">
             {parts.map((b) => (
               <button key={b.id} className="lnk" data-node={b.id} onClick={() => select(b.id)}>

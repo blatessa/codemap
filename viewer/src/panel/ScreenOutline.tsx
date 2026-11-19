@@ -67,7 +67,7 @@ export function ScreenOutline({ m, id }: { m: Model; id: string }) {
   walk(id, 0, false);
   if (!lines.length) return null;
   return (
-    <Section title="On this screen">
+    <Section title="Screen">
       <div className="tree">
         {lines.map((r, i) =>
           r.acts.length ? (

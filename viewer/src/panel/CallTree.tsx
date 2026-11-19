@@ -31,7 +31,7 @@ export function CallTree({ m, id }: { m: Model; id: string }) {
   if (!t.rows.length && !t.reaches.length) return null;
   const verb = (type: string) => (type === 'renders' ? 'shows' : type);
   return (
-    <Section title="Call tree">
+    <Section title="Flow">
       <div className="tree">
         {t.reaches.length > 0 && (
           <div className="trow sup">

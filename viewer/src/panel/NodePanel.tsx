@@ -8,7 +8,7 @@ import { Fields } from '../Fields';
 import { screenRoot, qn, type MEdge, type Model } from '../model';
 import type { Parts } from '../parts';
 import { currentProposal, moveNode, proposeEdge, removeProposalNode, select, setState, useSel, useStore } from '../store';
-import { Section, Head, Tests, onPath, cap, Crumbs, Entries } from './common';
+import { Section, Head, Tests, onPath, Crumbs, Entries, facts, plural } from './common';
 import { CallTree } from './CallTree';
 import { ScreenOutline } from './ScreenOutline';
 import { Diagram } from './Diagram';
@@ -79,9 +79,14 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   const { row, box } = m.node.get(id)!;
   const n = row.node;
   const method = typeof n.fields?.method === 'string' ? (n.fields.method as string).toUpperCase() : '';
-  // what it is, and for code where it lives
-  const kind = row.ghost ? 'Missing' : cap(n.kind === 'function' ? 'function' : n.kind);
-  const eyebrow = (row.prop ? 'Proposed ' + kind.toLowerCase() : kind) + (!n.external && !row.ghost ? ' · ' + box.label : '');
+  // what it is, and a line of facts: where code lives; who uses data
+  const kind = row.ghost ? 'missing' : (row.prop ? 'proposed ' : '') + n.kind;
+  const inn = m.all.inn.get(id) ?? [];
+  const count = (t: string) => new Set(inn.filter((e) => e.type === t).map((e) => e.from)).size;
+  const entries = !n.entry && !n.external && !row.ghost ? entryPointsOf(m, P, id) : [];
+  const summary = n.external
+    ? facts(count('writes') > 0 && `written by ${plural(count('writes'), 'function')}`, count('reads') > 0 && `read by ${plural(count('reads'), 'function')}`, count('publishes') > 0 && `published by ${plural(count('publishes'), 'function')}`, count('calls') > 0 && `called by ${plural(count('calls'), 'function')}`)
+    : facts(!row.ghost && box.label, entries.length > 0 && plural(entries.length, 'entry point'));
   let does: ReactNode = null;
   if (n.external) does = <Uses m={m} id={id} />;
   else if (!row.ghost)
@@ -93,7 +98,7 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
     );
   return (
     <>
-      <Head eyebrow={eyebrow} plan={row.prop} title={method && !row.label.startsWith(method) ? `${method} ${row.label}` : row.label}>
+      <Head kind={kind} plan={row.prop} title={method && !row.label.startsWith(method) ? `${method} ${row.label}` : row.label} summary={summary}>
         <Where file={n.file} line={n.line} />
       </Head>
       <Crumbs m={m} id={id} />
@@ -123,8 +128,8 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
       )}
       {!row.ghost && <Diagram m={m} P={P} id={id} />}
       {!row.ghost && !n.entry && !n.external && (
-        <Section title="What starts it">
-          <Entries m={m} ids={entryPointsOf(m, P, id)} />
+        <Section title="Entry points" count={entries.length || undefined}>
+          <Entries m={m} ids={entries} />
         </Section>
       )}
       {does}
@@ -135,7 +140,7 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
         </Section>
       ) : null}
       {!row.prop && !row.ghost && (
-        <Section title={n.entry ? 'Tests along this path' : 'Tests'}>
+        <Section title="Tests">
           <Tests m={m} ids={n.entry && S ? onPath(m, S.down) : [id]} />
         </Section>
       )}
@@ -160,7 +165,7 @@ function Uses({ m, id }: { m: Model; id: string }) {
   const groups = [...by].sort(([a], [b]) => (a ? 0 : 1) - (b ? 0 : 1) || qn(m, a).localeCompare(qn(m, b)));
   return (
     <>
-      <Section title="What uses it">
+      <Section title="Uses">
         {groups.length ? (
           <div className="uses">
             {groups.map(([ent, es]) => (
@@ -170,7 +175,7 @@ function Uses({ m, id }: { m: Model; id: string }) {
                     {qn(m, ent)}
                   </button>
                 ) : (
-                  <span className="chip">No entry point</span>
+                  <span className="none">No entry point</span>
                 )}
                 {es.map((e) => (
                   <div key={e.i} className="dcall">
@@ -185,11 +190,11 @@ function Uses({ m, id }: { m: Model; id: string }) {
             ))}
           </div>
         ) : (
-          <span className="chip">Nothing uses it</span>
+          <p className="none">Nothing uses it</p>
         )}
       </Section>
       {out.length > 0 && (
-        <Section title="What it runs">
+        <Section title="Runs">
           <div className="uses">
             {out.map((e) => (
               <div key={e.i} className="dcall">
