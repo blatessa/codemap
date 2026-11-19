@@ -57,7 +57,7 @@ export function ProposalList() {
       <div className="plist" id="plist">
         {rows.length ? (
           rows.map((p) => (
-            <button key={p.slug} className="pitem" data-slug={p.slug} onClick={() => setState({ pslug: p.slug, editing: false, sel: [] })}>
+            <button key={p.slug} className="pitem" data-slug={p.slug} onClick={() => setState({ pslug: p.slug, editing: false, sel: null })}>
               <span className="pn">{p.name}</span>
               <span className="pm">
                 <span className={`pill ${p.status}`}>{p.status}</span>

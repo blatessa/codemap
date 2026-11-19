@@ -290,7 +290,7 @@ export interface Sel {
 // SYNTH numbers a selection's synthetic edges, above any real edge index.
 export const SYNTH = 1 << 24;
 
-export function selectionOf(m: Model, ids: string[]): Sel | null {
+export function selectionOf(m: Model, id: string): Sel | null {
   const S: Sel = { nodes: new Set(), edges: new Set(), up: new Set(), down: new Set(), path: new Set(), extra: [] };
   const synth = (from: string, to: string, type: string, kind: 'skip' | 'reach') => {
     const e: MEdge = { i: SYNTH + S.extra.length, from, to, type, prop: false, net: type === 'fetches', synth: kind };
@@ -298,43 +298,38 @@ export function selectionOf(m: Model, ids: string[]): Sel | null {
     S.edges.add(e.i);
   };
   const on = (n: string) => (S.nodes.add(n), S.down.add(n), S.path.add(n));
-  let any = false;
-  for (const id of ids) {
-    if (m.node.has(id)) {
-      // down: the trace, as in the details panel and codemap show
-      const t = trace(m, id);
-      on(id);
-      const reach = (from: string, fs: Effect[]) => fs.forEach((f) => (on(f.to), synth(from, f.to, f.type, 'reach')));
-      reach(id, t.reaches);
-      for (const r of t.rows) {
-        if (r.targets) continue;
-        on(r.id);
-        if (r.via.from === r.parent) S.edges.add(r.via.i);
-        else synth(r.parent, r.id, r.via.type, 'skip');
-        reach(r.id, r.reaches);
-      }
-      // up: everything that leads here
-      const u = m.walk.up(id);
-      u.nodes.forEach((n) => (S.nodes.add(n), S.up.add(n), S.path.add(n)));
-      u.edges.forEach((e) => S.edges.add(e));
-      any = true;
-      continue;
+  if (m.node.has(id)) {
+    // down: the trace, as in the details panel and codemap show
+    const t = trace(m, id);
+    on(id);
+    const reach = (from: string, fs: Effect[]) => fs.forEach((f) => (on(f.to), synth(from, f.to, f.type, 'reach')));
+    reach(id, t.reaches);
+    for (const r of t.rows) {
+      if (r.targets) continue;
+      on(r.id);
+      if (r.via.from === r.parent) S.edges.add(r.via.i);
+      else synth(r.parent, r.id, r.via.type, 'skip');
+      reach(r.id, r.reaches);
     }
-    const b = m.box.get(id);
-    if (!b) continue;
-    const bs = [b];
-    any = true;
-    const own = new Set(bs.flatMap((b) => b.rows.map((r) => r.id)));
-    own.forEach((n) => S.nodes.add(n));
-    for (const e of m.edges) {
-      if (own.has(e.from) || own.has(e.to)) {
-        S.edges.add(e.i);
-        S.nodes.add(e.from);
-        S.nodes.add(e.to);
-      }
+    // up: everything that leads here
+    const u = m.walk.up(id);
+    u.nodes.forEach((n) => (S.nodes.add(n), S.up.add(n), S.path.add(n)));
+    u.edges.forEach((e) => S.edges.add(e));
+    return S;
+  }
+  // a part: its rows and every edge in or out of it
+  const b = m.box.get(id);
+  if (!b) return null;
+  const own = new Set(b.rows.map((r) => r.id));
+  own.forEach((n) => S.nodes.add(n));
+  for (const e of m.edges) {
+    if (own.has(e.from) || own.has(e.to)) {
+      S.edges.add(e.i);
+      S.nodes.add(e.from);
+      S.nodes.add(e.to);
     }
   }
-  return any ? S : null;
+  return S;
 }
 
 export const entriesReaching = (m: Model, id: string): string[] => m.walk.entries(id);

@@ -21,7 +21,7 @@ export function Head({ eyebrow, plan, title, children }: { eyebrow: string; plan
         <h2>{title}</h2>
         {children}
       </div>
-      <button className="x" aria-label="Close" onClick={() => setState({ sel: [], form: null, connectFrom: null })}>
+      <button className="x" aria-label="Close" onClick={() => setState({ sel: null, form: null, connectFrom: null })}>
         ×
       </button>
     </div>

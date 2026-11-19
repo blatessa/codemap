@@ -37,24 +37,20 @@ export function snippetOf(sel: Selection | null): Snip | null {
 }
 
 // aboutOf is the heading (and quote) a comment gets.
-export function aboutOf(m: Model, ids: string[], snip: Snip | null): string {
-  const names = ids.map((id) => {
-    const x = m.node.get(id);
-    if (x) return '`' + qn(m, id) + '`';
-    return '`' + (m.box.get(id)?.label ?? id.replace(/^group:/, '')) + '`';
-  });
-  const one = ids.length === 1 ? m.node.get(ids[0])?.row.node : undefined;
+export function aboutOf(m: Model, id: string, snip: Snip | null): string {
+  const name = '`' + (m.node.has(id) ? qn(m, id) : (m.box.get(id)?.label ?? id)) + '`';
+  const one = m.node.get(id)?.row.node;
   let where = '';
   if (snip) where = `${snip.file}:${snip.from}${snip.to > snip.from ? '-' + snip.to : ''}`;
   else if (one?.file) where = one.file + (one.line ? ':' + one.line + (one.endLine && one.endLine > one.line ? '-' + one.endLine : '') : '');
-  let out = '### ' + (names.join(', ') || 'Comment') + (where ? ' · ' + where : '');
+  let out = '### ' + name + (where ? ' · ' + where : '');
   if (snip) out += '\n\n```' + lang(snip.file) + '\n' + snip.code + '\n```';
   return out;
 }
 
 // Comment is pinned to the bottom of the details panel: type and press Enter.
 // Highlighting code in the panel quotes it and puts the cursor here; `c` does too.
-export function Comment({ m, ids }: { m: Model; ids: string[] }) {
+export function Comment({ m, id }: { m: Model; id: string }) {
   const p = useStore(commentTarget);
   const all = useStore((s) => s.proposals);
   const open = all.filter((x) => x.status !== 'archived');
@@ -62,7 +58,6 @@ export function Comment({ m, ids }: { m: Model; ids: string[] }) {
   const [snip, setSnip] = useState<Snip | null>(null);
   const [sent, setSent] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
-  const key = ids.join('\0');
   useEffect(() => {
     setSnip(null);
     setSent(false);
@@ -85,7 +80,7 @@ export function Comment({ m, ids }: { m: Model; ids: string[] }) {
       document.removeEventListener('mouseup', onUp);
       window.removeEventListener('keydown', onKey);
     };
-  }, [key]);
+  }, [id]);
   useLayoutEffect(() => {
     const t = ref.current;
     if (!t) return;
@@ -95,7 +90,7 @@ export function Comment({ m, ids }: { m: Model; ids: string[] }) {
   if (!open.length) return null;
   const send = () => {
     if (!text.trim() || !p) return;
-    comment(aboutOf(m, ids, snip), text);
+    comment(aboutOf(m, id, snip), text);
     setText('');
     setSnip(null);
     setSent(true);

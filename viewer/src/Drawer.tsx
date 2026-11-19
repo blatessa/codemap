@@ -17,8 +17,8 @@ export function Drawer() {
   let content: ReactNode = null;
   let wide = false;
   if (form) content = <FormPanel key={form.type + form.box} m={m} />;
-  else if (sel.length === 1 && m.node.has(sel[0])) content = <NodePanel m={m} id={sel[0]} />;
-  else if (sel.length === 1 && m.box.has(sel[0])) content = <BoxPanel key={sel[0]} m={m} id={sel[0]} />;
+  else if (sel && m.node.has(sel)) content = <NodePanel m={m} id={sel} />;
+  else if (sel && m.box.has(sel)) content = <BoxPanel key={sel} m={m} id={sel} />;
   else if (mode === 'propose' && !pslug) content = <ProposalList />;
   else if (mode === 'propose') {
     content = <ProposalView m={m} />;
@@ -37,7 +37,7 @@ export function Drawer() {
       onMouseLeave={() => getState().hover && setState({ hover: null })}
     >
       {content}
-      {!readOnly && !form && sel.length > 0 && content && <Comment key={'comment:' + sel.join('\0')} m={m} ids={sel} />}
+      {!readOnly && !form && sel && content && <Comment key={'comment:' + sel} m={m} id={sel} />}
     </aside>
   );
 }

@@ -272,7 +272,7 @@ export async function compare(from: string, to: string) {
     if (run !== seq) return;
     idx = indexOf(d);
     set({ diff: d });
-    setMain({ rev: isWorktree(d.to) ? 'worktree' : d.to, readOnly: !isWorktree(d.to), sel: [] });
+    setMain({ rev: isWorktree(d.to) ? 'worktree' : d.to, readOnly: !isWorktree(d.to), sel: null });
     await load();
   } catch (e) {
     if (run === seq) set({ error: String(e instanceof Error ? e.message : e) });
@@ -287,7 +287,7 @@ export async function view(rev: string) {
   idx = null;
   set({ spec: null, diff: null, view: rev, busy: !isWorktree(rev), error: '', changesOnly: false });
   writeHash();
-  setMain({ rev: isWorktree(rev) ? 'worktree' : rev, readOnly: !isWorktree(rev), sel: [], ...(isWorktree(rev) ? {} : { mode: 'explore' }) });
+  setMain({ rev: isWorktree(rev) ? 'worktree' : rev, readOnly: !isWorktree(rev), sel: null, ...(isWorktree(rev) ? {} : { mode: 'explore' }) });
   try {
     await load();
   } finally {

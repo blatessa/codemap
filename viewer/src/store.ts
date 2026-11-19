@@ -20,7 +20,7 @@ export interface S {
   proposals: Proposal[];
   versions: Record<string, string>;
   mode: Mode;
-  sel: string[];
+  sel: string | null; // the selected node or part
   hover: string | null;
   story: string | null; // the feature on the map; clicking its steps keeps it there
   view: { x: number; y: number; k: number };
@@ -46,7 +46,7 @@ export const useStore = create<S>(() => ({
   proposals: [],
   versions: {},
   mode: 'explore',
-  sel: [],
+  sel: null,
   hover: null,
   story: null,
   view: { x: 0, y: 0, k: 1 },
@@ -104,26 +104,23 @@ export function commentTarget(s: S): Proposal | null {
 export const currentProposal = (s: S) => (s.pslug ? s.proposals.find((p) => p.slug === s.pslug) ?? null : null);
 
 
-let selMemo: { m?: Model; sel?: string[]; S?: Sel | null } = {};
-const ofIds = (s: S, ids: string[]): Sel | null => {
+let selMemo: { m?: Model; id?: string; S?: Sel | null } = {};
+const ofId = (s: S, id: string): Sel | null => {
   const m = modelOf(s);
-  if (selMemo.m !== m || selMemo.sel !== ids) selMemo = { m, sel: ids, S: selectionOf(m, ids) };
+  if (selMemo.m !== m || selMemo.id !== id) selMemo = { m, id, S: selectionOf(m, id) };
   return selMemo.S!;
 };
-const storyIds = new Map<string, string[]>();
 // storyOf is the story the map shows: the selection's own, or, for a step
 // inside the current story, still that story.
 export function storyOf(s: S): string | null {
-  if (!s.story || s.sel.length !== 1) return null;
-  if (s.sel[0] === s.story) return s.story;
-  let ids = storyIds.get(s.story);
-  if (!ids) storyIds.set(s.story, (ids = [s.story]));
-  return ofIds(s, ids)?.nodes.has(s.sel[0]) ? s.story : null;
+  if (!s.story || !s.sel) return null;
+  if (s.sel === s.story) return s.story;
+  return ofId(s, s.story)?.nodes.has(s.sel) ? s.story : null;
 }
 export function selOf(s: S): Sel | null {
   const st = storyOf(s);
-  if (st) return ofIds(s, storyIds.get(st) ?? (storyIds.set(st, [st]), storyIds.get(st)!));
-  return ofIds(s, s.sel);
+  if (st) return ofId(s, st);
+  return s.sel ? ofId(s, s.sel) : null;
 }
 export const useSel = () => useStore(selOf);
 
@@ -221,13 +218,13 @@ export function select(id: string | null, fresh = false) {
   const s = get();
   const m = modelOf(s);
   const node = !!id && m.node.has(id) && s.mode !== 'propose'; // sketching needs the whole map
-  const st = s.story && !fresh && node ? storyOf({ ...s, sel: [id!] }) : null;
-  if (st) return set({ sel: [id!], hover: null, form: null });
-  set({ sel: id ? [id] : [], story: node ? id : null, hover: null, form: null });
+  const st = s.story && !fresh && node ? storyOf({ ...s, sel: id! }) : null;
+  if (st) return set({ sel: id!, hover: null, form: null });
+  set({ sel: id, story: node ? id : null, hover: null, form: null });
 }
 
 export function setMode(mode: Mode) {
-  set({ mode, connectFrom: null, form: null, ...(mode === 'propose' ? { sel: [], pslug: null, editing: false } : {}) });
+  set({ mode, connectFrom: null, form: null, ...(mode === 'propose' ? { sel: null, pslug: null, editing: false } : {}) });
 }
 
 // ---- proposals ----
@@ -246,7 +243,7 @@ export function newProposal() {
     i = 2;
   while (taken.has(slug)) slug = `untitled-${i++}`;
   const p: Proposal = { slug, name: 'Untitled', status: 'open', updated: today(), body: '', modules: [], nodes: [], edges: [] };
-  set({ proposals: [...s.proposals, p], pslug: slug, editing: true, sel: [] });
+  set({ proposals: [...s.proposals, p], pslug: slug, editing: true, sel: null });
   persistProposal(slug, 0);
 }
 
@@ -268,7 +265,7 @@ export function proposeNode(box: string, label: string, kind: string, method: st
   if (external) n.external = true;
   if (method && entry) n.method = method;
   updateProposal(p.slug, { nodes: [...(p.nodes ?? []), n] });
-  set({ form: null, sel: [id] });
+  set({ form: null, sel: id });
 }
 
 export function proposeModule(label: string) {
@@ -277,7 +274,7 @@ export function proposeModule(label: string) {
   const id = uniqueNewId('new:mod:' + label, p);
   const m: Loose = { id, label };
   updateProposal(p.slug, { modules: [...(p.modules ?? []), m] });
-  set({ form: null, sel: [id] });
+  set({ form: null, sel: id });
 }
 
 export function proposeEdge(from: string, to: string) {

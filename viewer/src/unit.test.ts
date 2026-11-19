@@ -41,10 +41,10 @@ describe('model on the shop fixture', () => {
   });
 
   test('paths stop at external nodes unless one is selected', () => {
-    const S = selectionOf(m, ['page:/checkout'])!;
+    const S = selectionOf(m, 'page:/checkout')!;
     expect(S.nodes.has('table:orders')).toBe(true);
     expect(S.nodes.has('go:shop/internal/payments.(*Handler).HandleWebhook')).toBe(false);
-    const X = selectionOf(m, ['ext:stripe'])!;
+    const X = selectionOf(m, 'ext:stripe')!;
     expect(X.nodes.has('go:shop/internal/payments.(*Handler).HandleWebhook')).toBe(true);
   });
 
@@ -81,12 +81,12 @@ describe('public rows', () => {
 
   test('a path keeps its internal rows', () => {
     const m = buildModel(g, null);
-    const S = selectionOf(m, ['go:shop/internal/orders.(*Service).Place'])!;
+    const S = selectionOf(m, 'go:shop/internal/orders.(*Service).Place')!;
     expect(S.path.has('go:shop/internal/orders.(*Repo).Insert')).toBe(true);
     expect(S.path.has('go:shop/internal/orders.(CreateOrder).Total')).toBe(false); // leads nowhere: folded
     expect(S.path.has('go:shop/internal/orders.writeJSON')).toBe(false);
     // selecting a module doesn't open up its internals
-    expect(selectionOf(m, ['mod:go:shop/internal/orders'])!.path.size).toBe(0);
+    expect(selectionOf(m, 'mod:go:shop/internal/orders')!.path.size).toBe(0);
   });
 });
 
@@ -128,17 +128,17 @@ describe('traces on a big codebase', () => {
   const id = (s: string) => 'go:x/a.' + s;
 
   test('a selection stops at wide calls, utilities and shared functions', () => {
-    const S = selectionOf(m, [id('h')])!;
+    const S = selectionOf(m, id('h'))!;
     expect(S.nodes.has(id('save'))).toBe(true);
     expect(S.nodes.has(id('getEngine'))).toBe(false); // support code isn't part of a trace
     expect(S.nodes.has(id('E1'))).toBe(false);
     expect(S.nodes.has(id('deep'))).toBe(false);
     // and going up, a wide call isn't a caller of each implementation
-    expect(selectionOf(m, [id('E3')])!.nodes.has(id('h'))).toBe(false);
+    expect(selectionOf(m, id('E3'))!.nodes.has(id('h'))).toBe(false);
   });
 
   test('a selection still reaches effects below the depth limit', () => {
-    const S = selectionOf(m, [id('h')])!;
+    const S = selectionOf(m, id('h'))!;
     expect(S.nodes.has(id('step5'))).toBe(false);
     expect(S.nodes.has('table:u')).toBe(true);
     const e = S.extra.find((x) => x.to === 'table:u' && x.from === id('step4'))!;
@@ -211,7 +211,7 @@ describe('the part map', () => {
 
   test('one layout: selecting changes what is lit, never where things are', () => {
     const before = JSON.stringify([...P.at]);
-    selectionOf(m, ['route:POST /orders']);
+    selectionOf(m, 'route:POST /orders');
     expect(JSON.stringify([...partsOf(m).at])).toBe(before);
   });
 });

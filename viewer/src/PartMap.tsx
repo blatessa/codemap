@@ -75,7 +75,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   const [dragging, setDragging] = useState(false);
 
   const lit = useMemo(() => litFor(m, S, P, hover), [m, S, P, hover]);
-  const selThings = useMemo(() => new Set(sel.map((id) => P.thingOf(id) ?? id)), [sel, P]);
+  const selThings = useMemo(() => new Set(sel ? [P.thingOf(sel) ?? sel] : []), [sel, P]);
 
   // ---- camera ----
   // the map's visible width: the panel covers its right side when it's open
@@ -105,7 +105,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   // The camera moves only when something new is selected and what it lights
   // isn't all on screen: then it frames it, beside the panel. A story's
   // steps, hovering and the rest never move it.
-  const focusKey = story ?? (sel.length === 1 ? sel[0] : '');
+  const focusKey = story ?? sel ?? '';
   useEffect(() => {
     if (!focusKey || !lit) return;
     const rs = [...lit.things].map((t) => P.at.get(t)).filter((x): x is Rect => !!x);
@@ -174,9 +174,9 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
     if (drag.current?.moved) return;
     const t = e.target as Element;
     const add = (t.closest('[data-add]') as HTMLElement | null)?.dataset.add;
-    if (add) return setState({ form: { type: 'fn', box: add }, sel: [], connectFrom: null });
+    if (add) return setState({ form: { type: 'fn', box: add }, sel: null, connectFrom: null });
     const id = target(t);
-    if (!id) return setState({ sel: [], form: null, connectFrom: null });
+    if (!id) return setState({ sel: null, form: null, connectFrom: null });
     select(id);
   };
   const onPointerOver = (e: React.PointerEvent) => {

@@ -91,7 +91,7 @@ function goTo(id: string) {
   const s = getState();
   const m = s.graph;
   if (!(m.nodes ?? []).some((n) => n.id === id) && !(m.modules ?? []).some((x) => x.id === id)) return;
-  setState({ sel: [id], form: null, hover: null });
+  setState({ sel: id, form: null, hover: null });
 }
 
 const refText = (r: Ref) => (r.method ? r.method + ' ' : '') + r.label;

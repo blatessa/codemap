@@ -39,7 +39,7 @@ function useMapCommands(): Cmd[] {
   const spec = useCompare((c) => c.spec);
   const propose = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
   return [
-    { id: 'addmod', label: 'Propose a new module', run: () => setState({ form: { type: 'mod' }, sel: [], connectFrom: null }), off: !propose || ro },
+    { id: 'addmod', label: 'Propose a new module', run: () => setState({ form: { type: 'mod' }, sel: null, connectFrom: null }), off: !propose || ro },
     { id: 'fit', label: 'Fit map to screen', hint: '0', run: fit },
     { id: 'proposals', label: 'Proposals', run: () => setMode('propose') },
     ...presets(revs).map((p) => ({ id: 'cmp-' + p.id, label: 'Compare: ' + p.label, run: () => void compare(p.from, p.to) })),
@@ -279,8 +279,8 @@ export function App() {
   const status = useStore((s) => s.status);
   const error = useStore((s) => s.error);
   const comparing = useCompare((c) => !!c.spec);
-  const summary = useStore((s) => comparing && !s.sel.length && !s.form && s.mode === 'explore');
-  const drawerOpen = useStore((s) => s.sel.length > 0 || !!s.form || s.mode === 'propose') || summary;
+  const summary = useStore((s) => comparing && !s.sel && !s.form && s.mode === 'explore');
+  const drawerOpen = useStore((s) => !!s.sel || !!s.form || s.mode === 'propose') || summary;
   const [menu, setMenu] = useState<Menu | null>(null);
   const m = useModel();
   useEffect(() => {
@@ -297,11 +297,11 @@ export function App() {
       const s = getState();
       if (s.connectFrom) return setState({ connectFrom: null });
       if (t.id === 'p-body' || t.id === 'pl-q') return;
-      if (!s.sel.length && !s.form && s.mode === 'propose' && s.pslug) return setState({ pslug: null, editing: false });
-      if (!s.sel.length && !s.form && s.mode === 'propose') return setMode('explore');
+      if (!s.sel && !s.form && s.mode === 'propose' && s.pslug) return setState({ pslug: null, editing: false });
+      if (!s.sel && !s.form && s.mode === 'propose') return setMode('explore');
       // a step of a story goes back to the story
-      if (s.story && s.sel[0] !== s.story && storyOf(s)) return setState({ sel: [s.story], form: null, hover: null });
-      setState({ sel: [], form: null, hover: null });
+      if (s.story && s.sel !== s.story && storyOf(s)) return setState({ sel: s.story, form: null, hover: null });
+      setState({ sel: null, form: null, hover: null });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
