@@ -389,10 +389,6 @@ kbd,.kbd{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px 
 /* panel: heading, sections, type */
 .drawer{gap:0}
 .drawer>*+*{margin-top:14px}
-.dtitle{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.ktag{font-size:11px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 6px;line-height:18px}
-.ktag.plan{color:var(--plan);border-color:var(--plan)}
-.summary{font-size:12.5px;color:var(--muted);margin-top:4px}
 .sec{border-top:1px solid var(--line);padding-top:12px;margin-top:18px}
 .sec h3{font-size:12.5px;font-weight:600;margin:0 0 8px;color:var(--ink);display:flex;gap:8px;align-items:baseline}
 .sec h3 .cnt{font-weight:400;color:var(--muted);font-size:12px}
@@ -415,12 +411,12 @@ kbd,.kbd{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px 
 .itable{display:flex;flex-direction:column}
 .irow{padding:7px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
 .irow:last-child{border-bottom:0}
-.ihead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.ihead{display:flex;align-items:baseline;gap:6px}
 .iname{all:unset;cursor:pointer;font-family:var(--mono);font-size:12.5px;font-weight:500}
 .iname:hover{color:var(--accent)}
 .irow.prop .iname{color:var(--plan)}
 .ihead .fx{text-align:right}
-.ivia{margin-top:2px}
+.ivia{margin-top:2px;padding-left:20px}
 .ivia .ents{color:var(--muted)}
 .ivia .ent{color:var(--muted)}
 
@@ -446,3 +442,26 @@ details.test .code{margin:4px 0 8px}
 /* the fields renderer's headings (Columns, …) as sections */
 .drawer .eyebrow{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:600;color:var(--ink)}
 .drawer .eyebrow.plan{color:var(--plan)}
+
+.drawer h2.db{color:var(--db)}.drawer h2.http{color:var(--http)}.drawer h2.queue{color:var(--queue)}.drawer h2.plan{color:var(--plan)}
+.itog{all:unset;cursor:pointer;width:14px;color:var(--muted);font-size:11px;text-align:center}
+.itog:hover{color:var(--ink)}
+.iflow{padding:4px 0 2px 14px}
+
+.uverb{font-size:11.5px;color:var(--muted)}
+.uverb.writes{color:var(--db);font-weight:500}
+.uq{padding:2px 0 0 0;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.uq.wrap{white-space:pre-wrap;word-break:break-word}
+.irow .ivia{padding-left:0}
+.irow:has(.itog) .ivia{padding-left:20px}
+.none.from{margin-top:6px;font-family:var(--mono);font-size:11px}
+
+/* the kind above a panel's name */
+.kind{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;color:var(--muted);margin-bottom:3px}
+.kind i{width:8px;height:8px;border-radius:2px;background:var(--muted);flex:none}
+.kind.db{color:var(--db)}.kind.db i{background:var(--db)}
+.kind.http{color:var(--http)}.kind.http i{background:var(--http)}
+.kind.queue{color:var(--queue)}.kind.queue i{background:var(--queue)}
+.kind.entry{color:var(--accent)}.kind.entry i{background:var(--accent)}
+.kind.plan{color:var(--plan)}.kind.plan i{background:var(--plan)}
+.drawer h2.entry,.drawer h2.fn{color:var(--ink)}

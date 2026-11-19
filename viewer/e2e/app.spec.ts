@@ -62,7 +62,7 @@ test('the map is parts and how they talk; selecting lights things where they are
   await page.mouse.move(5, 940);
   // a feature: the panel tells its story, the map lights its parts in place
   await search(page, '/checkout');
-  await expect(page.locator('#drawer h2')).toHaveText('/checkout');
+  await expect(page.locator('#drawer h2')).toHaveText('PAGE /checkout');
   await expect(page.locator('#drawer .trow.eff', { hasText: 'PlaceOrderButton.onClick' })).toContainText('fetches POST /orders');
   await expect(box(page, ORDERS)).toHaveClass(/\btouched\b/);
   await expect(node(page, 'table:orders')).toHaveClass(/\btouched\b/);
@@ -74,7 +74,7 @@ test('the map is parts and how they talk; selecting lights things where they are
   await expect(box(page, ORDERS)).toHaveClass(/\bmsel\b/);
   expect(await page.locator('#map > g').getAttribute('transform')).toBe(view);
   await page.keyboard.press('Escape');
-  await expect(page.locator('#drawer h2')).toHaveText('/checkout');
+  await expect(page.locator('#drawer h2')).toHaveText('PAGE /checkout');
   // a table: what writes it and what reads it
   await node(page, 'table:orders').click();
   await expect(page.locator('#drawer h2')).toHaveText('orders');
@@ -106,8 +106,11 @@ test('a part: its connections, why they exist, what starts it and what it does',
   await expect(d.locator('#conn-calls')).toContainText('Service.Place'); // its own code without the part
   await expect(d.locator('#conn-calls')).toContainText('payments.Client.Charge');
   await expect(d.locator('.ent', { hasText: 'POST /orders' })).toBeVisible();
-  // its interface: what other parts use, each with what it reaches
-  await expect(d.locator('.irow', { hasText: 'Service.MarkPaid' })).toContainText('writes orders');
+  // its interface: what other parts use, the entry points through each, and its flow
+  const markPaid = d.locator('.irow', { hasText: 'Service.MarkPaid' });
+  await expect(markPaid).toContainText('POST /webhooks/stripe');
+  await markPaid.locator('.itog').click();
+  await expect(markPaid.locator('.iflow')).toContainText('writes orders');
   await d.locator('.iname', { hasText: 'Handler.Create' }).click();
   await expect(d.locator('h2')).toHaveText('Handler.Create');
 });

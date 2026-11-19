@@ -3,7 +3,7 @@
 // in the sans face.
 import { useState, type ReactNode } from 'react';
 import { Source } from '../Code';
-import { qn, sharedFn, testsReaching, type Effect, type Model } from '../model';
+import { qn, sharedFn, testsReaching, type Model } from '../model';
 import { select, setState, storyOf, useStore } from '../store';
 
 // Section is one part of a panel: a one-word title, an optional count, a rule above.
@@ -19,17 +19,21 @@ export const Section = ({ title, count, children }: { title: string; count?: Rea
 
 export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-// Head names the thing: its name, a tag saying what kind of thing it is, and
-// a summary line of facts.
-export function Head({ kind, plan, title, summary, children }: { kind: string; plan?: boolean; title: string; summary?: ReactNode; children?: ReactNode }) {
+// Head names the thing: what kind it is, in the map's colour for that kind
+// ("Table", "Route", "Function · internal/orders"), then its name the way the
+// map writes it ("POST /orders", "PAGE /checkout"). `cls` is db, http, queue,
+// entry or fn.
+export function Head({ kind, plan, title, cls, children }: { kind?: string; plan?: boolean; title: string; cls?: string; children?: ReactNode }) {
   return (
     <div className="dhead">
       <div>
-        <div className="dtitle">
-          <h2>{title}</h2>
-          <span className={`ktag ${plan ? 'plan' : ''}`}>{kind}</span>
-        </div>
-        {summary && <div className="summary">{summary}</div>}
+        {kind && (
+          <div className={`kind ${plan ? 'plan' : (cls ?? 'fn')}`}>
+            <i />
+            {kind}
+          </div>
+        )}
+        <h2 className={`${cls ?? ''} ${plan ? 'plan' : ''}`}>{title}</h2>
         {children}
       </div>
       <button className="x" aria-label="Close" onClick={() => setState({ sel: null, form: null, connectFrom: null })}>
@@ -38,10 +42,6 @@ export function Head({ kind, plan, title, summary, children }: { kind: string; p
     </div>
   );
 }
-
-// facts joins summary facts with a middle dot, dropping empty ones.
-export const facts = (...xs: (string | false | 0 | undefined)[]) => xs.filter(Boolean).join(' · ');
-export const plural = (n: number, one: string, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 
 // onPath is what an entry point's tests are checked against, as in codemap
 // show: the code on the path, without shared functions (they're on every path)
@@ -123,34 +123,6 @@ export function Entries({ m, ids, max = Infinity }: { m: Model; ids: string[]; m
           +{ids.length - shown.length}
         </button>
       )}
-    </span>
-  );
-}
-
-const VERBS = ['writes', 'reads', 'renders', 'publishes', 'calls', 'fetches'];
-
-// Fx is what something reaches, in the map's colours: "writes orders · calls api.stripe.com".
-export function Fx({ m, fs }: { m: Model; fs: Effect[] }) {
-  if (!fs.length) return null;
-  const by = new Map<string, string[]>();
-  for (const f of fs) (by.get(f.type) ?? by.set(f.type, []).get(f.type)!).push(f.to);
-  return (
-    <span className="fx">
-      {VERBS.filter((v) => by.has(v)).map((v, i) => (
-        <span key={v}>
-          {i > 0 && ' · '}
-          <span className="fv">{v === 'renders' ? 'shows' : v}</span>{' '}
-          {by.get(v)!.map((t, j) => {
-            const r = m.node.get(t)?.row;
-            return (
-              <span key={t} className={`ft ${r?.tagClass ?? ''}`}>
-                {j > 0 && ', '}
-                {r ? (r.prefix ? r.prefix + ' ' : '') + r.label : t}
-              </span>
-            );
-          })}
-        </span>
-      ))}
     </span>
   );
 }

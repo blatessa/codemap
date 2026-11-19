@@ -5,6 +5,7 @@ import { classify, humanize, isBlockKind } from './fields';
 import type { Model } from './model';
 import { qn } from './model';
 import { select } from './store';
+import { Section } from './panel/common';
 
 type O = Record<string, unknown>;
 const text = (v: unknown) => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v));
@@ -158,10 +159,9 @@ export function Fields({ m, fields, skip = [] }: { m: Model; fields?: O; skip?: 
     if (isBlockKind(kind)) {
       flush();
       out.push(
-        <div key={k}>
-          <p className="eyebrow">{humanize(k)}</p>
+        <Section key={k} title={humanize(k)}>
           <Value m={m} v={v} depth={0} />
-        </div>,
+        </Section>,
       );
     } else
       facts.push(

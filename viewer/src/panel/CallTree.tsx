@@ -29,9 +29,18 @@ function items(m: Model, rows: TreeRow[]): Item[] {
 export function CallTree({ m, id }: { m: Model; id: string }) {
   const t = trace(m, id);
   if (!t.rows.length && !t.reaches.length) return null;
-  const verb = (type: string) => (type === 'renders' ? 'shows' : type);
   return (
     <Section title="Flow">
+      <Tree m={m} id={id} />
+    </Section>
+  );
+}
+
+// Tree is the call tree itself, for Flow and for a part's Interface rows.
+export function Tree({ m, id }: { m: Model; id: string }) {
+  const t = trace(m, id);
+  const verb = (type: string) => (type === 'renders' ? 'shows' : type);
+  return (
       <div className="tree">
         {t.reaches.length > 0 && (
           <div className="trow sup">
@@ -91,6 +100,5 @@ export function CallTree({ m, id }: { m: Model; id: string }) {
           );
         })}
       </div>
-    </Section>
   );
 }

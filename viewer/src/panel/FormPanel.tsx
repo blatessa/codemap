@@ -28,7 +28,7 @@ export function FormPanel({ m }: { m: Model }) {
   const cancel = () => setState({ form: null });
   return (
     <div onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && submit()} style={{ display: 'contents' }}>
-      <Head kind="new" plan title={form.type === 'mod' ? 'New module' : b?.label ?? ''} />
+      <Head kind="Propose" plan title={form.type === 'mod' ? 'New module' : b?.label ?? ''} />
       {form.type === 'mod' ? null : (
         <>
           <label className="field">

@@ -2,12 +2,14 @@
 // what other parts use: entry points and functions called from outside, each
 // with what it reaches and the entry points that come through it. A folder
 // lists its parts too.
+import { useState } from 'react';
 import type { Model } from '../model';
 import { isFolder, type Parts } from '../parts';
 import { select, toggleFolder, useStore } from '../store';
-import { Section, Head, Tests, Entries, Fx, facts, plural } from './common';
+import { Section, Head, Tests, Entries } from './common';
+import { Tree } from './CallTree';
 import { Diagram } from './Diagram';
-import { connectionsOf, entryPointsOf, membersOf } from './connections';
+import { membersOf } from './connections';
 
 export function GroupPanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   const folder = isFolder(id);
@@ -23,17 +25,9 @@ export function GroupPanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   });
   const isEntry = (x: string) => !!m.node.get(x)!.row.node.entry;
   surface.sort((a, b) => Number(isEntry(b)) - Number(isEntry(a)) || m.node.get(a)!.row.label.localeCompare(m.node.get(b)!.row.label));
-  const entries = entryPointsOf(m, P, id);
-  const tables = connectionsOf(m, P, id).out.filter((c) => c.cls === 'db').length;
-  const summary = facts(
-    folder ? plural(parts.length, 'part') : plural(members.size, 'function'),
-    surface.length > 0 && `${surface.length} used by other parts`,
-    entries.length > 0 && plural(entries.length, 'entry point'),
-    tables > 0 && `uses ${plural(tables, 'table')}`,
-  );
   return (
     <>
-      <Head kind={box?.prop ? 'proposed part' : folder ? 'folder' : 'part'} plan={box?.prop} title={folder ? path + '/' : path} summary={summary} />
+      <Head kind={box?.prop ? 'Proposed part' : folder ? `Folder · ${parts.length} parts` : 'Part'} plan={box?.prop} title={folder ? path + '/' : path} />
       {box?.doc && <p className="doc">{box.doc}</p>}
       {folder && (
         <div className="btns">
@@ -43,28 +37,12 @@ export function GroupPanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
         </div>
       )}
       <Diagram m={m} P={P} id={id} />
-      <Section title="Interface" count={surface.length ? `${surface.length} of ${members.size}` : undefined}>
+      <Section title="Interface">
         {surface.length ? (
           <div className="itable">
-            {surface.map((x) => {
-              const r = m.node.get(x)!.row;
-              const via = r.node.entry ? [] : m.walk.entries(x).filter((e) => !members.has(e));
-              return (
-                <div key={x} className={`irow ${r.prop ? 'prop' : ''}`}>
-                  <div className="ihead">
-                    <button className="iname" data-node={x} onClick={() => select(x)}>
-                      {r.prefix ? r.prefix + ' ' + r.label : r.label}
-                    </button>
-                    <Fx m={m} fs={m.walk.effects(x)} />
-                  </div>
-                  {via.length > 0 && (
-                    <div className="ivia">
-                      <Entries m={m} ids={via} max={3} />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {surface.map((x) => (
+              <IRow key={x} m={m} id={x} members={members} />
+            ))}
           </div>
         ) : (
           <p className="none">Nothing outside uses it</p>
@@ -83,9 +61,39 @@ export function GroupPanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
       )}
       {!folder && !box?.prop && (
         <Section title="Tests">
-          <Tests m={m} ids={surface} />
+          <Tests m={m} ids={[...members].filter((x) => !m.node.get(x)?.row.role)} />
         </Section>
       )}
     </>
+  );
+}
+
+// IRow is one function other parts use: its name, the entry points that come
+// through it, and, opened, its flow as a tree.
+function IRow({ m, id, members }: { m: Model; id: string; members: Set<string> }) {
+  const [open, setOpen] = useState(false);
+  const r = m.node.get(id)!.row;
+  const via = r.node.entry ? [] : m.walk.entries(id).filter((e) => !members.has(e));
+  return (
+    <div className={`irow ${r.prop ? 'prop' : ''} ${open ? 'open' : ''}`}>
+      <div className="ihead">
+        <button className="itog" aria-label={open ? 'Hide its flow' : 'Show its flow'} aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? '▾' : '▸'}
+        </button>
+        <button className="iname" data-node={id} onClick={() => select(id)}>
+          {r.prefix ? r.prefix + ' ' + r.label : r.label}
+        </button>
+      </div>
+      {via.length > 0 && (
+        <div className="ivia">
+          <Entries m={m} ids={via} max={3} />
+        </div>
+      )}
+      {open && (
+        <div className="iflow">
+          <Tree m={m} id={id} />
+        </div>
+      )}
+    </div>
   );
 }

@@ -8,7 +8,7 @@ import { Fields } from '../Fields';
 import { screenRoot, qn, type MEdge, type Model } from '../model';
 import type { Parts } from '../parts';
 import { currentProposal, moveNode, proposeEdge, removeProposalNode, select, setState, useSel, useStore } from '../store';
-import { Section, Head, Tests, onPath, Crumbs, Entries, facts, plural } from './common';
+import { Section, Head, Tests, onPath, Crumbs, Entries, cap } from './common';
 import { CallTree } from './CallTree';
 import { ScreenOutline } from './ScreenOutline';
 import { Diagram } from './Diagram';
@@ -78,15 +78,9 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   const connecting = useStore((s) => s.connectFrom === id);
   const { row, box } = m.node.get(id)!;
   const n = row.node;
-  const method = typeof n.fields?.method === 'string' ? (n.fields.method as string).toUpperCase() : '';
-  // what it is, and a line of facts: where code lives; who uses data
-  const kind = row.ghost ? 'missing' : (row.prop ? 'proposed ' : '') + n.kind;
-  const inn = m.all.inn.get(id) ?? [];
-  const count = (t: string) => new Set(inn.filter((e) => e.type === t).map((e) => e.from)).size;
+  // named as on the map: "POST /orders", "PAGE /checkout", a table in its colour
+  const title = row.prefix ? `${row.prefix} ${row.label}` : row.label;
   const entries = !n.entry && !n.external && !row.ghost ? entryPointsOf(m, P, id) : [];
-  const summary = n.external
-    ? facts(count('writes') > 0 && `written by ${plural(count('writes'), 'function')}`, count('reads') > 0 && `read by ${plural(count('reads'), 'function')}`, count('publishes') > 0 && `published by ${plural(count('publishes'), 'function')}`, count('calls') > 0 && `called by ${plural(count('calls'), 'function')}`)
-    : facts(!row.ghost && box.label, entries.length > 0 && plural(entries.length, 'entry point'));
   let does: ReactNode = null;
   if (n.external) does = <Uses m={m} id={id} />;
   else if (!row.ghost)
@@ -98,7 +92,12 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
     );
   return (
     <>
-      <Head kind={kind} plan={row.prop} title={method && !row.label.startsWith(method) ? `${method} ${row.label}` : row.label} summary={summary}>
+      <Head
+        kind={(row.ghost ? 'Missing ' : row.prop ? 'Proposed ' : '') + (row.ghost ? n.kind : cap(n.kind === 'route' ? 'route' : n.kind)) + (!n.external && !n.entry && !row.ghost ? ' · ' + box.label : '')}
+        plan={row.prop || row.ghost}
+        title={title}
+        cls={row.tagClass || (n.entry ? 'entry' : 'fn')}
+      >
         <Where file={n.file} line={n.line} />
       </Head>
       <Crumbs m={m} id={id} />
@@ -133,7 +132,8 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
         </Section>
       )}
       {does}
-      <Fields m={m} fields={n.fields} skip={['method']} />
+      <Fields m={m} fields={n.fields} skip={['method', 'source']} />
+      {Array.isArray(n.fields?.source) && <p className="none from">Defined in {(n.fields!.source as string[]).join(', ')}</p>}
       {!n.external && n.file && n.line ? (
         <Section title="Source">
           <Source file={n.file} from={n.line} to={n.endLine} />
@@ -148,65 +148,103 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   );
 }
 
-const USE_VERB: Record<string, string> = { writes: 'writes', reads: 'reads', publishes: 'publishes', calls: 'calls', fetches: 'fetches', renders: 'shows' };
+// what a table, topic or service is used by, a section per kind of use
+const USES: [string, string][] = [
+  ['writes', 'Writes'],
+  ['reads', 'Reads'],
+  ['publishes', 'Published by'],
+  ['calls', 'Called by'],
+  ['fetches', 'Fetched by'],
+  ['renders', 'Shown by'],
+];
 
-// Uses is what a table, topic or service is used for: by entry point, the
-// code that writes, reads, publishes or calls it, with the query or call;
-// then, for a topic or webhook, what it runs.
+// Uses is what a table, topic or service is used by, a section per kind of
+// use (Writes, Reads, Published by, Called by): one row per function, its
+// query or call on one line, and the entry points that come through it. Then,
+// for a topic or webhook, what it runs.
 function Uses({ m, id }: { m: Model; id: string }) {
   const inn = m.all.inn.get(id) ?? [],
     out = m.all.out.get(id) ?? [];
   const by = new Map<string, MEdge[]>();
   for (const e of inn) {
-    const f = m.node.get(e.from)?.row.node;
-    const ents = f?.entry ? [e.from] : m.walk.entries(e.from);
-    for (const x of ents.length ? ents : ['']) (by.get(x) ?? by.set(x, []).get(x)!).push(e);
+    const k = e.type + '\0' + e.from;
+    (by.get(k) ?? by.set(k, []).get(k)!).push(e);
   }
-  const groups = [...by].sort(([a], [b]) => (a ? 0 : 1) - (b ? 0 : 1) || qn(m, a).localeCompare(qn(m, b)));
+  const rows = [...by.values()].sort((a, b) => qn(m, a[0].from).localeCompare(qn(m, b[0].from)));
+  const known = new Set(USES.map(([t]) => t));
   return (
     <>
-      <Section title="Uses">
-        {groups.length ? (
-          <div className="uses">
-            {groups.map(([ent, es]) => (
-              <div key={ent} className="use">
-                {ent ? (
-                  <button className="ent" data-node={ent} onClick={() => select(ent)}>
-                    {qn(m, ent)}
-                  </button>
-                ) : (
-                  <span className="none">No entry point</span>
-                )}
-                {es.map((e) => (
-                  <div key={e.i} className="dcall">
-                    <button className="lnk" data-node={e.from} onClick={() => select(e.from)}>
-                      {qn(m, e.from)}
-                    </button>
-                    <span className="dv">{USE_VERB[e.type] ?? e.type}</span>
-                    {e.detail && <span className="q">{e.detail}</span>}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        ) : (
+      {!rows.length && (
+        <Section title="Uses">
           <p className="none">Nothing uses it</p>
-        )}
-      </Section>
+        </Section>
+      )}
+      {USES.map(([t, title]) => {
+        const mine = rows.filter((es) => es[0].type === t);
+        return mine.length ? (
+          <Section key={t} title={title}>
+            <div className="itable">
+              {mine.map((es) => (
+                <UseRow key={es[0].from} m={m} es={es} />
+              ))}
+            </div>
+          </Section>
+        ) : null;
+      })}
+      {rows.some((es) => !known.has(es[0].type)) && (
+        <Section title="Other uses">
+          <div className="itable">
+            {rows
+              .filter((es) => !known.has(es[0].type))
+              .map((es) => (
+                <UseRow key={es[0].type + es[0].from} m={m} es={es} />
+              ))}
+          </div>
+        </Section>
+      )}
       {out.length > 0 && (
         <Section title="Runs">
-          <div className="uses">
+          <div className="itable">
             {out.map((e) => (
-              <div key={e.i} className="dcall">
-                <span className="dv">{e.type === 'subscribes' ? 'handled by' : 'calls'}</span>
-                <button className="lnk" data-node={e.to} onClick={() => select(e.to)}>
-                  {qn(m, e.to)}
-                </button>
+              <div key={e.i} className="irow">
+                <div className="ihead">
+                  <span className="uverb">{e.type === 'subscribes' ? 'handled by' : 'calls'}</span>
+                  <button className="iname" data-node={e.to} onClick={() => select(e.to)}>
+                    {qn(m, e.to)}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         </Section>
       )}
     </>
+  );
+}
+
+function UseRow({ m, es }: { m: Model; es: MEdge[] }) {
+  const [wrap, setWrap] = useState(false);
+  const e = es[0];
+  const f = m.node.get(e.from)?.row.node;
+  const via = f?.entry ? [] : m.walk.entries(e.from);
+  const details = [...new Set(es.map((x) => x.detail).filter((d): d is string => !!d))];
+  return (
+    <div className="irow">
+      <div className="ihead">
+        <button className="iname" data-node={e.from} onClick={() => select(e.from)}>
+          {qn(m, e.from)}
+        </button>
+      </div>
+      {details.map((d) => (
+        <div key={d} className={`uq ${wrap ? 'wrap' : ''}`} title={wrap ? undefined : d} onClick={() => setWrap(!wrap)}>
+          {d}
+        </div>
+      ))}
+      {via.length > 0 && (
+        <div className="ivia">
+          <Entries m={m} ids={via} max={3} />
+        </div>
+      )}
+    </div>
   );
 }
