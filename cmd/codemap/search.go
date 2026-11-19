@@ -43,7 +43,7 @@ func tierOf(ix *graph.Index, id string) int {
 		return 0
 	case n.External:
 		return 1
-	case cli.RoleOf(ix, id) != "":
+	case ix.RoleOf(id) != "":
 		return 4
 	}
 	return 3

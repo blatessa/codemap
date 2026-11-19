@@ -273,48 +273,6 @@ func hasMore(ix *graph.Index, id string, up bool) bool {
 	return len(ix.Out[id]) > 0
 }
 
-// UpTree is Index.Tree over incoming edges: what calls start, and what calls
-// that, expanding each node once. External nodes are leaves.
-func UpTree(ix *graph.Index, start string, maxDepth int) *graph.TreeNode {
-	seen := map[string]bool{start: true}
-	var build func(id string, depth int) []*graph.TreeNode
-	build = func(id string, depth int) []*graph.TreeNode {
-		if maxDepth > 0 && depth >= maxDepth {
-			return nil
-		}
-		out := ix.TreeRowsUp(ix.In[id])
-		for _, t := range out {
-			if t.Targets != nil {
-				continue
-			}
-			if seen[t.ID] {
-				t.Seen = true
-			} else {
-				seen[t.ID] = true
-				if n := ix.Node[t.ID]; n == nil || !n.External {
-					t.Children = build(t.ID, depth+1)
-				}
-			}
-		}
-		return out
-	}
-	return &graph.TreeNode{ID: start, Children: build(start, 0)}
-}
-
-// TreeIDs returns the IDs of the nodes in a tree.
-func TreeIDs(t *graph.TreeNode) []string {
-	var out []string
-	var walk func(t *graph.TreeNode)
-	walk = func(t *graph.TreeNode) {
-		out = append(out, t.ID)
-		for _, c := range t.Children {
-			walk(c)
-		}
-	}
-	walk(t)
-	return out
-}
-
 // EffectSummary words a list of effects: "writes comment, issue · reads user ·
 // calls api.stripe.com".
 func EffectSummary(ix *graph.Index, effs []graph.Effect) string {

@@ -79,7 +79,10 @@ proposal".
 ## Development
 
 The viewer is in `viewer/` (React + Vite) and is built into
-`internal/web/dist`, which is committed so `go install` works without Node.
+`internal/web/dist`, which is committed so `go install` works without Node. The
+viewer's call trees, selections and test lists come from the Go code in
+`internal/graph`, compiled to WebAssembly (`cmd/codemap-wasm`); Vite and Vitest
+build it, so they need Go on the PATH.
 
 ```sh
 go test -short ./...                         # fast; drop -short to include git revision builds

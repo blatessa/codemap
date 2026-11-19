@@ -34,7 +34,7 @@ func (ix *Index) CommonEffects() map[Effect]bool {
 		count := map[Effect]int{}
 		n := 0
 		for _, nd := range ix.G.Nodes {
-			if !nd.Entry || nd.Kind == KindTest {
+			if !nd.Entry || nd.Kind == KindTest || nd.Proposed {
 				continue
 			}
 			n++
@@ -98,7 +98,7 @@ func NewIndex(g *Graph) *Index {
 		// Only code makes wide calls: a route's, job's or subscriber's edges
 		// to its middleware and handler share the registration's position
 		// but are separate calls.
-		if from := ix.Node[e.From]; e.Type == Calls && e.File != "" && e.Line > 0 && from != nil && (from.Kind == KindFunction || from.Kind == KindComponent) {
+		if from := ix.Node[e.From]; !e.Proposed && e.Type == Calls && e.File != "" && e.Line > 0 && from != nil && (from.Kind == KindFunction || from.Kind == KindComponent) {
 			k := siteKey{e.From, e.File, e.Line}
 			sites[k] = append(sites[k], e)
 		}
@@ -129,10 +129,15 @@ func (ix *Index) StopAtExternal(start string) Skip {
 	}
 }
 
-// StopAtExternalUp is StopAtExternal for upstream walks.
+// StopAtExternalUp is StopAtExternal for upstream walks. It also doesn't go
+// from code outside the frontend back into a page's own code: the page's
+// edge stands for that code's calls out of the frontend (FoldScreens).
 func (ix *Index) StopAtExternalUp(start string) Skip {
 	return func(e *Edge) bool {
 		if ix.Wide(e) {
+			return true
+		}
+		if OnScreen(ix.Node[e.From]) && !OnScreen(ix.Node[e.To]) {
 			return true
 		}
 		if e.To == start {
@@ -186,7 +191,7 @@ type TreeNode struct {
 	Seen     bool        `json:"seen,omitempty"` // already shown higher up; not expanded again
 	Children []*TreeNode `json:"children,omitempty"`
 	// Support counts the support rows left out below this one at the
-	// features detail level (cli.Features).
+	// features detail level (Features).
 	Support int `json:"support,omitempty"`
 	// Targets is set on a row standing for a wide call (see WideCall): the
 	// call may go to any of these, and the row isn't expanded. ID is "".
@@ -240,6 +245,9 @@ func (ix *Index) EffectsBeneath(id string) []Effect {
 		x := q[0]
 		q = q[1:]
 		for _, e := range ix.Out[x] {
+			if e.Proposed {
+				continue
+			}
 			if ix.IsEffect(e) {
 				if f := (Effect{e.To, e.Type}); !got[f] {
 					got[f] = true
@@ -426,7 +434,7 @@ func (ix *Index) TestsReaching(ids ...string) []TestReach {
 		// A table, service or topic is tested through the code that uses it.
 		if n := ix.Node[id]; n != nil && n.External {
 			for _, e := range ix.In[id] {
-				if e.Type != Fetches && !ix.Wide(e) {
+				if e.Type != Fetches && !ix.Wide(e) && !e.Proposed {
 					if from := ix.Node[e.From]; from != nil && !from.External && from.Kind != KindTest {
 						add(e.From)
 					}
@@ -441,7 +449,7 @@ func (ix *Index) TestsReaching(ids ...string) []TestReach {
 		for i := 0; i < len(frontier); i++ {
 			id := frontier[i]
 			for _, e := range ix.In[id] {
-				if e.Type != Calls && e.Type != Renders || ix.Wide(e) {
+				if e.Type != Calls && e.Type != Renders || ix.Wide(e) || e.Proposed {
 					continue
 				}
 				from := ix.Node[e.From]

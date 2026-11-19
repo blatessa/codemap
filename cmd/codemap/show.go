@@ -38,7 +38,7 @@ func runShow(w io.Writer, args []string) error {
 		return err
 	}
 	n := ix.Node[id]
-	tree := cli.Trace(ix, id)
+	tree := graph.Trace(ix, id)
 
 	// Entry points show the tests along the path shown; other nodes show the
 	// tests that reach them (as the viewer's details panel does).
@@ -46,9 +46,9 @@ func runShow(w io.Writer, args []string) error {
 	var tests []graph.TestReach
 	if n.Entry {
 		var onPath []string
-		for _, t := range cli.TreeIDs(tree) {
+		for _, t := range graph.TreeIDs(tree) {
 			// shared functions are on every path; their tests aren't this one's
-			if tn := ix.Node[t]; tn != nil && !tn.External && !cli.Shared(ix, t) {
+			if tn := ix.Node[t]; tn != nil && !tn.External && !ix.Shared(t) {
 				onPath = append(onPath, t)
 			}
 		}

@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { mockApi } from './mock/api.ts';
+import { wasmPlugin } from './scripts/wasm.ts';
 
 export default defineConfig(({ command }) => ({
-  plugins: [react(), ...(command === 'serve' && !process.env.CODEMAP_NO_MOCK ? [mockApi()] : [])],
+  plugins: [react(), wasmPlugin(), ...(command === 'serve' && !process.env.CODEMAP_NO_MOCK ? [mockApi()] : [])],
   base: './',
   build: {
     outDir: '../internal/web/dist',

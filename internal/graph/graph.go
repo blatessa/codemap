@@ -49,6 +49,9 @@ type Node struct {
 	Entry    bool           `json:"entry,omitempty"`
 	External bool           `json:"external,omitempty"`
 	Fields   map[string]any `json:"fields,omitempty"`
+	// Proposed marks a node an open proposal sketches. Extractors never set
+	// it; the viewer does when it draws a proposal over the code.
+	Proposed bool `json:"proposed,omitempty"`
 }
 
 // Edge connects two nodes. Type is one of the EdgeType constants or any other string.
@@ -60,6 +63,10 @@ type Edge struct {
 	File     string `json:"file,omitempty"`
 	Line     int    `json:"line,omitempty"`
 	Declared bool   `json:"declared,omitempty"`
+	// Proposed marks an edge an open proposal sketches (see Node.Proposed).
+	// Traces always show it, and it never counts towards wide calls, effects
+	// or tests.
+	Proposed bool `json:"proposed,omitempty"`
 }
 
 // Built-in edge types. Other strings are allowed.

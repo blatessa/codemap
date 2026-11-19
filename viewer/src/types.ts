@@ -23,6 +23,7 @@ export interface GNode {
   entry?: boolean;
   external?: boolean;
   fields?: Record<string, unknown>;
+  proposed?: boolean; // only in the graph the walks run over (model.walkGraph)
 }
 
 export interface GEdge {
@@ -33,6 +34,7 @@ export interface GEdge {
   file?: string;
   line?: number;
   declared?: boolean;
+  proposed?: boolean;
 }
 
 export interface Graph {

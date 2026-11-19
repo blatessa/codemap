@@ -1,8 +1,9 @@
 // Turns graph.json + .codemap state into what the map draws: boxes (modules,
 // blocks, proposed modules) holding rows (nodes), and the edges between rows.
-// Also the walks behind selection, call trees and test reach (graph/query.go).
+// Selection, call trees and test reach come from the Go walks (wasm.ts).
 import { blockFor } from './blocks';
 import type { Block, GEdge, GModule, GNode, Graph, Loose, Proposal } from './types';
+import { Walker, type Effect } from './wasm';
 
 export interface Row {
   id: string;
@@ -43,16 +44,10 @@ export interface MEdge {
   net: boolean;
   file?: string;
   line?: number;
-  wide?: number; // targets of this call's site, when more than WIDE_CALL
   // synthetic edges of a selection's trace: a call through a skipped
   // forwarding function, or an effect reached through code the trace hides
   synth?: 'skip' | 'reach';
 }
-
-// WIDE_CALL matches graph.WideCall: a call site with more targets than this (a
-// call through an interface or function value with many implementations) is
-// one step in traces, and isn't followed.
-export const WIDE_CALL = 4;
 
 export interface Model {
   boxes: Box[];
@@ -62,8 +57,11 @@ export interface Model {
   out: Map<string, MEdge[]>;
   inn: Map<string, MEdge[]>;
   tests: GNode[];
-  // the whole graph, tests included; wide holds edges of wide call sites
-  full: { out: Map<string, GEdge[]>; inn: Map<string, GEdge[]>; node: Map<string, GNode>; wide: Set<GEdge> };
+  // every node, tests included
+  full: { node: Map<string, GNode> };
+  // the graph's walks (graph.Trace and friends), over the graph with the
+  // proposal's sketch; edges are numbered as in all.edges
+  walk: Walker;
   all: { edges: MEdge[]; out: Map<string, MEdge[]>; inn: Map<string, MEdge[]> };
 }
 
@@ -71,28 +69,11 @@ export const roleOf = (n: GNode): string => (typeof n.fields?.role === 'string' 
 // sharedFn: widely used, with effects of its own or one call away (graph.AssignRoles): traces
 // show it but don't go into it
 export const sharedFn = (n: GNode): boolean => n.fields?.shared === true;
-// stops reports whether traces stop at a node: utilities and shared functions
-// are shown, but what they call isn't part of the trace
 // onScreen: frontend code that is part of a page (graph.FoldScreens). A
 // page's story shows what that code reaches, not the code.
 export const onScreen = (n?: GNode): boolean => n?.fields?.screen === true;
 // screenRoot: a screen itself, a router page or a top component.
 export const screenRoot = (n?: GNode): boolean => n?.fields?.screen_root === true;
-export const stops = (n: GNode): boolean => roleOf(n) === 'utility' || sharedFn(n);
-
-const codeKind = (n?: GNode): boolean => n?.kind === 'function' || n?.kind === 'component';
-
-// markWide: only code makes wide calls; a route's, job's or subscriber's edges
-// share the registration's position but are separate calls (graph.NewIndex).
-function markWide(edges: MEdge[], node: Map<string, GNode>) {
-  const sites = new Map<string, MEdge[]>();
-  for (const e of edges) {
-    if (e.type !== 'calls' || e.prop || !e.file || !e.line || !codeKind(node.get(e.from))) continue;
-    const k = e.from + '\0' + e.file + '\0' + e.line;
-    (sites.get(k) ?? sites.set(k, []).get(k)!).push(e);
-  }
-  for (const es of sites.values()) if (es.length > WIDE_CALL) for (const e of es) e.wide = es.length;
-}
 
 const ENTRY_PREFIX: Record<string, string> = { subscriber: 'SUB', command: 'CMD', function: 'MAIN', component: 'COMP' };
 
@@ -172,7 +153,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
   const push = (e: GEdge, prop: boolean) => {
     const a = node.get(e.from),
       b = node.get(e.to);
-    if (!a || !b) return;
+    if (!a || !b) return false;
     edges.push({
       i: edges.length,
       from: e.from,
@@ -185,8 +166,10 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
       file: e.file,
       line: e.line,
     });
+    return true;
   };
-  for (const e of gedges) push(e, false);
+  const rest: GEdge[] = []; // tests' edges
+  for (const e of gedges) if (!push(e, false)) rest.push(e);
 
   if (proposal) {
     for (const m of proposal.modules ?? []) {
@@ -235,7 +218,6 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
     }
     return { out: o, inn: n };
   };
-  markWide(edges, fullNode);
   const all = { edges, ...index(edges) };
   const { out, inn } = all;
   // external rows get a colour from how they're used, never from their kind
@@ -245,19 +227,6 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
     row.tagClass = types.has('reads') || types.has('writes') ? 'db' : types.has('publishes') || types.has('subscribes') ? 'queue' : 'http';
   }
 
-  const fullOut = new Map<string, GEdge[]>();
-  const fullInn = new Map<string, GEdge[]>();
-  const sites = new Map<string, GEdge[]>();
-  for (const e of gedges) {
-    (fullOut.get(e.from) ?? fullOut.set(e.from, []).get(e.from)!).push(e);
-    (fullInn.get(e.to) ?? fullInn.set(e.to, []).get(e.to)!).push(e);
-    if ((e.type || 'calls') === 'calls' && e.file && e.line && codeKind(fullNode.get(e.from))) {
-      const k = e.from + '\0' + e.file + '\0' + e.line;
-      (sites.get(k) ?? sites.set(k, []).get(k)!).push(e);
-    }
-  }
-  const wide = new Set<GEdge>();
-  for (const es of sites.values()) if (es.length > WIDE_CALL) for (const e of es) wide.add(e);
 
   // public rows: entry points, external nodes, and anything with an edge leaving
   // its box
@@ -278,9 +247,29 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
     b.hasEntry = b.rows.some((r) => r.node.entry);
     boxes.push(b);
   }
-  return { boxes, box, node, edges, out, inn, tests, full: { out: fullOut, inn: fullInn, node: fullNode, wide }, all };
+  return { boxes, box, node, edges, out, inn, tests, full: { node: fullNode }, all, walk: new Walker(walkGraph(edges, node, fullNode, rest)) };
 }
 
+
+// walkGraph is the graph the walks run over: the map's nodes and edges, the
+// edges in the same order and the proposal's marked proposed, then the tests
+// and the edges the map leaves out.
+function walkGraph(edges: MEdge[], node: Map<string, { row: Row }>, all: Map<string, GNode>, rest: GEdge[]): Graph {
+  const nodes: GNode[] = [];
+  for (const { row } of node.values()) nodes.push(row.prop || row.ghost ? { ...row.node, proposed: true } : row.node);
+  for (const n of all.values()) if (!node.has(n.id)) nodes.push(n);
+  const out: GEdge[] = edges.map((e) => ({
+    from: e.from,
+    to: e.to,
+    type: e.type,
+    detail: e.detail,
+    file: e.file,
+    line: e.line,
+    declared: e.declared || undefined,
+    proposed: e.prop || undefined,
+  }));
+  return { version: 1, modules: [], nodes, edges: out.concat(rest) };
+}
 
 export function proposalNode(raw: Loose): GNode | null {
   const id = str(raw.id);
@@ -310,31 +299,6 @@ export interface Sel {
   down: Set<string>;
 }
 
-// walkUp follows what leads to start, up to the entry points: never through a
-// wide call (one of many possible targets isn't a caller of each) or out of
-// an external node, unless that's what was selected.
-function walkUp(m: Model, start: string): { nodes: Set<string>; edges: Set<number> } {
-  const nodes = new Set([start]),
-    edges = new Set<number>(),
-    q = [start];
-  while (q.length) {
-    const n = q.shift()!;
-    for (const e of m.inn.get(n) ?? []) {
-      if (e.wide) continue;
-      // the page's own edge stands for its code's calls out of the frontend
-      if (onScreen(m.node.get(e.from)?.row.node) && !onScreen(m.node.get(e.to)?.row.node)) continue;
-      const vn = m.node.get(e.to)?.row.node;
-      if (e.to !== start && vn?.external) continue;
-      edges.add(e.i);
-      if (!nodes.has(e.from)) {
-        nodes.add(e.from);
-        q.push(e.from);
-      }
-    }
-  }
-  return { nodes, edges };
-}
-
 // SYNTH numbers a selection's synthetic edges, above any real edge index.
 export const SYNTH = 1 << 24;
 
@@ -362,7 +326,7 @@ export function selectionOf(m: Model, ids: string[]): Sel | null {
         reach(r.id, r.reaches);
       }
       // up: everything that leads here
-      const u = walkUp(m, id);
+      const u = m.walk.up(id);
       u.nodes.forEach((n) => (S.nodes.add(n), S.up.add(n), S.path.add(n)));
       u.edges.forEach((e) => S.edges.add(e));
       any = true;
@@ -385,70 +349,17 @@ export function selectionOf(m: Model, ids: string[]): Sel | null {
   return any ? S : null;
 }
 
-export function entriesReaching(m: Model, id: string): string[] {
-  const u = walkUp(m, id);
-  return [...u.nodes].filter((n) => n !== id && m.node.get(n)?.row.node.entry);
-}
+export const entriesReaching = (m: Model, id: string): string[] => m.walk.entries(id);
 
-// TEST_CALLS matches graph.TestCalls: a test calls the code, or a helper that
-// does; functions nested in another count as part of it.
-export const TEST_CALLS = 2;
-
-// testsReaching ports graph.TestsReaching: tests within TEST_CALLS calls of
-// any of ids, over calls and renders edges, never through external nodes, wide
-// calls or support code (utilities, shared functions); an external node's
-// tests are those of the code using it. Direct tests first.
+// testsReaching: graph.Index.TestsReaching, direct tests first.
 export function testsReaching(m: Model, ids: Iterable<string>): { test: GNode; direct: boolean; via: string }[] {
-  const { inn, node, wide } = m.full;
-  const found = new Map<string, { test: GNode; direct: boolean; via: string }>();
-  const seen = new Set<string>();
-  let frontier: string[] = [];
-  const add = (id: string) => {
-    if (!seen.has(id)) {
-      seen.add(id);
-      frontier.push(id);
-    }
-  };
-  for (const id of ids) {
-    if (node.get(id)?.external) {
-      for (const e of inn.get(id) ?? []) {
-        const f = node.get(e.from);
-        if (e.type !== 'fetches' && !wide.has(e) && f && !f.external && !isTest(f)) add(e.from);
-      }
-    } else add(id);
-  }
-  for (let d = 0; d < TEST_CALLS && frontier.length; d++) {
-    const next: string[] = [];
-    for (let i = 0; i < frontier.length; i++) {
-      const id = frontier[i];
-      for (const e of inn.get(id) ?? []) {
-        const type = e.type || 'calls';
-        if ((type !== 'calls' && type !== 'renders') || wide.has(e)) continue;
-        const f = node.get(e.from);
-        if (!f || f.external) continue;
-        if (isTest(f)) {
-          if (!found.has(f.id)) found.set(f.id, { test: f, direct: d === 0, via: d > 0 ? (node.get(id)?.label ?? '') : '' });
-          continue;
-        }
-        if (!seen.has(f.id) && !stops(f)) {
-          seen.add(f.id);
-          // a function nested in another (a component's handler) is part of it
-          if (id.startsWith(f.id + '.') && f.id.includes('#')) frontier.push(f.id);
-          else next.push(f.id);
-        }
-      }
-    }
-    frontier = next;
-  }
-  return [...found.values()].sort((a, b) => (a.direct !== b.direct ? (a.direct ? -1 : 1) : a.test.id.localeCompare(b.test.id)));
+  return m.walk.tests([...ids]).flatMap((t) => {
+    const test = m.full.node.get(t.test);
+    return test ? [{ test, direct: t.direct, via: t.via ? (m.full.node.get(t.via)?.label ?? '') : '' }] : [];
+  });
 }
 
-// Effect is an edge into the outside world: a table read or written, a topic
-// published to, an external service called, a route fetched.
-export interface Effect {
-  to: string;
-  type: string;
-}
+export type { Effect };
 
 export interface TreeRow {
   id: string;
@@ -468,9 +379,6 @@ export interface Trace {
   reaches: Effect[]; // the root's
 }
 
-// TREE_DEPTH matches cli.FeatureDepth.
-export const TREE_DEPTH = 4;
-
 export const isEffect = (m: Model, e: MEdge): boolean =>
   e.type === 'reads' ||
   e.type === 'writes' ||
@@ -479,204 +387,15 @@ export const isEffect = (m: Model, e: MEdge): boolean =>
   (e.type === 'calls' && !!m.node.get(e.to)?.row.node.external) ||
   (e.type === 'renders' && m.node.get(e.to)?.row.node.kind === 'screen'); // a server-rendered screen, as graph.IsEffect
 
-// effectsBeneath ports graph.Index.EffectsBeneath: effects reachable over calls
-// and renders that aren't wide, and through fetched routes, not going into utilities or shared functions
-// (their own effects count).
-export function effectsBeneath(m: Model, id: string): Effect[] {
-  const seen = new Set([id]);
-  const got = new Map<string, Effect>();
-  const add = (e: MEdge) => got.set(e.type + '\0' + e.to, { to: e.to, type: e.type });
-  const q = [id];
-  while (q.length) {
-    const x = q.shift()!;
-    for (const e of m.all.out.get(x) ?? []) {
-      if (e.prop) continue;
-      if (isEffect(m, e)) {
-        add(e);
-        // a fetched route's own effects are this code's too
-        if (e.type === 'fetches' && !seen.has(e.to)) {
-          seen.add(e.to);
-          q.push(e.to);
-        }
-        continue;
-      }
-      if ((e.type !== 'calls' && e.type !== 'renders') || e.wide || seen.has(e.to)) continue;
-      const n = m.node.get(e.to)?.row.node;
-      if (!n || n.external) continue;
-      seen.add(e.to);
-      if (stops(n)) {
-        for (const f of m.all.out.get(e.to) ?? []) if (!f.prop && isEffect(m, f)) add(f);
-        continue;
-      }
-      q.push(e.to);
-    }
-  }
-  return [...got.values()].sort((a, b) => a.type.localeCompare(b.type) || a.to.localeCompare(b.to));
-}
-
-// trace ports cli.Trace, the one tree codemap shows below a node: support code
-// left out (counted on the row above), forwarding functions skipped, shared
-// functions and external systems not gone into, TREE_DEPTH levels deep, wide
-// calls folded into one row, and every row listing the effects it reaches
-// through code the trace doesn't show.
-// COMMON_SHARE matches graph.CommonShare: effects more than this share of the
-// entry points reach (opening the store, loading the session) say nothing
-// about any one feature. Repos with fewer than ten entry points have none.
-export const COMMON_SHARE = 0.6;
-const commonMemo = new WeakMap<Model, Set<string>>();
-export function commonEffects(m: Model): Set<string> {
-  const hit = commonMemo.get(m);
-  if (hit) return hit;
-  const count = new Map<string, number>();
-  let n = 0;
-  for (const { row } of m.node.values()) {
-    if (!row.node.entry || row.prop || row.ghost) continue;
-    n++;
-    for (const f of effectsBeneath(m, row.id)) count.set(f.type + '\0' + f.to, (count.get(f.type + '\0' + f.to) ?? 0) + 1);
-  }
-  const out = new Set<string>();
-  if (n >= 10) for (const [k, c] of count) if (c / n > COMMON_SHARE) out.add(k);
-  commonMemo.set(m, out);
-  return out;
-}
-
+// trace is graph.Trace, the one tree codemap shows below a node, in the CLI
+// and here.
 export function trace(m: Model, start: string): Trace {
-  const t = traceWith(m, start, true);
-  // nothing leads anywhere: the first level, so a trace is never empty
-  return t.rows.length ? t : traceWith(m, start, false);
-}
-
-function traceWith(m: Model, start: string, prune: boolean): Trace {
-  const seen = new Set([start]);
-  const common = commonEffects(m);
-  const effKey = (f: Effect) => f.type + '\0' + f.to;
-  const reachMemo = new Map<string, Effect[]>();
-  const reach = (id: string) => reachMemo.get(id) ?? (reachMemo.set(id, effectsBeneath(m, id)), reachMemo.get(id)!);
-  // Read in code order, a row stays when it reaches something the story
-  // hasn't shown yet: data, a service, a screen or another program's API,
-  // other than what most features reach (cli.Prune). Every effect still
-  // appears once.
-  const shown = new Set<string>();
-  const fold = !onScreen(m.node.get(start)?.row.node); // from a page, its code is the page
-  const part = (id: string) => onScreen(m.node.get(id)?.row.node);
-  const fresh = (id: string) => reach(id).some((f) => !common.has(effKey(f)) && !shown.has(effKey(f)));
-  const hasOut = (id: string) => (m.all.out.get(id)?.length ?? 0) > 0;
-  type Kids = { rows: TreeRow[][]; support: number }; // each child with its subtree, preorder
-  const kids = (id: string, parent: string, depth: number, hops = 0): Kids => {
-    const res: Kids = { rows: [], support: 0 };
-    const wide = new Map<string, TreeRow>();
-    // in the order the code makes the calls
-    // a page's own effects come before the code making them (graph.treeRows)
-    const outs = [...(m.all.out.get(id) ?? [])].sort(
-      (a, b) => Number(part(a.to)) - Number(part(b.to)) || (a.file ?? '').localeCompare(b.file ?? '') || (a.line ?? 0) - (b.line ?? 0),
-    );
-    for (const e of outs) {
-      if (e.wide && prune) {
-        const k = e.file + ':' + e.line;
-        if (!wide.has(k)) res.support++; // one call site, however many targets
-        wide.set(k, null as never);
-        continue;
-      }
-      if (e.wide) {
-        const k = e.file + ':' + e.line;
-        const w = wide.get(k);
-        if (w) w.targets!.push(e.to);
-        else {
-          const r: TreeRow = { id: e.to, via: e, parent, depth, seen: false, targets: [e.to], support: 0, reaches: [] };
-          wide.set(k, r);
-          res.rows.push([r]);
-        }
-        continue;
-      }
-      const n = m.node.get(e.to)?.row.node;
-      const role = n && !m.node.get(e.to)!.row.prop ? roleOf(n) : '';
-      if (role === 'passthrough' && hops < 16) {
-        if (seen.has(e.to) || !hasOut(e.to)) {
-          res.support++;
-          continue;
-        }
-        seen.add(e.to);
-        const sub = kids(e.to, parent, depth, hops + 1); // its children take its place
-        res.rows.push(...sub.rows);
-        res.support += sub.support;
-        continue;
-      }
-      if (role || (fold && part(e.to))) {
-        res.support++;
-        continue;
-      }
-      if (prune && !e.prop) {
-        const k = effKey({ to: e.to, type: e.type });
-        const keep = isEffect(m, e) ? !common.has(k) && !shown.has(k) : !seen.has(e.to) && fresh(e.to);
-        if (!keep) {
-          res.support++;
-          continue;
-        }
-        if (isEffect(m, e)) shown.add(k);
-      }
-      const r: TreeRow = { id: e.to, via: e, parent, depth, seen: seen.has(e.to), support: 0, reaches: [] };
-      const sub: TreeRow[] = [r];
-      res.rows.push(sub);
-      if (r.seen) continue;
-      seen.add(e.to);
-      if (!n || n.external) continue;
-      if (!prune) {
-        r.more = hasOut(e.to);
-        continue;
-      }
-      if (stops(n) || depth + 1 >= TREE_DEPTH) {
-        r.more = hasOut(e.to);
-        if (prune) for (const f of reach(e.to)) shown.add(effKey(f));
-        continue;
-      }
-      const k = kids(e.to, e.to, depth + 1);
-      r.support = k.support;
-      for (const c of k.rows) sub.push(...c);
-      if (prune) for (const f of reach(e.to)) shown.add(effKey(f)); // what's left is listed on its row
-    }
-    return res;
+  const t = m.walk.trace(start);
+  return {
+    support: t.support,
+    reaches: t.reaches,
+    rows: t.rows.map((r) => ({ ...r, via: m.all.edges[r.via], seen: !!r.seen })),
   };
-  const top = kids(start, start, 0);
-  const rows = top.rows.flat();
-
-  // Rollup, bottom-up: a row lists the effects below it that its shown
-  // subtree doesn't show, as an effect row or another row's list.
-  const cache = new Map<string, Effect[]>();
-  const beneath = (id: string) => cache.get(id) ?? (cache.set(id, effectsBeneath(m, id)), cache.get(id)!);
-  const key = (f: Effect) => f.type + '\0' + f.to;
-  const coveredBelow = (i: number): Set<string> => {
-    // rows i+1… deeper than rows[i] are its subtree
-    const cov = new Set<string>();
-    for (let j = i + 1; j < rows.length && rows[j].depth > (i < 0 ? -1 : rows[i].depth); j++) {
-      const r = rows[j];
-      if (r.targets) continue;
-      if (isEffect(m, r.via)) cov.add(key({ to: r.id, type: r.via.type }));
-      r.reaches.forEach((f) => cov.add(key(f)));
-      if (r.seen) beneath(r.id).forEach((f) => cov.add(key(f)));
-    }
-    return cov;
-  };
-  const rollup = (id: string, i: number): Effect[] => {
-    const n = m.node.get(id)?.row.node;
-    if (!n || n.external) return [];
-    const cov = coveredBelow(i);
-    if (i >= 0) for (const k of common) cov.add(k); // said once, on the root
-    return beneath(id).filter((f) => !cov.has(key(f)));
-  };
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const r = rows[i];
-    if (!r.seen && !r.targets) r.reaches = rollup(r.id, i);
-  }
-  // Read top to bottom, every effect is said once: where the story first
-  // reaches it (cli.Rollup).
-  const reaches = rollup(start, -1);
-  const said = new Set(reaches.map(key));
-  for (const r of rows) {
-    if (r.targets) continue;
-    if (isEffect(m, r.via)) said.add(key({ to: r.id, type: r.via.type }));
-    r.reaches = r.reaches.filter((f) => !said.has(key(f)) && (said.add(key(f)), true));
-  }
-  return { rows, support: top.support, reaches };
 }
 
 // effectSummary words effects as codemap show does: "writes comment, issue ·

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/blatessa/codemap/internal/cli"
+	"github.com/blatessa/codemap/internal/graph"
 )
 
 func init() {
@@ -34,7 +35,7 @@ func runCallers(w io.Writer, args []string) error {
 		return err
 	}
 	// Walks upstream and stops at external nodes, as Index.Up with StopAtExternalUp does.
-	tree := cli.Settle(cli.Features(ix, cli.UpTree(ix, id, 0)))
+	tree := graph.Settle(graph.Features(ix, graph.UpTree(ix, id, 0)))
 	if c.JSON {
 		return cli.WriteJSON(w, map[string]any{"node": ix.Node[id], "tree": tree})
 	}
