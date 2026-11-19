@@ -44,7 +44,7 @@ const apiVersion = 2
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	// ply's helper: a "METHOD /path" pattern split with strings.Cut, a prefix,
+	// A helper taking a "METHOD /path" pattern split with strings.Cut, a prefix,
 	// and the handler called from inside a wrapper.
 	p := func(pattern string, h func(*Org, *http.Request) (any, error)) {
 		method, rest, _ := strings.Cut(pattern, " ")

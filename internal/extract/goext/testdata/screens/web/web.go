@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-// TplName names a template, the way Gitea does.
+// TplName names a template.
 type TplName string
 
 const tplOrderList TplName = "shop/orders/list"

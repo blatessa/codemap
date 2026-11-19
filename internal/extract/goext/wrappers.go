@@ -7,7 +7,7 @@ import (
 )
 
 // The repo's own router types. Many repos wrap a router library in a type of
-// their own (Gitea's web.Router around chi) to add conventions: middleware as
+// their own (a web.Router around chi) to add conventions: middleware as
 // handler arguments, groups that take a callback, route builders. Wrappers keep
 // the method names of the libraries they wrap, so their methods are read by
 // those conventions:

@@ -461,8 +461,8 @@ func (a *routeAnalyzer) walk(body ast.Node, sc *rscope) {
 }
 
 // localCall walks a closure held in a local variable where it's called, so
-// the routes it registers get the group it's called in (Gitea:
-// addSettingsRoutes := func() { m.Group(…) }; m.Group("/settings", func() { addSettingsRoutes() })),
+// the routes it registers get the group it's called in
+// (addSettingsRoutes := func() { m.Group(…) }; m.Group("/settings", func() { addSettingsRoutes() })),
 // or, for a route helper, the paths and handlers it's called with.
 func (a *routeAnalyzer) localCall(call *ast.CallExpr, sc *rscope) {
 	id, ok := ast.Unparen(call.Fun).(*ast.Ident)

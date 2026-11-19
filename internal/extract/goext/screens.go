@@ -168,11 +168,11 @@ var renderHint = regexp.MustCompile(`(?i)render|templ|tmpl|tpl|html|view|page|la
 
 // scanRenders adds a renders edge from every repo function passing a template
 // name as a constant string argument to a call, or setting a struct field to
-// one (Gitea's NewTemplate: tplHookNew).
+// one (Page{Template: tplHookNew}).
 //
 // A name without a "/" ("home", "index.html") is also a config value, a
 // translation key or a static file, so it counts only when it's of a named
-// string type (Gitea's templates.TplName) or the function or field it goes to
+// string type (templates.TplName) or the function or field it goes to
 // says it's about rendering (view.Render, ExecuteTemplate, TplName:). A path
 // below a templates directory is specific enough on its own.
 func (l *load) scanRenders() {
