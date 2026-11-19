@@ -3,7 +3,6 @@ import { type ReactNode } from 'react';
 import { ProposalList, ProposalView } from './Proposals';
 import { currentProposal, getState, setDrawerWidth, setState, useModel, useParts, useStore } from './store';
 import { isFolder } from './parts';
-import { Comment } from './Comment';
 import { SummaryPanel } from './Compare';
 import { useCompare } from './revs';
 import { NodePanel } from './panel/NodePanel';
@@ -17,7 +16,6 @@ export function Drawer() {
   const form = useStore((s) => s.form);
   const mode = useStore((s) => s.mode);
   const pslug = useStore((s) => s.pslug);
-  const readOnly = useStore((s) => s.readOnly);
   const comparing = useCompare((c) => !!c.spec);
   const width = useStore((s) => s.drawerW);
   // dragging the left edge sets the width
@@ -72,7 +70,6 @@ export function Drawer() {
       >
         {mode === 'propose' && pslug && (sel || form) && <ProposalBack />}
         {content}
-        {!readOnly && !form && sel && content && <Comment key={'comment:' + sel} m={m} id={sel} />}
       </aside>
     </>
   );

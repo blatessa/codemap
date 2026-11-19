@@ -20,7 +20,7 @@ func init() {
 	commands["proposal"] = func(args []string) error { return runProposal(os.Stdout, os.Stdin, args) }
 }
 
-const proposalUsage = `proposal list | new <name> [--body FILE|-] | archive <slug> [--pr N]  [--root DIR] [--json]`
+const proposalUsage = `proposal list | show <slug> | new <name> [--body FILE|-] | archive <slug> [--pr N]  [--root DIR] [--json]`
 
 // today and gitHead are variables so tests can fix them.
 var (
@@ -53,6 +53,8 @@ func runProposal(w io.Writer, in io.Reader, args []string) error {
 	switch {
 	case pos[0] == "list" && len(pos) == 1:
 		return proposalList(w, c)
+	case pos[0] == "show" && len(pos) == 2:
+		return proposalShow(w, c, pos[1])
 	case pos[0] == "new" && len(pos) >= 2:
 		return proposalNew(w, in, c, strings.Join(pos[1:], " "), *body)
 	case pos[0] == "archive" && len(pos) == 2:

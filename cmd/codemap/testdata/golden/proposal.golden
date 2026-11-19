@@ -268,5 +268,5 @@ refunds          archived  #91  2026-11-17  Refunds
 
 $ codemap proposal frobnicate
 --- exit 2
-codemap: usage: codemap proposal list | new <name> [--body FILE|-] | archive <slug> [--pr N]  [--root DIR] [--json]
+codemap: usage: codemap proposal list | show <slug> | new <name> [--body FILE|-] | archive <slug> [--pr N]  [--root DIR] [--json]
 

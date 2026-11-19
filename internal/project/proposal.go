@@ -20,7 +20,20 @@ type Proposal struct {
 	Modules []map[string]any `toml:"module,omitempty" json:"modules,omitempty"`
 	Nodes   []map[string]any `toml:"node,omitempty" json:"nodes,omitempty"`
 	Edges   []map[string]any `toml:"edge,omitempty" json:"edges,omitempty"`
+	Notes   []Note           `toml:"note,omitempty" json:"notes,omitempty"`
 	Body    string           `toml:"-" json:"body"`
+}
+
+// Note is something the author wants an agent to know that the sketch can't
+// say: pinned to a node (On), to lines of code (File, From, To, with the Quote
+// as it was read), or to nothing but the proposal. Text is Markdown.
+type Note struct {
+	On    string `toml:"on,omitempty" json:"on,omitempty"`
+	File  string `toml:"file,omitempty" json:"file,omitempty"`
+	From  int    `toml:"from,omitempty" json:"from,omitempty"`
+	To    int    `toml:"to,omitempty" json:"to,omitempty"`
+	Quote string `toml:"quote,omitempty" json:"quote,omitempty"`
+	Text  string `toml:"text" json:"text"`
 }
 
 // ParseProposal parses a proposal file. A file without frontmatter is treated as

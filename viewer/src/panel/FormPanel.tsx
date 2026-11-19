@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { type Model } from '../model';
 import { proposeModule, proposeNode, setState, useStore } from '../store';
+import { parseSpec } from '../wire';
 import { Head } from './common';
 
 const KINDS = ['function', 'route', 'page', 'job', 'subscriber', 'command', 'component', 'table', 'topic', 'service'];
@@ -23,7 +24,14 @@ export function FormPanel({ m }: { m: Model }) {
   const submit = () => {
     const v = name.trim();
     if (!v) return;
-    if (form.type === 'mod') proposeModule(v); else if (b) proposeNode(b.id, v, kind, kind === 'route' ? method : '', b.external);
+    if (form.type === 'mod') return proposeModule(v);
+    if (!b) return;
+    // "POST /orders/:id/cancel" or "table refunds" say the kind themselves
+    const spec = parseSpec(v);
+    const k = spec?.kind ?? kind;
+    const id = proposeNode(b.id, spec?.label ?? v, k, k === 'route' ? spec?.method || method : '', b.external);
+    // what does it call? the next thing to say
+    if (id && k !== 'table' && k !== 'topic' && k !== 'service') setState({ connectFrom: id });
   };
   const cancel = () => setState({ form: null });
   return (

@@ -37,6 +37,18 @@ to = "go:shop/internal/orders.(*Repo).UpdateStatus"
 from = "new:orders.Service.Refund"
 to = "ext:stripe"
 detail = "POST /v1/refunds"
+
+[[note]]
+on = "new:orders.Service.Refund"
+text = "Owns the rules. The handler doesn't pre-check anything."
+
+[[note]]
+on = "go:shop/internal/orders.(*Repo).Find"
+file = "internal/orders/repo.go"
+from = 25
+to = 26
+quote = "SELECT * FROM orders WHERE id = $1"
+text = "Find has no user check. Refund must not rely on it."
 +++
 ## Why
 …
@@ -50,4 +62,6 @@ Rules:
 - Edges default to `type = "calls"`; use `reads`, `writes` or `publishes` for data and topics. `detail` is shown on the edge.
 - Nodes accept any extra fields (strings, arrays, inline tables such as `links = [{label = "Docs", url = "https://…"}]`); the viewer shows them.
 - To move an existing function to another module, list it with its real ID and the new `module`.
+- A `[[note]]` is something the sketch can't say, pinned to a node (`on`), to lines of code (`file`, `from`, optional `to`, and the `quote` as read), or to nothing. `text` is Markdown. The viewer shows notes under the code and on the node's panel; `codemap proposal show` prints them with their code and says when it has changed since.
+- Review with `codemap proposal show <slug>` (add `--json` for the raw proposal and its problems).
 - Leave `base` and `updated` alone; codemap sets them.

@@ -64,3 +64,66 @@ func TestProposalGolden(t *testing.T) {
 
 	checkGolden(t, dir, "proposal.golden", log.String())
 }
+
+// TestProposalShow: the review view groups changes by part, flags a sketch that
+// can't work, and puts each note beside the code it is about.
+func TestProposalShow(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(filepath.Join(root, ".codemap"), os.DirFS(filepath.Join("..", "..", "testdata", "shop", ".codemap"))); err != nil {
+		t.Fatal(err)
+	}
+	file := `+++
+name = 'Audit'
+status = 'open'
+
+[[node]]
+id = 'new:orders.Service.Audit'
+kind = 'function'
+label = 'Service.Audit'
+module = 'mod:go:shop/internal/orders'
+
+[[edge]]
+from = 'new:orders.Service.Audit'
+to = 'table:nope'
+
+[[note]]
+on = 'new:orders.Service.Audit'
+text = 'Write one row per change.'
+
+[[note]]
+file = 'internal/orders/repo.go'
+from = 25
+quote = 'not the code'
+text = 'Find is where this belongs.'
++++
+Why.
+`
+	if err := os.WriteFile(filepath.Join(root, ".codemap", "proposals", "audit.md"), []byte(file), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// the code the second note quotes lives in the fixture
+	if err := os.CopyFS(filepath.Join(root, "internal"), os.DirFS(filepath.Join("..", "..", "testdata", "shop", "internal"))); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runProposal(&out, strings.NewReader(""), []string{"--root", root, "show", "audit"}); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		"+ orders.Service.Audit",
+		`a call mentions "table:nope"`,
+		"nothing calls orders.Service.Audit",
+		"1. orders.Service.Audit\n     Write one row per change.",
+		"2. internal/orders/repo.go:25",
+		"| not the code",
+		"the code at these lines has changed",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	if err := runProposal(&out, strings.NewReader(""), []string{"--root", root, "show", "nope"}); err == nil {
+		t.Error("an unknown proposal should be an error")
+	}
+}

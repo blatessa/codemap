@@ -2,62 +2,21 @@
 // topic or service. Every panel has the same shape: what it is, how it
 // connects (the diagram), what starts it, what it does, then its source and
 // tests. Proposal actions sit under the heading.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Source } from '../Code';
 import { ChangedCalls } from '../Compare';
 import { edgeChanges, nodeStatus, useCompare } from '../revs';
 import { Fields } from '../Fields';
 import { screenRoot, qn, type MEdge, type Model } from '../model';
 import type { Parts } from '../parts';
-import { currentProposal, moveNode, proposeEdge, removeProposalNode, select, setState, useSel, useStore } from '../store';
+import { currentProposal, moveNode, removeProposalNode, select, setState, useSel, useStore } from '../store';
 import { Section, Head, Tests, onPath, Entries, cap, FileLink } from './common';
 import { CallTree } from './CallTree';
 import { ScreenOutline } from './ScreenOutline';
 import { Diagram } from './Diagram';
 import { entryPointsOf } from './connections';
-
-// CallPicker: what a proposed call goes to, found by name.
-function CallPicker({ m, from }: { m: Model; from: string }) {
-  const [q, setQ] = useState('');
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => ref.current?.focus(), []);
-  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-  const hits = words.length
-    ? [...m.node.keys()]
-        .filter((x) => x !== from)
-        .map((x) => ({ id: x, name: qn(m, x) }))
-        .filter((h) => words.every((w) => h.name.toLowerCase().includes(w)))
-        .sort((a, b) => a.name.length - b.name.length || a.name.localeCompare(b.name))
-        .slice(0, 8)
-    : [];
-  const pick = (to: string) => {
-    proposeEdge(from, to);
-    setState({ connectFrom: null });
-  };
-  return (
-    <Section title={`${qn(m, from)} calls…`}>
-      <input
-        ref={ref}
-        id="pick-q"
-        className="pick"
-        placeholder="Function, table or service"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && hits[0]) pick(hits[0].id);
-          if (e.key === 'Escape') setState({ connectFrom: null });
-        }}
-      />
-      <div className="links">
-        {hits.map((h) => (
-          <button key={h.id} className="lnk" data-pick={h.id} onClick={() => pick(h.id)}>
-            {h.name}
-          </button>
-        ))}
-      </div>
-    </Section>
-  );
-}
+import { CallPicker } from './CallPicker';
+import { NodeNotes } from './NodeNotes';
 
 // MoveTo: the part a proposal moves a function to.
 function MoveTo({ m, id, at }: { m: Model; id: string; at: string }) {
@@ -139,6 +98,7 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
           )}
         </Section>
       )}
+      <NodeNotes m={m} id={id} />
       {propose && connecting && <CallPicker m={m} from={id} />}
       {propose && !connecting && (
         <div className="btns">
@@ -172,7 +132,7 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
       {Array.isArray(n.fields?.source) && <p className="none from">Defined in {(n.fields!.source as string[]).join(', ')}</p>}
       {!n.external && n.file && n.line ? (
         <Section title="Source">
-          <Source file={n.file} from={n.line} to={n.endLine} />
+          <Source file={n.file} from={n.line} to={n.endLine} on={id} />
         </Section>
       ) : null}
       {!row.prop && !row.ghost && (

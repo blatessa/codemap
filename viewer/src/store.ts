@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import * as api from './api';
 import { buildModel, selectionOf, type Model, type Sel } from './model';
 import { partsOf, type Parts } from './parts';
-import type { Graph, Loose, Proposal } from './types';
+import type { Graph, Loose, Note, Proposal } from './types';
 
 export type Mode = 'explore' | 'propose';
 export interface Form {
@@ -30,6 +30,7 @@ export interface S {
   view: { x: number; y: number; k: number };
   touchedView: boolean;
   connectFrom: string | null;
+  wireBox: string | null; // the part the last typed-in node went to: where the next one goes
   form: Form | null;
   pslug: string | null;
   cslug: string | null; // the proposal comments go to: the last one opened
@@ -59,6 +60,7 @@ export const useStore = create<S>(() => ({
   view: { x: 0, y: 0, k: 1 },
   touchedView: false,
   connectFrom: null,
+  wireBox: null,
   form: null,
   pslug: null,
   cslug: readCslug(),
@@ -346,17 +348,22 @@ function uniqueNewId(base: string, p: Proposal) {
   return id;
 }
 
-export function proposeNode(box: string, label: string, kind: string, method: string, external: boolean) {
+// proposeNode adds a node to a part of the open proposal and returns its id.
+// With `from`, the new node is also called by it (or calls it, with `into`), so
+// a node and its wiring are one step.
+export function proposeNode(box: string, label: string, kind: string, method: string, external: boolean, wire?: { from: string; into?: boolean }): string | null {
   const p = currentProposal(get());
-  if (!p) return;
+  if (!p) return null;
   const entry = ['route', 'page', 'job', 'subscriber', 'command'].includes(kind);
   const id = uniqueNewId('new:' + (method && entry ? method + ' ' : '') + label, p);
   const n: Loose = { id, kind, label, module: box };
   if (entry) n.entry = true;
   if (external) n.external = true;
   if (method && entry) n.method = method;
-  updateProposal(p.slug, { nodes: [...(p.nodes ?? []), n] });
-  set({ form: null, sel: id });
+  const edges = wire ? [...(p.edges ?? []), wire.into ? { from: id, to: wire.from } : { from: wire.from, to: id }] : p.edges;
+  updateProposal(p.slug, { nodes: [...(p.nodes ?? []), n], ...(wire ? { edges } : {}) });
+  set({ form: null, wireBox: external ? get().wireBox : box, ...(wire ? {} : { sel: id }) });
+  return id;
 }
 
 export function proposeModule(label: string) {
@@ -392,12 +399,19 @@ export function moveNode(id: string, to: string) {
   updateProposal(p.slug, { nodes: g.module === to ? rest : [...rest, { id, module: to }] });
 }
 
-// comment appends a note to the open proposal's body, headed by what it is about.
-export function comment(about: string, text: string) {
+// addNote pins a note to the proposal comments go to (the open one, or the last
+// opened). It reports whether there was one.
+export function addNote(note: Note): boolean {
   const p = commentTarget(get());
-  if (!p || !text.trim()) return;
-  const body = p.body.replace(/\s+$/, '');
-  updateProposal(p.slug, { body: (body ? body + '\n\n' : '') + about.trim() + '\n\n' + text.trim() + '\n' });
+  if (!p || !note.text.trim()) return false;
+  updateProposal(p.slug, { notes: [...(p.notes ?? []), { ...note, text: note.text.trim() }] });
+  return true;
+}
+
+export function removeNote(n: Note) {
+  const p = commentTarget(get());
+  if (!p) return;
+  updateProposal(p.slug, { notes: (p.notes ?? []).filter((x) => x !== n) });
 }
 
 export function removeProposalNode(id: string) {
@@ -406,6 +420,7 @@ export function removeProposalNode(id: string) {
   updateProposal(p.slug, {
     nodes: (p.nodes ?? []).filter((n) => n.id !== id),
     edges: (p.edges ?? []).filter((e) => e.from !== id && e.to !== id),
+    notes: (p.notes ?? []).filter((n) => n.on !== id),
   });
 }
 

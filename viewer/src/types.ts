@@ -48,6 +48,18 @@ export interface Graph {
 
 export type Loose = Record<string, unknown>;
 
+// A note is what the author wants an agent to know that the sketch can't say:
+// pinned to a node, to lines of code (with the code as it was read), or to the
+// proposal as a whole.
+export interface Note {
+  on?: string;
+  file?: string;
+  from?: number;
+  to?: number;
+  quote?: string;
+  text: string;
+}
+
 export interface Proposal {
   slug: string;
   name: string;
@@ -58,6 +70,7 @@ export interface Proposal {
   modules?: Loose[] | null;
   nodes?: Loose[] | null;
   edges?: Loose[] | null;
+  notes?: Note[] | null;
   body: string;
 }
 

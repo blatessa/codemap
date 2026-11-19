@@ -61,15 +61,16 @@ A proposal sketches how the architecture could change. The viewer draws it over 
 ```sh
 codemap proposal new "Refunds" --body body.md   # --body - reads stdin
 codemap proposal list
+codemap proposal show refunds                 # the review view
 codemap proposal archive refunds --pr 91        # once it's built or dropped
 ```
 
 Then edit `.codemap/proposals/<slug>.md`: TOML frontmatter for the sketch, Markdown for the reasoning. See [reference/proposals.md](reference/proposals.md) for the format.
 
-When asked to work through a proposal, read its body: the user's comments from the viewer are appended under `###` headings naming what each is about, and they are the things to address.
+To review or work through a proposal, run `codemap proposal show <slug>`. It lists what the sketch changes part by part with each new call, checks it (a call to something that isn't in the code, a new function nothing calls), then prints the user's notes and the document. Notes are what the user wants you to know that the sketch can't say: each is pinned to a node or to lines of code, with the code as it was when they wrote it (and a warning if it has changed since). They are the things to address. You can pin notes yourself with `[[note]]` tables; see the reference.
 
 ## Make the map better
 
-- **Something the code clearly has is missing** (jobs, queue handlers, frontend calls to the API, an external service): configure `.codemap/config.toml`. See [reference/config.md](reference/config.md). Then check the warnings it prints and `codemap show` something you expect to see.
+- **Set up a repo**: when asked to make codemap work well for a repo, or the first time you use it on one, or when something the code clearly has is missing (jobs, queue handlers, frontend calls to the API, an external service), follow [reference/config.md](reference/config.md#setting-up-a-repo) to configure `.codemap/config.toml`.
 - **A module is hard to understand**: the viewer shows its package or file doc comment. Adding one (with the user's agreement) is the best way to explain it.
 - **A module mixes unrelated jobs**: that's a proposal to split it in the code. The map draws the code as it is.

@@ -15,7 +15,8 @@ func Trace(ix *Index, id string) *TreeNode {
 // rows shown higher up aren't repeated. When nothing leads anywhere, the first
 // level stays, so a tree is never empty.
 func Prune(ix *Index, t *TreeNode) *TreeNode {
-	common := ix.CommonEffects()
+	commonAll := ix.CommonEffects()
+	common := commonAll
 	beneath := map[string][]Effect{}
 	reach := func(id string) []Effect {
 		if r, ok := beneath[id]; ok {
@@ -37,12 +38,33 @@ func Prune(ix *Index, t *TreeNode) *TreeNode {
 		}
 		return false
 	}
+	// A step of the entry itself that reaches only what most features reach
+	// (authenticating the user, loading the session) is still a step of this
+	// feature: it stays, with that effect shown inside it, so the story starts
+	// where the request does.
+	touchesCommon := func(id string) bool {
+		for _, f := range reach(id) {
+			if commonAll[f] {
+				return true
+			}
+		}
+		return false
+	}
+	var root *TreeNode
 	var walk func(t *TreeNode) *TreeNode
 	walk = func(t *TreeNode) *TreeNode {
 		out := *t
 		out.Children = nil
 		for _, c := range t.Children {
 			switch {
+			case t == root && c.Targets == nil && !c.Seen && c.Via != nil && !ix.IsEffect(c.Via) && !fresh(reach(c.ID)) && touchesCommon(c.ID):
+				common = nil
+				kid := walk(c)
+				common = commonAll
+				out.Children = append(out.Children, kid)
+				for _, f := range reach(c.ID) {
+					shown[f] = true
+				}
 			case c.Via != nil && c.Via.Proposed:
 				out.Children = append(out.Children, walk(c)) // a proposal's sketch is always shown
 			case c.Targets != nil || c.Seen:
@@ -66,6 +88,7 @@ func Prune(ix *Index, t *TreeNode) *TreeNode {
 		}
 		return &out
 	}
+	root = t
 	res := walk(t)
 	if len(res.Children) == 0 && len(t.Children) > 0 {
 		res.Support = t.Support

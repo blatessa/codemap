@@ -10,6 +10,7 @@ import { Section, Head, Tests, Entries } from './common';
 import { Tree } from './CallTree';
 import { Diagram } from './Diagram';
 import { membersOf } from './connections';
+import { NodeNotes } from './NodeNotes';
 
 export function GroupPanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
   const folder = isFolder(id);
@@ -36,6 +37,7 @@ export function GroupPanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
           </button>
         </div>
       )}
+      <NodeNotes m={m} id={id} />
       <Diagram m={m} P={P} id={id} />
       <Section title="Interface">
         {surface.length ? (

@@ -107,14 +107,14 @@ function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
     const x = m.node.get(menu.id)!;
     const n = x.row.node;
     items = [
-      { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('c-text')?.focus(), 50)), off: ro },
+      { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('note-text')?.focus(), 50)), off: ro },
       { id: 'editor', label: 'Open in editor', run: () => void openInEditor(n.file!, n.line ?? 1), off: !n.file },
       { id: 'copy', label: 'Copy ID', run: () => void navigator.clipboard?.writeText(menu.id) },
     ];
   } else if (menu.kind === 'box') {
     items = [
       { id: 'open', label: 'Show what’s inside', run: () => select(menu.id) },
-      { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('c-text')?.focus(), 50)), off: ro },
+      { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('note-text')?.focus(), 50)), off: ro },
     ];
   } else items = map.filter((c) => !c.id.startsWith('cmp-') && c.id !== 'proposals');
   const shown = items.filter((c) => c === null || !c.off);

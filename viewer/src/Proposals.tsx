@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { qn, type MEdge, type Model, type Row } from './model';
 import { currentProposal, newProposal, removeProposalEdge, renameProposal, removeProposalModule, removeProposalNode, select, setState, updateProposal, useStore } from './store';
 import { Section } from './panel/common';
+import { NotesList } from './Notes';
 import type { Proposal } from './types';
 
 const fmtDate = (s?: string) => {
@@ -158,6 +159,9 @@ export function ProposalView({ m }: { m: Model }) {
         ) : (
           <Markdown text={p.body} />
         )}
+      </Section>
+      <Section title="Notes" count={p.notes?.length || undefined}>
+        <NotesList m={m} notes={p.notes ?? []} />
       </Section>
       <Section title="Changes" count={count || undefined}>
         {groups.length ? (

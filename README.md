@@ -59,7 +59,7 @@ codemap serve          # opens the map in your browser
   to see its path through the code.
 - `Ctrl/⌘ K` searches and runs commands; right-click for more.
 - On a branch, the map opens on what changed since `main`.
-- **Proposals** sketch a change on the map; select anything and press `C` to comment.
+- **Proposals** sketch a change on the map; select anything and press `C` to pin a note to it, or click a line number in the code to leave one there. Agents read them with `codemap proposal show`.
 
 From the terminal (handy for agents too): `codemap show "POST /orders"`,
 `codemap show internal/orders`, `codemap modules`, `codemap diff main...`. Run `codemap` for

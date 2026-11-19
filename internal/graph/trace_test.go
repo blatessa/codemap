@@ -81,3 +81,30 @@ func TestTraceShowsProposedSketch(t *testing.T) {
 		t.Errorf("a sketch's effects aren't the code's: %v", got)
 	}
 }
+
+// TestTraceKeepsCommonStep: authenticating is a step of every request, so the
+// effect it reaches is common to the repo, but the step stays in each trace.
+func TestTraceKeepsCommonStep(t *testing.T) {
+	fn := func(id string) Node { return Node{ID: id, Kind: KindFunction} }
+	g := &Graph{Nodes: []Node{fn("auth"), fn("load"), fn("get"), {ID: "table:users", Kind: KindTable, External: true}, {ID: "table:orders", Kind: KindTable, External: true}}}
+	g.Nodes = append(g.Nodes, Node{ID: "r0", Kind: KindRoute, Entry: true})
+	g.Edges = append(g.Edges,
+		Edge{From: "auth", To: "load", Type: "calls", Line: 1},
+		Edge{From: "load", To: "table:users", Type: "reads", Line: 2},
+		Edge{From: "get", To: "table:orders", Type: "reads", Line: 3},
+		Edge{From: "r0", To: "auth", Type: "calls", Line: 1},
+		Edge{From: "r0", To: "get", Type: "calls", Line: 2})
+	for i := 1; i < 10; i++ {
+		id := "r" + string(rune('0'+i))
+		g.Nodes = append(g.Nodes, Node{ID: id, Kind: KindRoute, Entry: true})
+		g.Edges = append(g.Edges, Edge{From: id, To: "auth", Type: "calls", Line: 1})
+	}
+	ix := NewIndex(g)
+	tr := Trace(ix, "r0")
+	if len(tr.Children) != 2 || tr.Children[0].ID != "auth" {
+		t.Fatalf("want auth then get; got %+v", tr.Children)
+	}
+	if tr.Children[0].Children == nil {
+		t.Errorf("auth should show the users read inside it")
+	}
+}

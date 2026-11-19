@@ -1,6 +1,8 @@
 import { memo, useEffect, useState, type ReactNode } from 'react';
 import { getSource, openInEditor } from './api';
-import { useStore } from './store';
+import { addNote, commentTarget, useStore } from './store';
+import { NoteBox, NoteBubble, useCanNote, where } from './Notes';
+import type { Note } from './types';
 import { fileChanged, sourceRev, useCompare } from './revs';
 import { DiffSource } from './Compare';
 
@@ -26,15 +28,79 @@ export function highlight(code: string): ReactNode[] {
   return out;
 }
 
-export const CodeBlock = memo(function CodeBlock({ code, start, file }: { code: string; start: number; file?: string }) {
+export const CodeBlock = memo(function CodeBlock({ code, start, file, onLine, mark }: { code: string; start: number; file?: string; onLine?: (n: number, shift: boolean) => void; mark?: [number, number] | null }) {
   const n = code.split('\n').length;
   return (
     <div className="code" data-file={file} data-start={start}>
-      <pre className="g">{Array.from({ length: n }, (_, i) => start + i).join('\n')}</pre>
+      <pre className="g">
+        {onLine
+          ? Array.from({ length: n }, (_, i) => start + i).map((x) => (
+              <span key={x}>
+                <span className={`ln ${mark && x >= mark[0] && x <= mark[1] ? 'sel' : ''}`} data-ln={x} role="button" title="Add a note here" onClick={(e) => onLine(x, e.shiftKey)}>
+                  {x}
+                </span>
+                {x < start + n - 1 ? '\n' : ''}
+              </span>
+            ))
+          : Array.from({ length: n }, (_, i) => start + i).join('\n')}
+      </pre>
       <pre className="c">{highlight(code)}</pre>
     </div>
   );
 });
+
+// NotedCode is code you can leave notes in: click a line number (shift-click
+// another for a range) and type under it. Notes already there show under their
+// lines, so the code reads with the author's remarks in it.
+function NotedCode({ code, start, file, on }: { code: string; start: number; file: string; on?: string }) {
+  const p = useStore(commentTarget);
+  const can = useCanNote();
+  const [draft, setDraft] = useState<[number, number] | null>(null);
+  const lines = code.split('\n');
+  const end = start + lines.length - 1;
+  const notes = (p?.notes ?? []).filter((n) => n.file === file && n.from != null && n.from >= start && n.from <= end);
+  const endOf = (n: Note) => Math.min(Math.max(n.to ?? n.from!, n.from!), end);
+  const cuts = [...new Set([...notes.map(endOf), ...(draft ? [draft[1]] : [])])].sort((a, b) => a - b);
+  if (!cuts.includes(end)) cuts.push(end);
+  const onLine = (n: number, shift: boolean) =>
+    setDraft((d) => (shift && d ? [Math.min(d[0], n), Math.max(d[1], n)] : d && d[0] === n && d[1] === n ? null : [n, n]));
+  let from = start;
+  return (
+    <div className="lined">
+      {cuts.map((cut) => {
+        const part = lines.slice(from - start, cut - start + 1).join('\n');
+        const first = from;
+        from = cut + 1;
+        return (
+          <div key={cut}>
+            <CodeBlock code={part} start={first} file={file} onLine={can ? onLine : undefined} mark={draft} />
+            {notes
+              .filter((n) => endOf(n) === cut)
+              .map((n, i) => (
+                <NoteBubble key={i} note={n}>
+                  {n.to && n.to > n.from! && <div className="nwhere">{where(n)}</div>}
+                </NoteBubble>
+              ))}
+            {draft && draft[1] === cut && (
+              <div className="note draft">
+                <NoteBox
+                  autoFocus
+                  placeholder={`Note on ${file.split('/').pop()}:${draft[0]}${draft[1] > draft[0] ? '–' + draft[1] : ''}`}
+                  onCancel={() => setDraft(null)}
+                  onSubmit={(text) => {
+                    const [a, b] = draft;
+                    addNote({ on, file, from: a, to: b > a ? b : undefined, quote: lines.slice(a - start, b - start + 1).join('\n'), text });
+                    setDraft(null);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 const cache = new Map<string, Promise<string>>();
 let cacheFor: unknown = null;
@@ -57,7 +123,7 @@ function load(rev: string, file: string, from: number, to: number, graph: unknow
 
 // Source fetches lines from /api/source. When comparing and the file changed,
 // it shows the range as a diff (Compare.tsx).
-export function Source(p: { file: string; from: number; to?: number }) {
+export function Source(p: { file: string; from: number; to?: number; on?: string }) {
   const diff = useCompare((s) => s.diff);
   const rev = diff ? sourceRev(p.file, p.from) ?? undefined : undefined;
   const plain = <PlainSource {...p} rev={rev} />;
@@ -65,7 +131,7 @@ export function Source(p: { file: string; from: number; to?: number }) {
   return <DiffSource file={p.file} from={p.from} to={p.to && p.to >= p.from ? p.to : p.from} plain={plain} />;
 }
 
-function PlainSource({ file, from, to, rev: at }: { file: string; from: number; to?: number; rev?: string }) {
+function PlainSource({ file, from, to, on, rev: at }: { file: string; from: number; to?: number; on?: string; rev?: string }) {
   const cur = useStore((s) => s.rev);
   const rev = at ?? cur;
   const graph = useStore((s) => s.graph); // refetch when the graph changes
@@ -84,7 +150,7 @@ function PlainSource({ file, from, to, rev: at }: { file: string; from: number; 
   }, [rev, file, from, end, graph]);
   if (code === null) return <div className="code" style={{ minHeight: 40 }} />;
   if (!code) return <p>—</p>;
-  return <CodeBlock code={code} start={from} file={file} />;
+  return <NotedCode code={code} start={from} file={file} on={on} />;
 }
 
 export function Where({ file, line }: { file?: string; line?: number }) {
