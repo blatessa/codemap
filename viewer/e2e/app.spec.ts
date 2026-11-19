@@ -32,8 +32,8 @@ type P = { slug: string; body: string; nodes?: { id: string; module?: string }[]
 const refunds = async (page: Page) => ((await (await page.request.get('/api/proposals')).json()) as P[]).find((p) => p.slug === 'refunds')!;
 
 // The fixture is on a branch, which opens on "this branch vs main";
-// #rev=worktree opens the plain map.
-async function open(page: Page, hash = '#rev=worktree') {
+// #plain opens the plain map.
+async function open(page: Page, hash = '#plain') {
   await reset(page);
   await page.goto('/' + hash);
   await expect(page.locator('#map [data-box]').first()).toBeVisible();

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { openInEditor } from './api';
 import { CompareControl, SummaryPanel } from './Compare';
 import { Drawer } from './Drawer';
-import { compare, presets, start as startRevs, useCompare, view as viewRev } from './revs';
+import { compare, presets, start as startRevs, stopCompare, useCompare } from './revs';
 import { PartMap, zoomCenter } from './PartMap';
 import { qn } from './model';
 import {
@@ -43,7 +43,7 @@ function useMapCommands(): Cmd[] {
     { id: 'fit', label: 'Fit map to screen', hint: '0', run: fit },
     { id: 'proposals', label: 'Proposals', run: () => setMode('propose') },
     ...presets(revs).map((p) => ({ id: 'cmp-' + p.id, label: 'Compare: ' + p.label, run: () => void compare(p.from, p.to) })),
-    { id: 'cmp-off', label: 'Stop comparing', run: () => void viewRev('worktree'), off: !spec },
+    { id: 'cmp-off', label: 'Stop comparing', run: () => void stopCompare(), off: !spec },
   ].filter((c) => !c.off);
 }
 

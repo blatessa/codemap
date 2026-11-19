@@ -104,8 +104,6 @@ const sortRows = (a: Row, b: Row) =>
   (a.node.line ?? 0) - (b.node.line ?? 0) ||
   a.label.localeCompare(b.label);
 
-// shownRows lets the compare view keep changed rows on show (revs.ts).
-export const shownRows = { has: (_id: string) => false };
 
 export const isTest = (n: GNode) => n.kind === 'test';
 
@@ -231,7 +229,6 @@ export function buildModel(g: Graph, proposal: Proposal | null): Model {
     b.rows.sort((x, y) => Number(x.prop || x.ghost) - Number(y.prop || y.ghost) || sortRows(x, y));
     for (const r of b.rows) {
       if (r.node.entry || r.node.external || r.prop || r.ghost) r.pub = true;
-      if (shownRows.has(r.id)) r.pub = true;
     }
     b.hasEntry = b.rows.some((r) => r.node.entry);
     boxes.push(b);

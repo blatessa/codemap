@@ -2,7 +2,7 @@
 // The map draws the "to" graph with the diff's removed modules, nodes and edges
 // merged back in; MapView asks rowCls/boxCls/edgeCls how to colour each one.
 import { create } from 'zustand';
-import { shownRows, type Box } from './model';
+import { type Box } from './model';
 import { currentProposal, getState as getMain, hooks, load, setState as setMain, useStore } from './store';
 import type { GEdge, GModule, GNode, Graph } from './types';
 
@@ -122,24 +122,18 @@ export interface Spec {
 export interface C {
   revs: Revs | null;
   spec: Spec | null; // comparing
-  view: string; // the rev being viewed when not comparing
   diff: Diff | null;
-  changesOnly: boolean;
   busy: boolean;
   error: string;
-  useCode: boolean; // archived proposals: draw over the current code instead of `base`
   phase: string; // build phase from `building` events
 }
 
 export const useCompare = create<C>(() => ({
   revs: null,
   spec: null,
-  view: 'worktree',
   diff: null,
-  changesOnly: false,
   busy: false,
   error: '',
-  useCode: false,
   phase: '',
 }));
 const set = useCompare.setState;
@@ -210,8 +204,7 @@ export function edgeCls(e: { from: string; to: string; type: string }): string {
 
 // ---- the graph the map draws ----
 
-// decorate merges what the "from" side had and the "to" side lost back into g,
-// then trims to the changes plus one hop when changesOnly is on.
+// decorate merges what the "from" side had and the "to" side lost back into g.
 function decorate(g: Graph): Graph {
   const d = get().diff;
   if (!d || !idx) return g;
@@ -223,32 +216,10 @@ function decorate(g: Graph): Graph {
   for (const n of d.removedNodes) if (!ids.has(n.id)) (nodes.push(n), ids.add(n.id));
   const edges = [...(g.edges ?? [])];
   for (const e of d.removedEdges) if (ids.has(e.from) && ids.has(e.to)) edges.push(e);
-  let out: Graph = { ...g, modules: mods, nodes, edges };
-  if (get().changesOnly) out = changesOnly(out);
-  return out;
-}
-
-function changesOnly(g: Graph): Graph {
-  const core = new Set<string>();
-  for (const n of g.nodes ?? []) if (nodeStatus(n.id)) core.add(n.id);
-  const keep = new Set(core);
-  for (const e of g.edges ?? []) {
-    if (core.has(e.from) || edgeCls(e)) keep.add(e.to);
-    if (core.has(e.to) || edgeCls(e)) keep.add(e.from);
-  }
-  const nodes = (g.nodes ?? []).filter((n) => keep.has(n.id));
-  const mods = new Set(nodes.map((n) => n.module));
-  return {
-    ...g,
-    modules: (g.modules ?? []).filter((m) => mods.has(m.id)),
-    nodes,
-    edges: (g.edges ?? []).filter((e) => keep.has(e.from) && keep.has(e.to)),
-  };
+  return { ...g, modules: mods, nodes, edges };
 }
 
 hooks.graph = decorate;
-// changed rows always show; with Changes only, so does their one hop of context
-shownRows.has = (id) => !!nodeStatus(id) || (!!idx && get().changesOnly);
 
 // ---- actions ----
 
@@ -281,23 +252,14 @@ export async function compare(from: string, to: string) {
   }
 }
 
-// view shows one revision (read-only unless it's the worktree).
-export async function view(rev: string) {
-  const run = ++seq;
+// stopCompare goes back to the working tree.
+export async function stopCompare() {
+  seq++; // a comparison still loading is dropped
   idx = null;
-  set({ spec: null, diff: null, view: rev, busy: !isWorktree(rev), error: '', changesOnly: false });
+  set({ spec: null, diff: null, busy: false, error: '' });
   writeHash();
-  setMain({ rev: isWorktree(rev) ? 'worktree' : rev, readOnly: !isWorktree(rev), sel: null, ...(isWorktree(rev) ? {} : { mode: 'explore' }) });
-  try {
-    await load();
-  } finally {
-    if (run === seq) set({ busy: false });
-  }
-}
-
-export function setChangesOnly(on: boolean) {
-  set({ changesOnly: on });
-  void load().then(() => setMain({ fitSeq: getMain().fitSeq + 1 }));
+  setMain({ rev: 'worktree', readOnly: false, sel: null });
+  await load();
 }
 
 // ---- presets ----
@@ -327,41 +289,31 @@ export function specLabel(s: Spec, r: Revs | null): string {
   return `${shortRev(s.from)} → ${isWorktree(s.to) ? 'worktree' : shortRev(s.to)}`;
 }
 
-// ---- URL hash: #compare=from..to or #rev=X ----
+// ---- URL hash: #compare=from..to ----
 
 export function writeHash() {
-  const { spec, view: v } = get();
-  const parts: string[] = [];
-  if (spec) parts.push(`compare=${enc(spec.from)}..${enc(spec.to)}`);
-  else if (!isWorktree(v)) parts.push(`rev=${enc(v)}`);
-  const h = parts.length ? '#' + parts.join('&') : '';
+  const { spec } = get();
+  const h = spec ? `#compare=${enc(spec.from)}..${enc(spec.to)}` : '';
   if (location.hash !== h) history.replaceState(null, '', location.pathname + location.search + h);
 }
 
-export function readHash(): { compare?: Spec; rev?: string } {
-  const out: { compare?: Spec; rev?: string } = {};
-  for (const part of location.hash.slice(1).split('&')) {
-    const m = /^compare=(.*?)\.\.(.*)$/.exec(part);
-    if (m) out.compare = { from: decodeURIComponent(m[1]), to: decodeURIComponent(m[2]) };
-    const r = /^rev=(.+)$/.exec(part);
-    if (r) out.rev = decodeURIComponent(r[1]);
-  }
-  return out;
+export function readHash(): Spec | null {
+  const m = /^#compare=(.*?)\.\.(.*)$/.exec(location.hash);
+  return m ? { from: decodeURIComponent(m[1]), to: decodeURIComponent(m[2]) } : null;
 }
 
 // start applies the URL hash and keeps revs and the diff fresh as things change.
-// It returns true when it loads the map itself (the hash names a rev or a comparison).
+// It returns true when it loads the map itself (the hash names a comparison).
 let started = false;
 export function start(): boolean {
   const h = readHash();
   void loadRevs();
-  if (h.compare) void compare(h.compare.from, h.compare.to);
-  else if (h.rev) void view(h.rev);
-  const took = !!(h.compare || h.rev);
+  if (h) void compare(h.from, h.to);
+  const took = !!h;
   if (started) return took;
   started = true;
-  // On a branch, the map opens on what the branch changed, unless
-  // the URL says what to show.
+  // On a branch, the map opens on what the branch changed, unless the URL has
+  // a hash (any hash: #plain opens the plain map).
   if (!took && !location.hash)
     void loadRevs().then(() => {
       const r = get().revs;
@@ -462,7 +414,7 @@ let baseFor = '';
 function syncBase() {
   const s = getMain();
   const p = s.mode === 'propose' ? currentProposal(s) : null;
-  const want = p && p.status === 'archived' && p.base && !get().useCode ? p.base : '';
+  const want = p && p.status === 'archived' && p.base ? p.base : '';
   if (want === baseFor) return;
   baseFor = want;
   if (!want) return setMain({ baseGraph: null });

@@ -7,20 +7,18 @@ import {
   isWorktree,
   parseDiff,
   presets,
-  setChangesOnly,
-  setCompare,
   shortRev,
   sliceRange,
   sourceRev,
   specLabel,
   useCompare,
-  view,
+  stopCompare,
   type DataRef,
   type Dep,
   type DLine,
   type Ref,
 } from './revs';
-import { currentProposal, getState, setState, useModel, useStore } from './store';
+import { getState, setState, useModel, useStore } from './store';
 
 function useOutside(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -42,7 +40,7 @@ function useOutside(open: boolean, close: () => void) {
 
 // CompareControl sits in the top bar: what's on the map, and the ways to change it.
 export function CompareControl() {
-  const { revs, spec, view: v, busy, error, changesOnly, phase } = useCompare();
+  const { revs, spec, busy, error, phase } = useCompare();
   const readOnly = useStore((s) => s.readOnly);
   const [open, setOpen] = useState(false);
   const close = useMemo(() => () => setOpen(false), []);
@@ -50,7 +48,6 @@ export function CompareControl() {
   useEffect(() => {
     document.body.classList.toggle('ro', readOnly);
   }, [readOnly]);
-  const label = spec ? specLabel(spec, revs) : isWorktree(v) ? 'worktree' : shortRev(v);
   const go = (f: string, t: string) => {
     setOpen(false);
     void compare(f, t);
@@ -58,19 +55,14 @@ export function CompareControl() {
   const ps = presets(revs);
   return (
     <div className="cmp" ref={ref}>
-      <button id="cmp" className={`cmpbtn${spec ? ' on' : ''}${!spec && !isWorktree(v) ? ' past' : ''}${busy ? ' busy' : ''}`} aria-expanded={open} title={error || (busy && phase) || undefined} onClick={() => setOpen(!open)}>
+      <button id="cmp" className={`cmpbtn${spec ? ' on' : ''}${busy ? ' busy' : ''}`} aria-expanded={open} title={error || (busy && phase) || undefined} onClick={() => setOpen(!open)}>
         {revs?.current && <span className="br">⎇ {revs.current}</span>}
-        <span className="cl">{spec || !isWorktree(v) ? label : 'Compare…'}</span>
+        <span className="cl">{spec ? specLabel(spec, revs) : 'Compare…'}</span>
         {error ? <span className="cerr">!</span> : null}
         <span className="caret">▾</span>
       </button>
       {spec && (
-        <button id="changes-only" className="tool" aria-pressed={changesOnly} onClick={() => setChangesOnly(!changesOnly)}>
-          Changes only
-        </button>
-      )}
-      {(spec || !isWorktree(v)) && (
-        <button id="cmp-x" className="x" aria-label="Back to worktree" onClick={() => void view('worktree')}>
+        <button id="cmp-x" className="x" aria-label="Back to worktree" onClick={() => void stopCompare()}>
           ×
         </button>
       )}
@@ -226,20 +218,5 @@ export function DiffSource({ file, from, to, plain }: { file: string; from: numb
       </div>
       {mode === 'diff' ? <DiffLines lines={lines} /> : old ? <CodeBlock code={lines.filter((l) => l.t !== '+').map((l) => l.text).join('\n')} start={from} /> : plain}
     </div>
-  );
-}
-
-// ---- archived proposals over their base ----
-
-// ArchivedBase toggles whether an archived proposal draws over its base rev or the current code.
-export function ArchivedBase() {
-  const p = useStore(currentProposal);
-  const useCode = useCompare((s) => s.useCode);
-  if (!p || p.status !== 'archived' || !p.base) return null;
-  return (
-    <label className="basetgl">
-      <input id="p-usecode" type="checkbox" checked={useCode} onChange={(e) => setCompare({ useCode: e.target.checked })} />
-      Current code
-    </label>
   );
 }

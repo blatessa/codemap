@@ -33,7 +33,6 @@ body.ro .mhead{cursor:pointer}
 .cmpbtn .cl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cmpbtn .caret{font-size:10px}
 .cmpbtn.on{color:var(--ink);border-color:var(--diff-chg)}
-.cmpbtn.past{color:var(--ink);border-color:var(--ink)}
 .cmpbtn.busy .cl{animation:cmp-pulse 1.2s ease-in-out infinite}
 .cmpbtn .cerr{color:var(--warn);font-weight:600}
 @keyframes cmp-pulse{50%{opacity:.35}}
@@ -61,7 +60,6 @@ body.ro .mhead{cursor:pointer}
 .cdiff .c .la{background:var(--diff-add-soft)}
 .cdiff .c .lr{background:var(--diff-rem-soft);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--diff-rem) 50%,transparent)}
 
-.basetgl{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
 
 :root{
   --bg:#eef1f5; --surface:#ffffff; --ink:#1a2130; --muted:#5b6578; --line:#d3d9e3; --lane:#e5e9f0;
