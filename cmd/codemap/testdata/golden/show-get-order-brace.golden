@@ -12,5 +12,8 @@ GET /orders/:id
     orders.Repo.Find
       orders [table]  reads: SELECT * FROM orders WHERE id = $1
 
+Called by:
+  page /orders/:id  fetches: OrderStatus · useOrder
+
 Tests:
   test:go:shop/internal/auth.TestRequireUser_MissingToken  internal/auth/middleware_test.go:11  (direct)

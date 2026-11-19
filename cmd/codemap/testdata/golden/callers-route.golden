@@ -1,8 +1,0 @@
-id:     route:POST /orders
-kind:   route (entry)
-module: cmd/server
-file:   cmd/server/routes.go:13
-method: POST
-
-POST /orders  (+1)
-  page /checkout  fetches: PlaceOrderButton.onClick

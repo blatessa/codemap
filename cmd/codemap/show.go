@@ -16,7 +16,7 @@ func init() {
 	commands["show"] = func(args []string) error { return runShow(os.Stdout, args) }
 }
 
-const showUsage = `show <node> [--root DIR] [--graph FILE] [--rev worktree] [--json]`
+const showUsage = `show <node | module> [--root DIR] [--graph FILE] [--rev worktree] [--json]`
 
 func runShow(w io.Writer, args []string) error {
 	var c cli.Common
@@ -33,12 +33,24 @@ func runShow(w io.Writer, args []string) error {
 	if err != nil {
 		return err
 	}
+	// a module, when the argument names one and no node
+	if len(cli.MatchNodes(ix, pos[0])) == 0 {
+		if ms := cli.MatchModules(ix, pos[0]); len(ms) > 0 {
+			id, err := cli.ResolveModule(w, ix, pos[0], c.JSON)
+			if err != nil {
+				return err
+			}
+			return showModule(w, ix, id, c.JSON)
+		}
+	}
 	id, err := cli.ResolveNode(w, ix, pos[0], c.JSON)
 	if err != nil {
 		return err
 	}
 	n := ix.Node[id]
 	tree := graph.Trace(ix, id)
+	// what calls it, up to the entry points; it stops at external nodes
+	callers := withoutTests(ix, graph.Settle(graph.Features(ix, graph.UpTree(ix, id, 0))))
 
 	// Entry points show the tests along the path shown; other nodes show the
 	// tests that reach them (as the viewer's details panel does).
@@ -68,6 +80,7 @@ func runShow(w io.Writer, args []string) error {
 		out := map[string]any{
 			"node":      n,
 			"tree":      tree,
+			"callers":   callers,
 			"reachedBy": nonNil(reachedBy),
 			"tests":     nonNil(tests),
 		}
@@ -83,14 +96,21 @@ func runShow(w io.Writer, args []string) error {
 		fmt.Fprintln(w)
 		cli.WriteTree(w, ix, tree, cli.TreeOptions{})
 	}
-	if !n.Entry && !n.External {
+	// a table or service lists its users above; an entry point usually has no
+	// callers, and says so only when it has some
+	if !n.External && (!n.Entry || len(callers.Children) > 0) {
 		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Reached by:")
-		if len(reachedBy) == 0 {
-			fmt.Fprintln(w, "  (no entry points)")
-		}
-		for _, e := range reachedBy {
-			fmt.Fprintln(w, "  "+cli.Name(ix, e))
+		fmt.Fprintln(w, "Called by:")
+		if len(callers.Children) == 0 && callers.Support == 0 {
+			fmt.Fprintln(w, "  (nothing: no entry point reaches it)")
+		} else {
+			var buf strings.Builder
+			cli.WriteTree(&buf, ix, callers, cli.TreeOptions{Up: true})
+			// the tree's first line is the node itself, already named above
+			lines := strings.SplitN(buf.String(), "\n", 2)
+			if len(lines) == 2 {
+				fmt.Fprint(w, lines[1])
+			}
 		}
 	}
 	fmt.Fprintln(w)
@@ -154,6 +174,19 @@ func writeTests(w io.Writer, ix *graph.Index, tests []graph.TestReach) {
 		}
 		fmt.Fprintln(w, row)
 	}
+}
+
+// withoutTests drops tests from a callers tree: they're listed under Tests.
+func withoutTests(ix *graph.Index, t *graph.TreeNode) *graph.TreeNode {
+	out := *t
+	out.Children = nil
+	for _, c := range t.Children {
+		if n := ix.Node[c.ID]; n != nil && n.Kind == graph.KindTest {
+			continue
+		}
+		out.Children = append(out.Children, withoutTests(ix, c))
+	}
+	return &out
 }
 
 // nonNil turns a nil slice into an empty one so JSON output shows [] not null.

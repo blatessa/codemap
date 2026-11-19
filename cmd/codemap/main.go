@@ -14,9 +14,8 @@ const usage = `usage: codemap <command> [flags]
 commands:
   build     extract the graph for a revision and print or write it
   serve     run the viewer on localhost
-  show      print the call tree below an entry point or function
-  callers   print what calls a node
-  module    print a module's contents and connections
+  show      print a node's call tree, its callers and its tests, or a module's
+            contents and connections
   modules   list every module with its size and dependencies
   search    search labels, files and doc comments
   diff      summarise what changed between two revisions (default HEAD..worktree)

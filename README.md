@@ -62,7 +62,7 @@ codemap serve          # opens the map in your browser
 - **Proposals** sketch a change on the map; select anything and press `C` to comment.
 
 From the terminal (handy for agents too): `codemap show "POST /orders"`,
-`codemap callers Repo.Find`, `codemap modules`, `codemap diff main...`. Run `codemap` for
+`codemap show internal/orders`, `codemap modules`, `codemap diff main...`. Run `codemap` for
 the full list.
 
 Settings and proposals live in `.codemap/` in your repo, as plain TOML and

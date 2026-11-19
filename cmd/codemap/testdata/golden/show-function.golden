@@ -13,9 +13,10 @@ orders.Service.Place  (+2)
     orders [table]  writes: INSERT INTO orders (user_id, items, charge_id, status) VALUES ($1, $2, $3, $4) RETURNING id
   order.placed [topic]  publishes
 
-Reached by:
-  page /checkout
-  POST /orders
+Called by:
+  orders.Handler.Create
+    POST /orders  (+1)
+      page /checkout  fetches: PlaceOrderButton.onClick
 
 Tests:
   test:go:shop/internal/orders.TestPlace_ChargesAndInserts  internal/orders/service_test.go:53  (direct)

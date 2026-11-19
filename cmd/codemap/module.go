@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -12,12 +11,6 @@ import (
 	"github.com/blatessa/codemap/internal/graph"
 )
 
-func init() {
-	commands["module"] = func(args []string) error { return runModule(os.Stdout, args) }
-}
-
-const moduleUsage = `module <module id | path | label> [--root DIR] [--graph FILE] [--rev worktree] [--json]`
-
 // moduleLink is another module and the number of edges between it and this one.
 type moduleLink struct {
 	Module string `json:"module"`
@@ -25,25 +18,8 @@ type moduleLink struct {
 	Count  int    `json:"count"`
 }
 
-func runModule(w io.Writer, args []string) error {
-	var c cli.Common
-	fs := cli.NewFlagSet("module", moduleUsage)
-	c.Register(fs)
-	pos, err := cli.Parse(fs, args)
-	if err != nil {
-		return err
-	}
-	if len(pos) != 1 {
-		return cli.Usage(moduleUsage)
-	}
-	ix, _, err := c.Load()
-	if err != nil {
-		return err
-	}
-	id, err := cli.ResolveModule(w, ix, pos[0], c.JSON)
-	if err != nil {
-		return err
-	}
+// showModule prints a module's contents, what it depends on and what uses it.
+func showModule(w io.Writer, ix *graph.Index, id string, asJSON bool) error {
 	m := ix.Module[id]
 
 	var nodes []graph.Node
@@ -80,7 +56,7 @@ func runModule(w io.Writer, args []string) error {
 	}
 	dependsOn, usedBy := links(ix, deps), links(ix, users)
 
-	if c.JSON {
+	if asJSON {
 		return cli.WriteJSON(w, map[string]any{
 			"module":    m,
 			"nodes":     nonNil(nodes),

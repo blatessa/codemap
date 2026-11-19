@@ -18,6 +18,9 @@ POST /orders
         orders [table]  writes: INSERT INTO orders (user_id, items, charge_id, status) VALUES ($1, $2, $3, $4) RETURNING id
       order.placed [topic]  publishes
 
+Called by:
+  page /checkout  fetches: PlaceOrderButton.onClick
+
 Tests:
   test:go:shop/internal/auth.TestRequireUser_MissingToken  internal/auth/middleware_test.go:11  (direct)
   test:go:shop/internal/inventory.TestReserve_InsufficientStock  internal/inventory/reserve_test.go:11  (direct)

@@ -1,4 +1,19 @@
 {
+  "callers": {
+    "id": "route:GET /orders/:id",
+    "children": [
+      {
+        "id": "page:/orders/:id",
+        "via": {
+          "from": "page:/orders/:id",
+          "to": "route:GET /orders/:id",
+          "type": "fetches",
+          "detail": "OrderStatus · useOrder"
+        }
+      }
+    ],
+    "support": 1
+  },
   "node": {
     "id": "route:GET /orders/:id",
     "kind": "route",

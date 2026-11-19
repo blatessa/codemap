@@ -5,6 +5,12 @@ file:   internal/orders/repo.go:32
 doc:    UpdateStatus looks the order up by Stripe charge ID, not order ID.
 
 orders.Repo.UpdateStatus
+  orders [table]  writes: UPDATE orders SET status = $2 WHERE charge_id = $1 RETURNING *
+
+Called by:
   orders.Service.MarkPaid
     payments.Handler.HandleWebhook
       POST /webhooks/stripe
+
+Tests:
+  (none)

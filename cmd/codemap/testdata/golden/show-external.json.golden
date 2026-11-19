@@ -1,4 +1,92 @@
 {
+  "callers": {
+    "id": "ext:stripe",
+    "children": [
+      {
+        "id": "go:shop/internal/payments.(*Client).Charge",
+        "via": {
+          "from": "go:shop/internal/payments.(*Client).Charge",
+          "to": "ext:stripe",
+          "type": "calls",
+          "detail": "PaymentIntents.New"
+        },
+        "children": [
+          {
+            "id": "go:shop/internal/orders.(*Service).Place",
+            "via": {
+              "from": "go:shop/internal/orders.(*Service).Place",
+              "to": "go:shop/internal/payments.(*Client).Charge",
+              "type": "calls",
+              "file": "internal/orders/service.go",
+              "line": 52
+            },
+            "children": [
+              {
+                "id": "go:shop/internal/orders.(*Handler).Create",
+                "via": {
+                  "from": "go:shop/internal/orders.(*Handler).Create",
+                  "to": "go:shop/internal/orders.(*Service).Place",
+                  "type": "calls"
+                },
+                "children": [
+                  {
+                    "id": "route:POST /orders",
+                    "via": {
+                      "from": "route:POST /orders",
+                      "to": "go:shop/internal/orders.(*Handler).Create",
+                      "type": "calls"
+                    },
+                    "children": [
+                      {
+                        "id": "page:/checkout",
+                        "via": {
+                          "from": "page:/checkout",
+                          "to": "route:POST /orders",
+                          "type": "fetches",
+                          "detail": "PlaceOrderButton.onClick"
+                        }
+                      }
+                    ],
+                    "support": 1
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "go:shop/internal/payments.(*Handler).verifySignature",
+        "via": {
+          "from": "go:shop/internal/payments.(*Handler).verifySignature",
+          "to": "ext:stripe",
+          "type": "calls",
+          "detail": "webhook.ConstructEvent"
+        },
+        "children": [
+          {
+            "id": "go:shop/internal/payments.(*Handler).HandleWebhook",
+            "via": {
+              "from": "go:shop/internal/payments.(*Handler).HandleWebhook",
+              "to": "go:shop/internal/payments.(*Handler).verifySignature",
+              "type": "calls"
+            },
+            "children": [
+              {
+                "id": "route:POST /webhooks/stripe",
+                "via": {
+                  "from": "route:POST /webhooks/stripe",
+                  "to": "go:shop/internal/payments.(*Handler).HandleWebhook",
+                  "type": "calls"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "support": 1
+  },
   "node": {
     "id": "ext:stripe",
     "kind": "service",

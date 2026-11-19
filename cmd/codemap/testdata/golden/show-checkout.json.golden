@@ -1,4 +1,7 @@
 {
+  "callers": {
+    "id": "page:/checkout"
+  },
   "node": {
     "id": "page:/checkout",
     "kind": "page",

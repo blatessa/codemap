@@ -1,15 +1,5 @@
 {
-  "node": {
-    "id": "go:shop/internal/orders.(*Repo).UpdateStatus",
-    "kind": "function",
-    "label": "Repo.UpdateStatus",
-    "module": "mod:go:shop/internal/orders",
-    "file": "internal/orders/repo.go",
-    "line": 32,
-    "endLine": 39,
-    "doc": "UpdateStatus looks the order up by Stripe charge ID, not order ID."
-  },
-  "tree": {
+  "callers": {
     "id": "go:shop/internal/orders.(*Repo).UpdateStatus",
     "children": [
       {
@@ -39,6 +29,34 @@
             ]
           }
         ]
+      }
+    ]
+  },
+  "node": {
+    "id": "go:shop/internal/orders.(*Repo).UpdateStatus",
+    "kind": "function",
+    "label": "Repo.UpdateStatus",
+    "module": "mod:go:shop/internal/orders",
+    "file": "internal/orders/repo.go",
+    "line": 32,
+    "endLine": 39,
+    "doc": "UpdateStatus looks the order up by Stripe charge ID, not order ID."
+  },
+  "reachedBy": [
+    "route:POST /webhooks/stripe"
+  ],
+  "tests": [],
+  "tree": {
+    "id": "go:shop/internal/orders.(*Repo).UpdateStatus",
+    "children": [
+      {
+        "id": "table:orders",
+        "via": {
+          "from": "go:shop/internal/orders.(*Repo).UpdateStatus",
+          "to": "table:orders",
+          "type": "writes",
+          "detail": "UPDATE orders SET status = $2 WHERE charge_id = $1 RETURNING *"
+        }
       }
     ]
   }

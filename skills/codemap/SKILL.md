@@ -16,8 +16,8 @@ Run these from the repo root. Each one builds the graph from the working tree. T
 ```sh
 codemap show "POST /orders"          # call tree below an entry point or function, with SQL and API details, then the tests of it
 codemap show orders.Service.Place    # any function shows its own trace
-codemap callers Repo.UpdateStatus    # what reaches this, up to the entry points
-codemap module internal/orders       # contents, what it depends on, what uses it
+codemap show Repo.UpdateStatus       # a function: what it reaches, what calls it up to the entry points, its tests
+codemap show internal/orders         # a module: contents, what it depends on, what uses it
 codemap modules                      # every module at once, with its size and dependencies
 codemap search refund                # labels, files and doc comments
 ```
@@ -36,11 +36,12 @@ Output conventions:
 - `show` goes 4 levels deep; rows with more below end in `...`.
 - Nothing a trace leaves out hides an effect: a row ends in `→ writes orders · reads users · calls api.stripe.com` for the tables, topics, services and API calls reached below it that the tree doesn't show (past the depth limit, inside support code or a shared function, or behind an API call into the backend).
 - Traces stop at external systems.
+- `Called by:` is the tree of what calls a function, up to the entry points, leaving out support code and tests the same way. It isn't printed for a table or service (`Written by:`, `Read by:` and so on list its users instead), or for an entry point nothing calls.
 - `Tests:` lists the tests that call the code shown, directly `(direct)` or through one helper of their own (`via …`), direct ones first. Tests that only reach it through support code or longer chains aren't listed, so a short list doesn't mean the code is untested end to end. For a table or service, it's the tests of the code that uses it.
 
-Useful before changing code: `show` an entry point to see everything a change could affect, `callers` to see who depends on a function, and `module` to see a package's boundaries.
+Useful before changing code: `show` an entry point to see everything a change could affect, a function to see who depends on it, and a module to see a package's boundaries.
 
-Every query takes `--rev` (a commit, branch or tag) to ask about another revision: `codemap callers Repo.Find --rev main`.
+Every query takes `--rev` (a commit, branch or tag) to ask about another revision: `codemap show Repo.Find --rev main`.
 
 ## Reviewing what changed
 

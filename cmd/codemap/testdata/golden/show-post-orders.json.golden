@@ -1,4 +1,19 @@
 {
+  "callers": {
+    "id": "route:POST /orders",
+    "children": [
+      {
+        "id": "page:/checkout",
+        "via": {
+          "from": "page:/checkout",
+          "to": "route:POST /orders",
+          "type": "fetches",
+          "detail": "PlaceOrderButton.onClick"
+        }
+      }
+    ],
+    "support": 1
+  },
   "node": {
     "id": "route:POST /orders",
     "kind": "route",

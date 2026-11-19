@@ -3,4 +3,7 @@ kind:   function (entry)
 module: cmd/server
 file:   cmd/server/main.go:29
 
-server.main  (no callers)
+server.main  (+13)  → writes stock · calls api.stripe.com, postmark
+
+Tests:
+  (none)

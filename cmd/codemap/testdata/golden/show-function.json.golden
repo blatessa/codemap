@@ -1,4 +1,39 @@
 {
+  "callers": {
+    "id": "go:shop/internal/orders.(*Service).Place",
+    "children": [
+      {
+        "id": "go:shop/internal/orders.(*Handler).Create",
+        "via": {
+          "from": "go:shop/internal/orders.(*Handler).Create",
+          "to": "go:shop/internal/orders.(*Service).Place",
+          "type": "calls"
+        },
+        "children": [
+          {
+            "id": "route:POST /orders",
+            "via": {
+              "from": "route:POST /orders",
+              "to": "go:shop/internal/orders.(*Handler).Create",
+              "type": "calls"
+            },
+            "children": [
+              {
+                "id": "page:/checkout",
+                "via": {
+                  "from": "page:/checkout",
+                  "to": "route:POST /orders",
+                  "type": "fetches",
+                  "detail": "PlaceOrderButton.onClick"
+                }
+              }
+            ],
+            "support": 1
+          }
+        ]
+      }
+    ]
+  },
   "node": {
     "id": "go:shop/internal/orders.(*Service).Place",
     "kind": "function",

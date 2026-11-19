@@ -1,0 +1,38 @@
+{
+  "callers": {
+    "id": "go:shop/cmd/server.main"
+  },
+  "node": {
+    "id": "go:shop/cmd/server.main",
+    "kind": "function",
+    "label": "main",
+    "module": "mod:go:shop/cmd/server",
+    "file": "cmd/server/main.go",
+    "line": 29,
+    "endLine": 49,
+    "entry": true,
+    "fields": {
+      "role": "wiring"
+    }
+  },
+  "reachedBy": [],
+  "tests": [],
+  "tree": {
+    "id": "go:shop/cmd/server.main",
+    "support": 13,
+    "reaches": [
+      {
+        "to": "ext:postmark",
+        "type": "calls"
+      },
+      {
+        "to": "ext:stripe",
+        "type": "calls"
+      },
+      {
+        "to": "table:stock",
+        "type": "writes"
+      }
+    ]
+  }
+}
