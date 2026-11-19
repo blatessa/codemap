@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Source, Where } from './Code';
 import { Fields } from './Fields';
-import { HEAD, PAD, ROW, effectSummary, entriesReaching, isEffect, onScreen, trace, type TreeRow, qn, sharedFn, shortMod, testsReaching, type Effect, type MEdge, type Model } from './model';
+import { HEAD, PAD, ROW, effectSummary, entriesReaching, isEffect, onScreen, screenRoot, trace, type TreeRow, qn, sharedFn, shortMod, testsReaching, type Effect, type MEdge, type Model } from './model';
 import { ProposalList, ProposalView } from './Proposals';
 import {
   currentProposal,
@@ -128,7 +128,7 @@ function items(m: Model, rows: TreeRow[]): Item[] {
         continue;
       }
       // a page's calls name what on the screen makes them (graph.FoldScreens)
-      const action = m.node.get(r.via.from)?.row.node.kind === 'page' ? r.via.detail : undefined;
+      const action = screenRoot(m.node.get(r.via.from)?.row.node) ? r.via.detail : undefined;
       out.push({ kind: 'eff', type: r.via.type, ids: [r.id], detail: r.via.detail, depth: r.depth, action });
       continue;
     }
@@ -209,13 +209,16 @@ function CallTree({ m, id }: { m: Model; id: string }) {
   );
 }
 
-// ScreenOutline: what a page is made of, as the user meets it: its
-// components, nested as they render, and the handlers and hooks in them that
-// reach past the frontend, with what they reach.
+// ScreenOutline: what you can do on a screen. Its components, nested as they
+// render, keeping only those that lead somewhere past the frontend; each says
+// what it reaches, once per thing reached, with the handlers and hooks doing
+// it named together ("CompareControl · view, go → fetches GET /api/state").
 function ScreenOutline({ m, id }: { m: Model; id: string }) {
-  const part = (x: string) => onScreen(m.node.get(x)?.row.node);
-  // what x's code reaches outside the frontend (graph.FoldScreens)
-  const reaches = (x: string) => {
+  const node = (x: string) => m.node.get(x)?.row.node;
+  const part = (x: string) => onScreen(node(x));
+  const comp = (x: string) => node(x)?.kind === 'component';
+  // what x's own code (not the components it shows) reaches past the frontend
+  const reaches = (x: string): Effect[] => {
     const got = new Map<string, Effect>(),
       seen = new Set([x]),
       q = [x];
@@ -223,7 +226,7 @@ function ScreenOutline({ m, id }: { m: Model; id: string }) {
       const y = q.shift()!;
       for (const e of m.all.out.get(y) ?? []) {
         if (isEffect(m, e) && !part(e.to)) got.set(e.type + '\0' + e.to, { to: e.to, type: e.type });
-        else if ((e.type === 'calls' || e.type === 'renders') && part(e.to) && m.node.get(e.to)!.row.node.kind !== 'component' && !seen.has(e.to)) {
+        else if ((e.type === 'calls' || e.type === 'renders') && part(e.to) && !comp(e.to) && !seen.has(e.to)) {
           seen.add(e.to);
           q.push(e.to);
         }
@@ -231,44 +234,62 @@ function ScreenOutline({ m, id }: { m: Model; id: string }) {
     }
     return [...got.values()];
   };
-  const rows: { id: string; depth: number; comp: boolean; fs: Effect[] }[] = [];
+  type Line = { id: string; depth: number; acts: string[]; fs: Effect[] };
+  const lines: Line[] = [];
   const seen = new Set<string>();
-  const walk = (x: string, depth: number) => {
-    const outs = [...(m.all.out.get(x) ?? [])].sort((a, b) => (a.line ?? 0) - (b.line ?? 0));
-    for (const e of outs) {
-      if (!part(e.to) || seen.has(e.to) || depth > 8) continue;
-      const comp = m.node.get(e.to)!.row.node.kind === 'component';
-      if (comp) {
-        seen.add(e.to);
-        rows.push({ id: e.to, depth, comp, fs: [] });
-        walk(e.to, depth + 1);
-      } else {
-        const fs = reaches(e.to);
-        if (fs.length) rows.push({ id: e.to, depth, comp, fs });
-      }
+  // walk adds c's lines and its children's, and reports whether any of it reaches something
+  const walk = (c: string, depth: number, show: boolean): boolean => {
+    const at = lines.length;
+    // its handlers and hooks, grouped by what they reach
+    const by = new Map<string, Line>();
+    for (const e of [...(m.all.out.get(c) ?? [])].sort((a, b) => (a.line ?? 0) - (b.line ?? 0))) {
+      if (!part(e.to) || comp(e.to)) continue;
+      const fs = reaches(e.to);
+      if (!fs.length) continue;
+      const k = fs.map((f) => f.type + f.to).sort().join('|');
+      const l = node(e.to)!.label;
+      const name = l.startsWith(node(c)!.label + '.') ? l.slice(node(c)!.label.length + 1) : l;
+      const x = by.get(k);
+      if (x) x.acts.includes(name) || x.acts.push(name);
+      else by.set(k, { id: e.to, depth: depth + (show ? 1 : 0), acts: [name], fs });
     }
+    if (show) lines.push({ id: c, depth, acts: [], fs: [] });
+    lines.push(...by.values());
+    let any = by.size > 0;
+    for (const e of [...(m.all.out.get(c) ?? [])].sort((a, b) => (a.line ?? 0) - (b.line ?? 0))) {
+      if (!part(e.to) || !comp(e.to) || seen.has(e.to)) continue;
+      seen.add(e.to);
+      if (walk(e.to, depth + (show ? 1 : 0), true)) any = true;
+    }
+    if (!any) lines.length = at; // shows nothing that leads anywhere
+    return any;
   };
-  // the component a page renders is the page: start inside it
-  const own = (m.all.out.get(id) ?? []).filter((e) => e.type === 'renders' && part(e.to));
+  seen.add(id);
+  // a page renders its component: that component is the page
+  const own = (m.all.out.get(id) ?? []).filter((e) => e.type === 'renders' && part(e.to) && comp(e.to));
   if (own.length === 1) {
     seen.add(own[0].to);
-    walk(own[0].to, 0);
-  } else walk(id, 0);
-  if (!rows.length) return null;
+    walk(own[0].to, 0, false);
+  }
+  walk(id, 0, false);
+  if (!lines.length) return null;
   return (
     <Section title="On this screen">
       <div className="tree">
-        {rows.map((r) => {
-          const l = m.node.get(r.id)!.row.label;
-          return (
-            <button key={r.id + r.depth} className="trow" data-node={r.id} style={{ paddingLeft: 6 + r.depth * 14 }} onClick={() => select(r.id, true)}>
+        {lines.map((r, i) =>
+          r.acts.length ? (
+            <button key={i} className="trow" data-node={r.id} style={{ paddingLeft: 6 + r.depth * 14 }} onClick={() => select(r.id, true)}>
               <span className="l">
-                {r.comp ? <span>{l}</span> : <span className="m">{l.includes('.') ? l.slice(l.lastIndexOf('.') + 1) : l}</span>}
-                {!r.comp && <span className="act">→ {effectSummary(m, r.fs)}</span>}
+                <span className="m">{r.acts.join(', ')}</span>
+                <span className="act">→ {effectSummary(m, r.fs)}</span>
               </span>
             </button>
-          );
-        })}
+          ) : (
+            <button key={i} className="trow" data-node={r.id} style={{ paddingLeft: 6 + r.depth * 14 }} onClick={() => select(r.id, true)}>
+              <span className="l">{node(r.id)!.label}</span>
+            </button>
+          ),
+        )}
       </div>
     </Section>
   );
@@ -336,7 +357,7 @@ function NodePanel({ m, id }: { m: Model; id: string }) {
     body = (
       <>
         <Fields m={m} fields={n.fields} skip={['method']} />
-        {n.kind === 'page' && <ScreenOutline m={m} id={id} />}
+        {screenRoot(n) && <ScreenOutline m={m} id={id} />}
         {inn.length > 0 && (
           <Section title="Called from">
             <EdgeList m={m} edges={inn} end="from" />

@@ -94,6 +94,8 @@ export const sharedFn = (n: GNode): boolean => n.fields?.shared === true;
 // onScreen: frontend code that is part of a page (graph.FoldScreens). A
 // page's story shows what that code reaches, not the code.
 export const onScreen = (n?: GNode): boolean => n?.fields?.screen === true;
+// screenRoot: a screen itself, a router page or a top component.
+export const screenRoot = (n?: GNode): boolean => n?.fields?.screen_root === true;
 export const stops = (n: GNode): boolean => roleOf(n) === 'utility' || sharedFn(n);
 
 const codeKind = (n?: GNode): boolean => n?.kind === 'function' || n?.kind === 'component';

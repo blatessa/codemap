@@ -134,6 +134,10 @@ const Pair = ({ label, children }: { label: string; children: ReactNode }) => (
 
 // Fields renders fields in insertion order: simple values gather into a fact
 // list, tables, code and nested objects get their own titled section.
+// codemap's own marks on a node (graph.AssignRoles, graph.FoldScreens): they
+// shape what the map and traces show, and aren't facts about the code
+const OWN = new Set(['role', 'shared', 'entry_reason', 'screen', 'screen_root']);
+
 export function Fields({ m, fields, skip = [] }: { m: Model; fields?: O; skip?: string[] }) {
   if (!fields) return null;
   const out: ReactNode[] = [];
@@ -148,7 +152,7 @@ export function Fields({ m, fields, skip = [] }: { m: Model; fields?: O; skip?: 
     facts = [];
   };
   for (const [k, v] of Object.entries(fields)) {
-    if (skip.includes(k)) continue;
+    if (skip.includes(k) || OWN.has(k)) continue;
     const kind = classify(v, (id) => m.node.has(id));
     if (kind === 'none') continue;
     if (isBlockKind(kind)) {

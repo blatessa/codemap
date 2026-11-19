@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/blatessa/codemap/internal/extract/sqlext"
 	"github.com/blatessa/codemap/internal/graph"
 	"github.com/blatessa/codemap/internal/project"
 )
@@ -87,6 +88,15 @@ func Graph(root string, proj *project.Project, opt Options) (*graph.Graph, error
 	graph.AssignRoles(g, func(file string) ([]byte, error) {
 		return os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
 	})
-	graph.FoldScreens(g)
+	graph.FoldScreens(g, screenFiles(proj.Config.TS.Screens))
 	return g, nil
+}
+
+// screenFiles matches the files configured as screens; nil leaves screens to
+// graph.FoldScreens' defaults.
+func screenFiles(globs []string) func(file string) bool {
+	if len(globs) == 0 {
+		return nil
+	}
+	return func(file string) bool { return sqlext.Excluded(file, globs) }
 }

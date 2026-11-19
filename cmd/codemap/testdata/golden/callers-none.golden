@@ -2,6 +2,5 @@ id:     go:shop/cmd/server.main
 kind:   function (entry)
 module: cmd/server
 file:   cmd/server/main.go:29
-role:   wiring
 
 server.main  (no callers)

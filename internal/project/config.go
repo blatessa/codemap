@@ -38,6 +38,10 @@ type TSConfig struct {
 	ModuleDepth     int      `toml:"module_depth,omitempty" json:"module_depth,omitempty"`
 	HTTPClients     []string `toml:"http_clients,omitempty" json:"http_clients,omitempty"`
 	BaseURLPrefixes []string `toml:"base_url_prefixes,omitempty" json:"base_url_prefixes,omitempty"`
+	// Screens are globs of the files whose components are the app's screens
+	// ("web/src/pages/**"). Unset, the screens are the router's pages or, with
+	// none, the components nothing else renders.
+	Screens []string `toml:"screens,omitempty" json:"screens,omitempty"`
 }
 
 // ExternalConfig extends external-service detection.

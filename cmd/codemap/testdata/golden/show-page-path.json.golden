@@ -6,7 +6,10 @@
     "module": "mod:ts:web/src/pages",
     "file": "web/src/main.tsx",
     "line": 9,
-    "entry": true
+    "entry": true,
+    "fields": {
+      "screen_root": true
+    }
   },
   "reachedBy": [],
   "tests": [

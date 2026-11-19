@@ -132,7 +132,7 @@ func WriteHeader(w io.Writer, ix *graph.Index, id string) {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		if k == "columns" {
+		if k == "columns" || graph.OwnFields[k] {
 			continue
 		}
 		kv(k, fieldText(n.Fields[k]))
