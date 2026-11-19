@@ -32,7 +32,7 @@ file="codemap_${os}_${arch}.tar.gz"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-echo "Downloading $file…"
+echo "Downloading ${file}..."
 curl -fsSL "$base/$file" -o "$tmp/$file"
 curl -fsSL "$base/checksums.txt" -o "$tmp/checksums.txt"
 
