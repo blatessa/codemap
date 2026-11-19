@@ -2,6 +2,8 @@ package project
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"math"
 	"reflect"
 	"sort"
@@ -25,6 +27,21 @@ func MarshalTOML(v any) ([]byte, error) {
 
 // UnmarshalTOML decodes TOML into v.
 func UnmarshalTOML(b []byte, v any) error { return toml.Unmarshal(b, v) }
+
+// UnknownKeys returns a warning for each key in b that v has no field for.
+func UnknownKeys(file string, b []byte, v any) []string {
+	d := toml.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	var sm *toml.StrictMissingError
+	if err := d.Decode(v); !errors.As(err, &sm) {
+		return nil
+	}
+	var out []string
+	for _, e := range sm.Errors {
+		out = append(out, fmt.Sprintf("%s: unknown key %q is ignored", file, strings.Join(e.Key(), ".")))
+	}
+	return out
+}
 
 // firstKeys come first, in this order, in free-form maps.
 var firstKeys = []string{"id", "name", "from", "to", "kind", "label", "module", "external", "entry"}

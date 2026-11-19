@@ -1,6 +1,6 @@
 package project
 
-// Config is .codemap/config.toml (documented for users in skills/codemap/SKILL.md;
+// Config is .codemap/config.toml (documented for users in skills/codemap/reference/config.md;
 // keep the two in step). Everything is optional; extractors
 // apply their own defaults for zero values.
 type Config struct {

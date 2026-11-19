@@ -1,5 +1,10 @@
 {
   "name": "codemap",
-  "description": "Query a codebase's architecture map and write proposals for the codemap viewer",
-  "author": { "name": "blatessa" }
+  "version": "0.2.0",
+  "description": "Query a codebase's architecture map, review what a change did to it, and write proposals for the codemap viewer",
+  "author": { "name": "blatessa" },
+  "homepage": "https://github.com/blatessa/codemap",
+  "repository": "https://github.com/blatessa/codemap",
+  "license": "MIT",
+  "keywords": ["architecture", "code map", "call graph"]
 }

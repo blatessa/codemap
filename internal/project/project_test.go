@@ -2,6 +2,7 @@ package project
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -100,4 +101,18 @@ to = 'x'
 		t.Errorf("not stable:\n%s", b2)
 	}
 
+}
+
+func TestUnknownConfigKeys(t *testing.T) {
+	fsys := fstest.MapFS{"config.toml": {Data: []byte("exclud = ['x']\n[go]\njobz = []\n[ts]\nroots = ['web']\n")}}
+	p, err := LoadFS(fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Warnings) != 2 || !strings.Contains(p.Warnings[0], `"exclud"`) || !strings.Contains(p.Warnings[1], `"go.jobz"`) {
+		t.Errorf("warnings: %q", p.Warnings)
+	}
+	if len(p.Config.TS.Roots) != 1 {
+		t.Error("known keys should still load")
+	}
 }

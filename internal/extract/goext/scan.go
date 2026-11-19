@@ -597,6 +597,11 @@ func (l *load) patternCalls(c *fnCtx, call *ast.CallExpr, callee *types.Func, fi
 	if matched == nil {
 		return
 	}
+	for _, p := range []*project.CallPattern{pj, ps, pp} {
+		if p != nil {
+			l.x.used[p] = true
+		}
+	}
 	info := c.p.TypesInfo
 	verb := strings.ToLower(matched.Name())
 	if pj != nil {

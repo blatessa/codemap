@@ -53,6 +53,9 @@ func Graph(root string, proj *project.Project, opt Options) (*graph.Graph, error
 	if proj == nil {
 		proj = &project.Project{}
 	}
+	for _, w := range proj.Warnings {
+		fmt.Fprintln(os.Stderr, "codemap: "+w)
+	}
 	var parts []*graph.Graph
 	if opt.GraphFile != "" {
 		f, err := os.Open(opt.GraphFile)

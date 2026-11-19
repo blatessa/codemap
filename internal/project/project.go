@@ -20,6 +20,9 @@ const Dir = ".codemap"
 type Project struct {
 	Config    Config      `json:"config"`
 	Proposals []*Proposal `json:"proposals"`
+	// Warnings are problems in .codemap/ that don't stop it loading, such as
+	// keys config.toml doesn't know (a typo maps nothing).
+	Warnings []string `json:"-"`
 }
 
 // Load reads <root>/.codemap. A missing directory yields an empty Project.
@@ -32,7 +35,10 @@ func LoadFS(fsys fs.FS) (*Project, error) {
 		name  string
 		parse func([]byte) error
 	}{
-		{"config.toml", func(b []byte) error { return UnmarshalTOML(b, &p.Config) }},
+		{"config.toml", func(b []byte) error {
+			p.Warnings = append(p.Warnings, UnknownKeys("config.toml", b, &Config{})...)
+			return UnmarshalTOML(b, &p.Config)
+		}},
 	}
 	for _, f := range files {
 		if err := readFile(fsys, f.name, f.parse); err != nil {

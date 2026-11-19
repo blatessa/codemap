@@ -8,7 +8,7 @@ import (
 )
 
 // Proposal is one .codemap/proposals/<slug>.md file: TOML frontmatter between +++ lines holding the
-// sketch, then a Markdown body (format: skills/codemap/SKILL.md). Proposals are sketches; nothing checks
+// sketch, then a Markdown body (format: skills/codemap/reference/proposals.md). Proposals are sketches; nothing checks
 // them against the code.
 type Proposal struct {
 	Slug    string           `toml:"-" json:"slug"`

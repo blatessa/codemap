@@ -60,7 +60,7 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 	if err != nil {
 		return nil, err
 	}
-	x := &extractor{root: root, cfg: cfg, b: newBuilder(), ext: newExtTable(cfg), migTables: map[string]bool{}}
+	x := &extractor{root: root, cfg: cfg, b: newBuilder(), ext: newExtTable(cfg), migTables: map[string]bool{}, used: map[*project.CallPattern]bool{}}
 
 	mig, err := sqlext.Migrations(root, cfg)
 	if err != nil {
@@ -101,7 +101,25 @@ func Extract(root string, cfg project.Config) (*graph.Graph, error) {
 	x.addScreens()
 	x.linkRequests()
 	x.addFragments()
+	if len(mods) > 0 {
+		x.reportUnusedPatterns()
+	}
 	return x.b.graph(), nil
+}
+
+// reportUnusedPatterns warns about config call patterns that matched no call:
+// a typo in the name, or a pattern the code doesn't use, maps nothing.
+func (x *extractor) reportUnusedPatterns() {
+	for _, k := range []struct {
+		name string
+		pats []project.CallPattern
+	}{{"jobs", x.cfg.Go.Jobs}, {"subscribers", x.cfg.Go.Subscribers}, {"publishers", x.cfg.Go.Publishers}} {
+		for i := range k.pats {
+			if !x.used[&k.pats[i]] {
+				Logf("config.toml: go.%s call %q matched no call in the code", k.name, k.pats[i].Call)
+			}
+		}
+	}
 }
 
 type extractor struct {
@@ -109,13 +127,14 @@ type extractor struct {
 	cfg         project.Config
 	b           *builder
 	ext         *extTable
-	modulePaths []string        // module paths of the repo's go.mod files
-	migTables   map[string]bool // table node IDs defined by migrations
-	ddl         *sqlext.Schema  // tables created by DDL in Go strings (ddl.go)
-	models      []modelTable    // ORM models' columns, applied once all tables are known
-	tmpl        *templates      // template files and their names (screens.go)
-	requests    []request       // calls to the repo's own HTTP API, matched to routes at the end (requests.go)
-	fragments   []sqlFragment   // table accesses in SQL fragments, kept at the end if the table is known (fragments.go)
+	modulePaths []string                      // module paths of the repo's go.mod files
+	migTables   map[string]bool               // table node IDs defined by migrations
+	ddl         *sqlext.Schema                // tables created by DDL in Go strings (ddl.go)
+	models      []modelTable                  // ORM models' columns, applied once all tables are known
+	tmpl        *templates                    // template files and their names (screens.go)
+	requests    []request                     // calls to the repo's own HTTP API, matched to routes at the end (requests.go)
+	fragments   []sqlFragment                 // table accesses in SQL fragments, kept at the end if the table is known (fragments.go)
+	used        map[*project.CallPattern]bool // config call patterns that matched a call
 }
 
 // findModules returns the directories under root holding a go.mod, skipping
