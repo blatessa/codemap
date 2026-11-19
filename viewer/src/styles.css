@@ -474,3 +474,14 @@ details.test .code{margin:4px 0 8px}
 .dcalls.k-reads,.dcalls.k-writes{border-left-color:var(--db)}
 .dcalls.k-http{border-left-color:var(--http)}
 .dcalls.k-event{border-left-color:var(--queue)}
+
+/* folding sections, resizing the panel */
+.stog{all:unset;cursor:pointer;display:flex;gap:6px;align-items:baseline}
+.stog .car{width:10px;font-size:10px;color:var(--muted)}
+.stog:hover .car{color:var(--ink)}
+.sec.folded h3{margin-bottom:0}
+.dresize{position:absolute;top:0;bottom:0;width:6px;cursor:col-resize;z-index:6}
+.dresize:hover,.dresize:active{background:color-mix(in srgb,var(--accent) 35%,transparent)}
+@media (max-width:700px){.dresize{display:none}}
+@media (max-width:700px){.drawer{width:auto!important}}
+.drawer{box-sizing:border-box}

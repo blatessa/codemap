@@ -5,18 +5,25 @@ import { useState, type ReactNode } from 'react';
 import { Source } from '../Code';
 import { openInEditor } from '../api';
 import { qn, sharedFn, testsReaching, type Model } from '../model';
-import { select, setState, storyOf, useStore } from '../store';
+import { select, setState, storyOf, toggleSection, useStore } from '../store';
 
-// Section is one part of a panel: a one-word title, an optional count, a rule above.
-export const Section = ({ title, count, children }: { title: string; count?: ReactNode; children: ReactNode }) => (
-  <section className="sec">
-    <h3>
-      {title}
-      {count !== undefined && <span className="cnt">{count}</span>}
-    </h3>
-    {children}
-  </section>
-);
+// Section is one part of a panel: a one-word title, an optional count, a rule
+// above. Clicking the title folds it, on every panel, until it's unfolded.
+export function Section({ title, count, children }: { title: string; count?: ReactNode; children: ReactNode }) {
+  const folded = useStore((s) => s.folded.includes(title));
+  return (
+    <section className={`sec ${folded ? 'folded' : ''}`} data-sec={title}>
+      <h3>
+        <button className="stog" aria-expanded={!folded} onClick={() => toggleSection(title)}>
+          <span className="car">{folded ? '▸' : '▾'}</span>
+          {title}
+          {count !== undefined && <span className="cnt">{count}</span>}
+        </button>
+      </h3>
+      {!folded && children}
+    </section>
+  );
+}
 
 export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 

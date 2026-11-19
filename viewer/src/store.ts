@@ -23,6 +23,8 @@ export interface S {
   mode: Mode;
   sel: string | null; // the selected node, part or folder
   open: string[]; // folders opened on the map (parts.foldItems)
+  folded: string[]; // panel sections folded, by title (remembered per viewer)
+  drawerW: number | null; // the panel's width, when dragged (remembered per viewer)
   hover: string | null;
   story: string | null; // the feature on the map; clicking its steps keeps it there
   view: { x: number; y: number; k: number };
@@ -50,6 +52,8 @@ export const useStore = create<S>(() => ({
   mode: 'explore',
   sel: null,
   open: [],
+  folded: readPref<string[]>('codemap.folded', []),
+  drawerW: readPref<number | null>('codemap.drawerW', null),
   hover: null,
   story: null,
   view: { x: 0, y: 0, k: 1 },
@@ -93,6 +97,37 @@ export function toggleFolder(id: string) {
   const open = get().open;
   set({ open: open.includes(id) ? open.filter((x) => x !== id) : [...open, id] });
 }
+// readPref and writePref keep per-viewer conveniences; storage may be missing.
+function readPref<T>(key: string, fallback: T): T {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : (JSON.parse(v) as T);
+  } catch {
+    return fallback;
+  }
+}
+function writePref(key: string, v: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(v));
+  } catch {
+    /* a convenience only */
+  }
+}
+
+// toggleSection folds a panel section, or unfolds it, on every panel.
+export function toggleSection(title: string) {
+  const f = get().folded;
+  const next = f.includes(title) ? f.filter((x) => x !== title) : [...f, title];
+  set({ folded: next });
+  writePref('codemap.folded', next);
+}
+
+// setDrawerWidth sets the panel's width, kept for next time.
+export function setDrawerWidth(w: number, save = false) {
+  set({ drawerW: w });
+  if (save) writePref('codemap.drawerW', w);
+}
+
 function readCslug(): string | null {
   try {
     return localStorage.getItem('codemap.cslug');

@@ -138,7 +138,7 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
       {!row.ghost && <Diagram m={m} P={P} id={id} />}
       {!row.ghost && !n.entry && !n.external && (
         <Section title="Entry points" count={entries.length || undefined}>
-          <Entries m={m} ids={entries} />
+          <Entries m={m} ids={entries} max={12} />
         </Section>
       )}
       {does}

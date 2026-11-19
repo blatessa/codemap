@@ -117,6 +117,30 @@ test('a part: its connections, why they exist, what starts it and what it does',
   await expect(d.locator('h2')).toHaveText('Handler.Create');
 });
 
+test('the panel: sections fold, everywhere, and its edge drags', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() => localStorage.clear());
+  await search(page, 'POST /orders');
+  const d = page.locator('#drawer');
+  await expect(d.locator('[data-sec="Source"] pre').first()).toBeVisible();
+  await d.locator('[data-sec="Source"] .stog').click();
+  await expect(d.locator('[data-sec="Source"] pre')).toHaveCount(0);
+  // folded on the next panel too
+  await search(page, 'Service.Place');
+  await expect(d.locator('[data-sec="Source"]')).toHaveClass(/folded/);
+  await d.locator('[data-sec="Source"] .stog').click();
+  // drag the edge wider
+  const before = (await d.boundingBox())!.width;
+  const h = (await page.locator('.dresize').boundingBox())!;
+  await page.mouse.move(h.x + 3, h.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(h.x - 150, h.y + 200, { steps: 5 });
+  await page.mouse.up();
+  expect((await d.boundingBox())!.width).toBeGreaterThan(before + 100);
+  await page.locator('.dresize').dblclick();
+  expect(Math.round((await d.boundingBox())!.width)).toBe(440);
+});
+
 test('search runs commands; switching selections keeps one panel', async ({ page }) => {
   await open(page);
   for (const q of ['web/src/api', 'internal/auth', 'Handler.Login']) await search(page, q);
