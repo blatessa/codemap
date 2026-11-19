@@ -83,11 +83,19 @@ export function CompareControl() {
 // branches, releases. The comparison on the map is marked.
 function Menu({ go }: { go: (f: string, t: string) => void }) {
   const { revs, spec } = useCompare();
+  const [q, setQ] = useState('');
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => input.current?.focus(), []);
   if (!revs) return null;
-  const ps = presets(revs);
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hit = (...t: string[]) => words.every((w) => t.join(' ').toLowerCase().includes(w));
+  const ps = presets(revs).filter((p) => hit(p.label, p.sub));
   const on = (f: string, t: string) => !!spec && spec.from === f && spec.to === t;
   const base = revs.default;
-  const branches = base ? revs.branches.filter((b) => b !== base && b !== revs.current).slice(0, 6) : [];
+  const branches = base ? revs.branches.filter((b) => b !== base && b !== revs.current && hit(b, 'branch')) : [];
+  const of = (g: Preset['group']) => ps.filter((p) => p.group === g);
+  // what Enter picks: the first thing shown
+  const first = ps[0] ? () => go(ps[0].from, ps[0].to) : branches[0] ? () => go('base:' + base, branches[0]) : null;
   const item = (p: Preset) => (
     <button key={p.id} className={`cmpi${on(p.from, p.to) ? ' on' : ''}`} data-preset={p.id} onClick={() => go(p.from, p.to)}>
       <span className="t">{p.label}</span>
@@ -100,22 +108,36 @@ function Menu({ go }: { go: (f: string, t: string) => void }) {
       {items}
     </div>
   );
-  const of = (g: Preset['group']) => ps.filter((p) => p.group === g);
   return (
     <>
-      <div className="cmpg">{of('main').map(item)}</div>
-      {of('pr').length > 0 && group('Pull requests', of('pr').map(item))}
-      {branches.length > 0 &&
-        group(
-          'Branches',
-          branches.map((b) => (
-            <button key={b} className={`cmpi row${on('base:' + base, b) ? ' on' : ''}`} data-branch={b} onClick={() => go('base:' + base, b)}>
-              <span className="t">{b}</span>
-              <span className="s">vs {base}</span>
-            </button>
-          )),
-        )}
-      {of('tag').length > 0 && group('Releases', of('tag').map(item))}
+      <input
+        ref={input}
+        className="cmpq"
+        id="cmp-q"
+        type="text"
+        placeholder="Find a branch, PR or release"
+        autoComplete="off"
+        aria-label="Find a comparison"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && first?.()}
+      />
+      <div className="cmplist">
+        {of('main').length > 0 && <div className="cmpg">{of('main').map(item)}</div>}
+        {of('pr').length > 0 && group('Pull requests', of('pr').map(item))}
+        {branches.length > 0 &&
+          group(
+            'Branches',
+            branches.map((b) => (
+              <button key={b} className={`cmpi row${on('base:' + base, b) ? ' on' : ''}`} data-branch={b} onClick={() => go('base:' + base, b)}>
+                <span className="t">{b}</span>
+                <span className="s">vs {base}</span>
+              </button>
+            )),
+          )}
+        {of('tag').length > 0 && group('Releases', of('tag').map(item))}
+        {!first && <div className="cmph none">Nothing matches</div>}
+      </div>
     </>
   );
 }

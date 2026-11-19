@@ -54,7 +54,11 @@ body.ro .mhead{cursor:pointer}
 .cmpbtn .cerr{color:var(--warn);font-weight:600}
 @keyframes cmp-pulse{50%{opacity:.35}}
 .cmp .x{font-size:15px}
-.cmppop{width:330px;z-index:20;padding:6px;gap:0;border-radius:10px;box-shadow:0 10px 30px rgba(10,20,40,.16)}
+.pop.cmppop{width:min(420px,92vw);z-index:20;padding:6px;gap:0;border-radius:10px;box-shadow:0 10px 30px rgba(10,20,40,.16)}
+.cmpq{box-sizing:border-box;width:100%;font-family:var(--sans);font-size:13px;padding:7px 10px;border:1px solid transparent;border-radius:7px;background:var(--bg);color:var(--ink);margin-bottom:4px}
+.cmpq:focus{outline:none;border-color:var(--line)}
+.cmplist{max-height:min(440px,60vh);overflow-y:auto;overscroll-behavior:contain;margin-right:-3px;padding-right:3px}
+.cmph.none{text-transform:none;letter-spacing:0;font-weight:400;font-size:12px}
 .cmpg+.cmpg{border-top:1px solid var(--line);margin-top:6px;padding-top:2px}
 .cmph{padding:8px 10px 3px;font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
 .cmpi{all:unset;box-sizing:border-box;width:100%;cursor:pointer;display:flex;flex-direction:column;gap:1px;padding:7px 10px;border-radius:7px;min-width:0}
