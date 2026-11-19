@@ -1,20 +1,16 @@
-// The details panel: nodes, modules/blocks, areas, multi-selection, propose forms.
+// The details panel: nodes, modules/blocks, groups, multi-selection, propose forms.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Source, Where } from './Code';
 import { Fields } from './Fields';
 import { HEAD, PAD, ROW, effectSummary, entriesReaching, isEffect, trace, type TreeRow, qn, sharedFn, shortMod, testsReaching, type MEdge, type Model } from './model';
 import { ProposalList, ProposalView } from './Proposals';
 import {
-  addArea,
   currentProposal,
-  deleteArea,
   getState,
   mergeBlock,
   proposeModule,
   proposeNode,
-  removeFromArea,
   removeProposalNode,
-  renameArea,
   renameBlock,
   select,
   setState,
@@ -27,7 +23,6 @@ import {
   useStore,
 } from './store';
 import { Comment } from './Comment';
-import { useAreaRect } from './MapView';
 
 export const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <div>
@@ -477,66 +472,6 @@ function SplitForm({ rows, defName, onSplit }: { rows: { id: string; label: stri
   );
 }
 
-function AreaPanel({ m, name }: { m: Model; name: string }) {
-  const a = useStore((s) => s.areas.find((x) => x.name === name));
-  const rectOf = useAreaRect();
-  const [draft, setDraft] = useState(name);
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (name !== draft.trim()) setDraft(name);
-    if (/^New area/.test(name) && document.activeElement !== ref.current) {
-      ref.current?.focus();
-      ref.current?.select();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name]);
-  if (!a) return null;
-  const mods = (a.modules ?? []).filter((id) => m.box.has(id));
-  return (
-    <>
-      <Head eyebrow="Area" title={a.name} />
-      <label className="field">
-        Name
-        <input
-          id="a-name"
-          ref={ref}
-          value={draft}
-          autoComplete="off"
-          onChange={(e) => {
-            setDraft(e.target.value);
-            if (e.target.value.trim()) renameArea(a.name, e.target.value.trim());
-          }}
-        />
-      </label>
-      <Section title="Modules">
-        {mods.length ? (
-          <div className="items">
-            {mods.map((id) => (
-              <div className="item" key={id}>
-                <span>
-                  <button className="lnk" onClick={() => select(id)}>
-                    {m.box.get(id)!.label}
-                  </button>
-                </span>
-                <button aria-label="Remove from area" onClick={() => removeFromArea(a.name, id, rectOf)}>
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p>Drag modules in.</p>
-        )}
-      </Section>
-      <div className="btns">
-        <button className="btn danger" onClick={() => deleteArea(a.name)}>
-          Delete area
-        </button>
-      </div>
-    </>
-  );
-}
-
 function GroupPanel({ m, id }: { m: Model; id: string }) {
   const G = useGrouping();
   const open = useStore((s) => s.expanded.has(id));
@@ -582,16 +517,14 @@ function GroupPanel({ m, id }: { m: Model; id: string }) {
 }
 
 function MultiPanel({ m, ids }: { m: Model; ids: string[] }) {
-  const rectOf = useAreaRect();
   const pos = useStore((s) => s.pos);
-  const name = (id: string) => (id.startsWith('area:') ? id.slice(5) : m.node.has(id) ? qn(m, id) : m.box.get(id)?.label ?? id);
+  const name = (id: string) => (m.node.has(id) ? qn(m, id) : m.box.get(id)?.label ?? id);
   const fnIds = ids.filter((id) => m.node.has(id));
   const srcs = new Set(fnIds.map((id) => m.node.get(id)!.box.id));
   const src = srcs.size === 1 ? m.node.get(fnIds[0])!.box : null;
   const own = src ? src.rows.filter((r) => !r.prop && !r.ghost) : [];
   const canSplit =
     !!src && fnIds.length === ids.length && !src.block && !src.prop && !src.ghost && fnIds.every((id) => !m.node.get(id)!.row.prop) && own.length > fnIds.length;
-  const boxIds = ids.filter((id) => m.box.has(id) && !m.box.get(id)!.prop && !m.box.get(id)!.ghost);
   return (
     <>
       <Head eyebrow="Selection" title={`${ids.length} selected`} />
@@ -619,11 +552,6 @@ function MultiPanel({ m, ids }: { m: Model; ids: string[] }) {
             Split into a new block
           </button>
         )}
-        {boxIds.length === ids.length && (
-          <button className="btn" onClick={() => addArea(boxIds, rectOf)}>
-            New area from these
-          </button>
-        )}
       </div>
     </>
   );
@@ -633,7 +561,6 @@ const KINDS = ['function', 'route', 'page', 'job', 'subscriber', 'command', 'com
 
 function FormPanel({ m }: { m: Model }) {
   const form = useStore((s) => s.form)!;
-  const areas = useStore((s) => s.areas);
   const pos = useStore((s) => s.pos);
   const b = form.box ? m.box.get(form.box) : undefined;
   const common = (() => {
@@ -644,7 +571,6 @@ function FormPanel({ m }: { m: Model }) {
   const [kind, setKind] = useState(common);
   const [method, setMethod] = useState('POST');
   const [name, setName] = useState('');
-  const [area, setArea] = useState('');
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
   const kinds = KINDS.includes(common) ? KINDS : [common, ...KINDS];
@@ -652,40 +578,26 @@ function FormPanel({ m }: { m: Model }) {
     const v = name.trim();
     if (!v) return;
     if (form.type === 'mod') {
-      // place under the area's lowest member, or under everything
-      const ids = area ? areas.find((a) => a.name === area)?.modules ?? [] : m.boxes.map((x) => x.id);
+      // place under everything
       let at: [number, number] = [20, 80];
       let low = -1;
-      for (const id of ids) {
-        const p = pos[id],
-          bx = m.box.get(id);
-        if (!p || !bx) continue;
+      for (const bx of m.boxes) {
+        const p = pos[bx.id];
+        if (!p) continue;
         const bottom = p[1] + bx.defH;
         if (bottom > low) {
           low = bottom;
-          at = [p[0], bottom + (area ? 24 : 70)];
+          at = [p[0], bottom + 70];
         }
       }
-      proposeModule(v, area, at);
+      proposeModule(v, at);
     } else if (b) proposeNode(b.id, v, kind, kind === 'route' ? method : '', b.external);
   };
   const cancel = () => setState({ form: null });
   return (
     <div onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && submit()} style={{ display: 'contents' }}>
       <Head eyebrow="Propose" plan title={form.type === 'mod' ? 'New module' : b?.label ?? ''} />
-      {form.type === 'mod' ? (
-        <label className="field">
-          Area
-          <select id="f-area" value={area} onChange={(e) => setArea(e.target.value)}>
-            <option value="">None</option>
-            {areas.map((a) => (
-              <option key={a.name} value={a.name}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : (
+      {form.type === 'mod' ? null : (
         <>
           <label className="field">
             Kind
@@ -735,7 +647,6 @@ export function Drawer() {
   if (form) content = <FormPanel key={form.type + form.box} m={m} />;
   else if (sel.length > 1) content = <MultiPanel m={m} ids={sel} />;
   else if (sel.length === 1 && sel[0].startsWith('group:')) content = <GroupPanel m={m} id={sel[0]} />;
-  else if (sel.length === 1 && sel[0].startsWith('area:')) content = <AreaPanel m={m} name={sel[0].slice(5)} />;
   else if (sel.length === 1 && m.node.has(sel[0])) content = <NodePanel m={m} id={sel[0]} />;
   else if (sel.length === 1 && m.box.has(sel[0])) content = <BoxPanel key={sel[0]} m={m} id={sel[0]} />;
   else if (mode === 'propose' && !pslug) content = <ProposalList />;

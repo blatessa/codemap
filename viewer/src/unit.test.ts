@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { blockFor, escapeGlob, globMatch, pathMatch } from './blocks';
 import { classify, humanize } from './fields';
-import { GROUP_AT, buildGrouping, chain } from './groups';
+import { FOLD_AT, buildGrouping, chain } from './groups';
 import { SYNTH, buildModel, selectionOf, testsReaching, trace } from './model';
 import type { Graph } from './types';
 
@@ -77,10 +77,10 @@ describe('model on the shop fixture', () => {
   });
 
   test('paths stop at external nodes unless one is selected', () => {
-    const S = selectionOf(m, ['page:/checkout'], [])!;
+    const S = selectionOf(m, ['page:/checkout'])!;
     expect(S.nodes.has('table:orders')).toBe(true);
     expect(S.nodes.has('go:shop/internal/payments.(*Handler).HandleWebhook')).toBe(false);
-    const X = selectionOf(m, ['ext:stripe'], [])!;
+    const X = selectionOf(m, ['ext:stripe'])!;
     expect(X.nodes.has('go:shop/internal/payments.(*Handler).HandleWebhook')).toBe(true);
   });
 
@@ -127,12 +127,12 @@ describe('public rows and shared modules', () => {
 
   test('a path keeps its internal rows', () => {
     const m = buildModel(g, [], null);
-    const S = selectionOf(m, ['go:shop/internal/orders.(*Service).Place'], [])!;
+    const S = selectionOf(m, ['go:shop/internal/orders.(*Service).Place'])!;
     expect(S.path.has('go:shop/internal/orders.(*Repo).Insert')).toBe(true);
     expect(S.path.has('go:shop/internal/orders.(CreateOrder).Total')).toBe(false); // leads nowhere: folded
     expect(S.path.has('go:shop/internal/orders.writeJSON')).toBe(false);
     // selecting a module doesn't open up its internals
-    expect(selectionOf(m, ['mod:go:shop/internal/orders'], [])!.path.size).toBe(0);
+    expect(selectionOf(m, ['mod:go:shop/internal/orders'])!.path.size).toBe(0);
   });
 
   test('no shop module is shared', () => {
@@ -161,42 +161,78 @@ describe('public rows and shared modules', () => {
 });
 
 describe('folder groups', () => {
-  const graph = (paths: string[]): Graph => ({
+  // calls: [from, to] paths; each module has one function, F, and `entry` ones a route
+  const graph = (paths: string[], calls: [string, string][] = [], entry: string[] = []): Graph => ({
     version: 1,
-    modules: paths.map((p) => ({ id: 'mod:' + p, label: p, path: p })),
-    nodes: paths.map((p) => ({ id: p + '.F', kind: 'function', label: 'F', module: 'mod:' + p })),
-    edges: [],
+    modules: paths.map((p) => ({ id: 'mod:' + p, label: p, path: p, lang: 'go' })),
+    nodes: [
+      ...paths.map((p) => ({ id: p + '.F', kind: 'function', label: 'F', module: 'mod:' + p })),
+      ...entry.map((p) => ({ id: 'route:' + p, kind: 'route', label: '/' + p, module: 'mod:' + p, entry: true })),
+    ],
+    edges: calls.map(([a, b]) => ({ from: a + '.F', to: b + '.F', type: 'calls' })),
   });
-  const group = (paths: string[], keep: string[] = []) => {
-    const m = buildModel(graph(paths), [], null);
-    return buildGrouping(m.boxes, m.box, new Set(keep));
+  const group = (paths: string[], calls: [string, string][] = [], keep: string[] = [], entry: string[] = []) => {
+    const m = buildModel(graph(paths, calls, entry), [], null);
+    const links: [string, string][] = m.edges.map((e) => [m.node.get(e.from)!.box.id, m.node.get(e.to)!.box.id]);
+    return buildGrouping(m.boxes, m.box, new Set(keep), links);
   };
   const many = (dir: string, n: number) => Array.from({ length: n }, (_, i) => `${dir}/p${i}`);
 
-  test('small maps are left alone', () => {
-    expect(group(many('internal', GROUP_AT))).toBeNull();
+  test('a folder of many side-by-side siblings folds, whatever the size of the map', () => {
+    const G = group(['internal/integration', ...many('internal/integration', FOLD_AT)], many('internal/integration', FOLD_AT).map((p) => ['internal/integration', p]));
+    expect(G.top.sort()).toEqual(['group:internal/integration', 'mod:internal/integration']);
+    const g = G.groups.get('group:internal/integration')!;
+    expect(g.members).toHaveLength(FOLD_AT);
+    expect(g.box.label).toBe('internal/integration/*');
+    expect(chain(G, 'mod:internal/integration/p3')).toEqual(['group:internal/integration']);
   });
 
-  test('big folders of similar packages fold; the rest shows', () => {
-    const top = ['cmd/app', 'internal/api', 'internal/store', 'internal/auth', 'internal/a', 'internal/b', 'internal/c', 'internal/d', 'internal/e'];
-    const G = group([...top, ...many('internal/reader', 20), ...many('internal/integration', 25), 'internal/http/request', 'internal/http/response'])!;
-    expect(G.top.filter((id) => id.startsWith('group:')).sort()).toEqual(['group:internal/integration', 'group:internal/reader']);
-    for (const p of top) expect(G.top).toContain('mod:' + p);
-    // small folders open
-    expect(G.top).toContain('mod:internal/http/request');
-    expect(G.groups.get('group:internal/reader')!.members).toHaveLength(20);
-    expect(chain(G, 'mod:internal/reader/p3')).toEqual(['group:internal/reader']);
-    expect(G.top.length).toBeLessThanOrEqual(GROUP_AT);
+  test('fewer siblings than FOLD_AT stay open', () => {
+    const G = group(many('internal/integration', FOLD_AT - 1));
+    expect(G.groups.size).toBe(0);
+    expect(G.top).toHaveLength(FOLD_AT - 1);
+  });
+
+  test('siblings that call each other are a subsystem, not a set, and stay open', () => {
+    const ps = many('internal', 10);
+    const calls = ps.slice(1).map((p, i): [string, string] => [ps[i], p]); // a chain
+    const G = group(ps, calls);
+    expect(G.groups.size).toBe(0);
+  });
+
+  test('a helper several siblings use stays out; the siblings still fold', () => {
+    const ps = many('migrations', 8);
+    const G = group(['migrations/base', ...ps], ps.map((p) => [p, 'migrations/base']));
+    expect(G.top).toContain('mod:migrations/base');
+    expect(G.groups.get('group:migrations')!.members).toHaveLength(8);
+  });
+
+  test('entry points and plain modules are different kinds', () => {
+    const routes = many('routers', 3);
+    const G = group([...routes, ...many('routers/x', 0), 'routers/a', 'routers/b', 'routers/c'], [], [], routes);
+    expect(G.groups.size).toBe(0);
+    const G2 = group(many('routers', 7), [], [], many('routers', 7).slice(0, 3));
+    expect(G2.groups.size).toBe(0);
+  });
+
+  test('folds nest: an opened group holds its own folded sets', () => {
+    const fmts = many('models/packages', 7);
+    const G = group([...many('models', 7), 'models/packages', ...fmts]);
+    const outer = G.groups.get('group:models')!;
+    expect(outer).toBeTruthy();
+    expect(G.groups.get('group:models/packages')!.parent).toBe('group:models');
+    expect(outer.children).toContain('group:models/packages');
+    expect(outer.children).toContain('mod:models/packages');
+    expect(chain(G, 'mod:models/packages/p1')).toEqual(['group:models/packages', 'group:models']);
   });
 
   test('a one-child chain reads as one path, for TS directories too', () => {
-    const G = group([...many('frontend/apps/site/app/components', 30), 'frontend/apps/site/app/hooks', 'backend/main'])!;
-    expect([...G.groups.keys()]).toContain('group:frontend/apps/site/app/components');
-    expect([...G.groups.keys()].some((k) => k === 'group:frontend' || k === 'group:frontend/apps')).toBe(false);
+    const G = group([...many('frontend/apps/site/app/components', 8), 'backend/main']);
+    expect([...G.groups.keys()]).toEqual(['group:frontend/apps/site/app/components']);
   });
 
-  test('kept modules (in an area, or shared) never fold', () => {
-    const G = group([...many('internal/reader', 20), ...many('internal/plugins', 20)], ['mod:internal/reader/p7'])!;
+  test('kept (shared) modules never fold', () => {
+    const G = group(many('internal/reader', 8), [], ['mod:internal/reader/p7']);
     expect(G.top).toContain('mod:internal/reader/p7');
     expect(G.groups.get('group:internal/reader')!.members).not.toContain('mod:internal/reader/p7');
   });
@@ -240,17 +276,17 @@ describe('traces on a big codebase', () => {
   const id = (s: string) => 'go:x/a.' + s;
 
   test('a selection stops at wide calls, utilities and shared functions', () => {
-    const S = selectionOf(m, [id('h')], [])!;
+    const S = selectionOf(m, [id('h')])!;
     expect(S.nodes.has(id('save'))).toBe(true);
     expect(S.nodes.has(id('getEngine'))).toBe(false); // support code isn't part of a trace
     expect(S.nodes.has(id('E1'))).toBe(false);
     expect(S.nodes.has(id('deep'))).toBe(false);
     // and going up, a wide call isn't a caller of each implementation
-    expect(selectionOf(m, [id('E3')], [])!.nodes.has(id('h'))).toBe(false);
+    expect(selectionOf(m, [id('E3')])!.nodes.has(id('h'))).toBe(false);
   });
 
   test('a selection still reaches effects below the depth limit', () => {
-    const S = selectionOf(m, [id('h')], [])!;
+    const S = selectionOf(m, [id('h')])!;
     expect(S.nodes.has(id('step5'))).toBe(false);
     expect(S.nodes.has('table:u')).toBe(true);
     const e = S.extra.find((x) => x.to === 'table:u' && x.from === id('step4'))!;

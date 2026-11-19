@@ -35,8 +35,8 @@
 .edge.d-rem{stroke:var(--diff-rem);stroke-dasharray:4 4;opacity:.6}
 
 /* read-only: no editing on a past rev or while comparing */
-body.ro #addarea,body.ro #reset,body.ro #m-propose,body.ro #addmod,body.ro .drawer .btns{display:none!important}
-body.ro .mhead,body.ro .ahead,body.ro .ghead{cursor:pointer}
+body.ro #reset,body.ro #m-propose,body.ro #addmod,body.ro .drawer .btns{display:none!important}
+body.ro .mhead,body.ro .ghead{cursor:pointer}
 
 /* compare control */
 .cmp{position:relative;display:flex;align-items:center;gap:6px}

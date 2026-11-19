@@ -3,10 +3,9 @@ import { openInEditor } from './api';
 import { CompareControl, SummaryPanel } from './Compare';
 import { Drawer } from './Drawer';
 import { compare, presets, start as startRevs, useCompare, view as viewRev } from './revs';
-import { MapView, useAreaRect, zoomCenter } from './MapView';
+import { MapView, zoomCenter } from './MapView';
 import { qn, type Model } from './model';
 import {
-  addArea,
   currentProposal,
   getState,
   load,
@@ -17,7 +16,6 @@ import {
   tidyLayout,
   useModel,
   useStore,
-  type RectOf,
 } from './store';
 
 // ---- commands: what ⌘K and the right-click menus can do ----
@@ -33,20 +31,6 @@ interface Cmd {
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? '⌘' : 'Ctrl ';
 
-function newAreaAt(m: Model, rectOf: RectOf, mods: string[]) {
-  const s = getState();
-  let bottom = 0;
-  for (const b of m.boxes) {
-    const p = s.pos[b.id];
-    if (p) bottom = Math.max(bottom, p[1] + b.defH);
-  }
-  for (const a of s.areas) {
-    const r = rectOf(a);
-    if (r) bottom = Math.max(bottom, r.y + r.h);
-  }
-  addArea(mods, rectOf, [20, bottom + 40]);
-}
-
 const fit = () => setState({ fitSeq: getState().fitSeq + 1, touchedView: false });
 const collapseAll = (m: Model) => {
   const c = getState().collapsed;
@@ -55,7 +39,6 @@ const collapseAll = (m: Model) => {
 
 function useMapCommands(): Cmd[] {
   const m = useModel();
-  const rectOf = useAreaRect();
   const ro = useStore((s) => s.readOnly);
   const collapsed = useStore((s) => s.collapsed.size > 0);
   const revs = useCompare((c) => c.revs);
@@ -65,7 +48,6 @@ function useMapCommands(): Cmd[] {
     { id: 'addmod', label: 'Propose a new module', run: () => setState({ form: { type: 'mod' }, sel: [], connectFrom: null }), off: !propose || ro },
     { id: 'fit', label: 'Fit map to screen', hint: '0', run: fit },
     { id: 'collapse', label: collapsed ? 'Expand all modules' : 'Collapse all modules', run: () => collapseAll(m) },
-    { id: 'area', label: 'New area', run: () => newAreaAt(m, rectOf, []), off: ro },
     { id: 'tidy', label: 'Tidy layout', run: tidyLayout },
     { id: 'proposals', label: 'Proposals', run: () => setMode('propose') },
     ...presets(revs).map((p) => ({ id: 'cmp-' + p.id, label: 'Compare: ' + p.label, run: () => void compare(p.from, p.to) })),
@@ -248,7 +230,6 @@ interface Menu {
 
 function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
   const m = useModel();
-  const rectOf = useAreaRect();
   const ro = useStore((s) => s.readOnly);
   const collapsed = useStore((s) => s.collapsed);
   const map = useMapCommands();
@@ -264,8 +245,6 @@ function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
       { id: 'copy', label: 'Copy ID', run: () => void navigator.clipboard?.writeText(menu.id) },
     ];
   } else if (menu.kind === 'box') {
-    const b = m.box.get(menu.id)!;
-    const real = !b.prop && !b.ghost && !b.group;
     items = [
       { id: 'open', label: 'Show what’s inside', run: () => select(menu.id) },
       { id: 'comment', label: 'Comment', hint: 'C', run: () => (select(menu.id), setTimeout(() => document.getElementById('c-text')?.focus(), 50)), off: ro },
@@ -275,7 +254,6 @@ function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
         else c.add(menu.id);
         setState({ collapsed: c });
       } },
-      { id: 'area', label: 'New area with this module', run: () => newAreaAt(m, rectOf, [menu.id]), off: ro || !real },
     ];
   } else items = map.filter((c) => !c.id.startsWith('cmp-') && c.id !== 'proposals');
   const shown = items.filter((c) => c === null || !c.off);

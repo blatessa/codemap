@@ -41,7 +41,7 @@ export function aboutOf(m: Model, ids: string[], snip: Snip | null): string {
   const names = ids.map((id) => {
     const x = m.node.get(id);
     if (x) return '`' + qn(m, id) + '`';
-    return '`' + (m.box.get(id)?.label ?? id.replace(/^(area|group):/, '')) + '`';
+    return '`' + (m.box.get(id)?.label ?? id.replace(/^group:/, '')) + '`';
   });
   const one = ids.length === 1 ? m.node.get(ids[0])?.row.node : undefined;
   let where = '';

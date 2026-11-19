@@ -5,7 +5,7 @@ import { escapeGlob, slugify } from './blocks';
 import { layoutUnplaced, type Pos } from './layout';
 import { buildGrouping, isGroup, layoutH, topOf, type Grouping } from './groups';
 import { buildModel, selectionOf, type Model, type Sel } from './model';
-import type { Area, Block, Graph, Loose, Proposal } from './types';
+import type { Block, Graph, Loose, Proposal } from './types';
 
 export type Mode = 'explore' | 'propose';
 export interface Form {
@@ -20,11 +20,10 @@ export interface S {
   status: 'loading' | 'ready' | 'error';
   error: string;
   graph: Graph;
-  areas: Area[];
   blocks: Block[];
   proposals: Proposal[];
   versions: Record<string, string>;
-  pos: Pos; // box and empty-area positions for this session: laid out automatically, then dragged
+  pos: Pos; // box positions for this session: laid out automatically, then dragged
   mode: Mode;
   sel: string[];
   hover: string | null;
@@ -53,7 +52,6 @@ export const useStore = create<S>(() => ({
   status: 'loading',
   error: '',
   graph: empty,
-  areas: [],
   blocks: [],
   proposals: [],
   versions: {},
@@ -120,26 +118,25 @@ export function commentTarget(s: S): Proposal | null {
 
 export const currentProposal = (s: S) => (s.pslug ? s.proposals.find((p) => p.slug === s.pslug) ?? null : null);
 
-// groupingOf folds big maps into folder groups (groups.ts). Modules in an area
-// and shared modules stay on their own.
-const groupMemo = new WeakMap<Model, { areas: Area[]; G: Grouping | null }>();
-export function groupingFor(m: Model, areas: Area[]): Grouping | null {
+// groupingFor folds folders of many similar modules into groups (groups.ts),
+// the same way on every map. Shared modules stay on their own.
+const groupMemo = new WeakMap<Model, Grouping>();
+export function groupingFor(m: Model): Grouping {
   const hit = groupMemo.get(m);
-  if (hit && hit.areas === areas) return hit.G;
-  const keep = new Set(areas.flatMap((a) => a.modules ?? []));
-  for (const b of m.boxes) if (b.shared) keep.add(b.id);
-  const G = buildGrouping(m.boxes, m.box, keep);
-  groupMemo.set(m, { areas, G });
+  if (hit) return hit;
+  const keep = new Set(m.boxes.filter((b) => b.shared).map((b) => b.id));
+  const links: [string, string][] = m.edges.map((e) => [m.node.get(e.from)!.box.id, m.node.get(e.to)!.box.id]);
+  const G = buildGrouping(m.boxes, m.box, keep, links);
+  groupMemo.set(m, G);
   return G;
 }
-export const groupingOf = (s: S) => groupingFor(modelOf(s), s.areas);
+export const groupingOf = (s: S) => groupingFor(modelOf(s));
 export const useGrouping = () => useStore(groupingOf);
 
-let selMemo: { m?: Model; sel?: string[]; areas?: Area[]; S?: Sel | null } = {};
+let selMemo: { m?: Model; sel?: string[]; S?: Sel | null } = {};
 export function selOf(s: S): Sel | null {
   const m = modelOf(s);
-  if (selMemo.m !== m || selMemo.sel !== s.sel || selMemo.areas !== s.areas)
-    selMemo = { m, sel: s.sel, areas: s.areas, S: selectionOf(m, s.sel, s.areas, groupingOf(s)?.groups) };
+  if (selMemo.m !== m || selMemo.sel !== s.sel) selMemo = { m, sel: s.sel, S: selectionOf(m, s.sel, groupingOf(s).groups) };
   return selMemo.S!;
 }
 export const useSel = () => useStore(selOf);
@@ -157,14 +154,11 @@ export async function load() {
     const keep = (key: string) => !first && (pending.has(key) || s.versions[key] === v[key]);
     const next: Partial<S> = { status: 'ready', error: '', graph: hooks.graph(st.graph ?? empty), versions: { ...v } };
     const pr = st.project ?? ({} as never);
-    if (!keep('areas')) next.areas = pr.areas ?? [];
-    else next.versions!.areas = s.versions.areas;
     if (!keep('blocks')) next.blocks = pr.blocks ?? [];
     else next.versions!.blocks = s.versions.blocks;
     // Positions aren't stored: the map is laid out on load, and again when the
-    // areas or blocks change on disk (say, an agent reorganised them), so each
-    // area's modules come together. Drags hold for the session.
-    if (first || !keep('areas') || !keep('blocks')) next.pos = {};
+    // blocks change on disk. Drags hold for the session.
+    if (first || !keep('blocks')) next.pos = {};
     // proposals: take the server's copy unless we're mid-edit on it
     const server = pr.proposals ?? [];
     next.proposals = server.map((p) => {
@@ -200,16 +194,12 @@ let layoutRun = 0;
 export async function ensureLayout() {
   const s = get();
   const m = modelOf({ ...s, mode: 'explore' });
-  const G = groupingFor(m, s.areas);
-  const real = m.boxes.filter((b) => !b.prop && !b.ghost);
-  // what gets laid out: every box, or on big maps the top level (groups and the boxes left out of them)
-  const items = G
-    ? G.top.map((id) => (isGroup(id) ? G.groups.get(id)!.box : m.box.get(id)!))
-    : real;
+  const G = groupingFor(m);
+  // what gets laid out: the top level (closed groups and the boxes outside them)
+  const items = G.top.map((id) => (isGroup(id) ? G.groups.get(id)!.box : m.box.get(id)!));
   const fixed: Pos = { ...s.pos };
   // a group whose modules all have saved places goes where they were
-  if (G)
-    for (const id of G.top) {
+  for (const id of G.top) {
       const g = G.groups.get(id);
       if (!g || fixed[id]) continue;
       const ps = g.members.map((x) => s.pos[x]).filter(Boolean);
@@ -226,13 +216,12 @@ export async function ensureLayout() {
     return;
   }
   const run = ++layoutRun;
-  const at = (id: string) => (G ? topOf(G, id) : id);
+  const at = (id: string) => topOf(G, id);
   const links: [string, string][] = m.edges.map((e) => [at(m.node.get(e.from)!.box.id), at(m.node.get(e.to)!.box.id)]);
   const res = await layoutUnplaced(
-    items.map((b) => ({ id: b.id, w: b.w, h: G ? layoutH(b) : b.defH, entry: b.hasEntry, external: b.external, shared: b.shared })),
+    items.map((b) => ({ id: b.id, w: b.w, h: layoutH(b), entry: b.hasEntry, external: b.external, shared: b.shared })),
     links,
-    s.areas.map((a) => ({ name: a.name, modules: a.modules ?? [] })),
-    G ? Object.fromEntries(items.filter((b) => fixed[b.id]).map((b) => [b.id, fixed[b.id]])) : fixed,
+    Object.fromEntries(items.filter((b) => fixed[b.id]).map((b) => [b.id, fixed[b.id]])),
   );
   if (run !== layoutRun) return;
   const hadAny = Object.keys(s.pos).length > 0;
@@ -266,7 +255,6 @@ function debounce(key: string, fn: () => Promise<void>, ms: number) {
 
 function valueOf(file: api.ProjectFile): unknown {
   const s = get();
-  if (file === 'areas') return s.areas;
   if (file === 'blocks') return s.blocks;
   return null;
 }
@@ -292,8 +280,7 @@ export function persist(file: api.ProjectFile, explicit?: unknown, ms = 300) {
 function applyConflict(file: api.ProjectFile, c: api.Conflict) {
   const s = get();
   const versions = { ...s.versions, [file]: c.version };
-  if (file === 'areas') set({ areas: (c.value as Area[]) ?? [], versions });
-  else if (file === 'blocks') set({ blocks: (c.value as Block[]) ?? [], versions });
+  if (file === 'blocks') set({ blocks: (c.value as Block[]) ?? [], versions });
   else set({ versions });
 }
 
@@ -342,97 +329,6 @@ export function setMode(mode: Mode) {
   set({ mode, connectFrom: null, form: null, focus: false, ...(mode === 'propose' ? { sel: [], pslug: null, editing: false } : {}) });
 }
 
-// ---- areas ----
-
-function uniqueName(base: string, taken: string[]) {
-  let n = base,
-    i = 2;
-  while (taken.includes(n)) n = `${base} ${i++}`;
-  return n;
-}
-
-const without = (areas: Area[], ids: string[]) => areas.map((a) => ({ ...a, modules: (a.modules ?? []).filter((x) => !ids.includes(x)) }));
-
-// leaveAreas removes ids from every area. An area left empty keeps its place.
-function leaveAreas(areas: Area[], ids: string[], pos: Pos, rectOf: (a: Area) => { x: number; y: number } | null, except?: string) {
-  const p = { ...pos };
-  for (const a of areas) {
-    if (a.name === except) continue;
-    const mods = a.modules ?? [];
-    if (mods.length && mods.every((m) => ids.includes(m))) {
-      const r = rectOf(a);
-      if (r) p['area:' + a.name] = [r.x, r.y];
-    }
-  }
-  return { areas: areas.map((a) => (a.name === except ? a : { ...a, modules: (a.modules ?? []).filter((x) => !ids.includes(x)) })), pos: p };
-}
-
-export type RectOf = (a: Area) => { x: number; y: number; w: number; h: number } | null;
-
-export function addArea(mods: string[], rectOf: RectOf, at?: [number, number]) {
-  const s = get();
-  const name = uniqueName('New area', s.areas.map((a) => a.name));
-  const left = leaveAreas(s.areas, mods, s.pos, rectOf);
-  const pos = { ...left.pos };
-  if (!mods.length && at) pos['area:' + name] = at;
-  set({ areas: [...left.areas, { name, modules: mods }], pos, sel: ['area:' + name], form: null, splitting: null });
-  persist('areas');
-  return name;
-}
-
-export function renameArea(old: string, name: string) {
-  const s = get();
-  if (!name || s.areas.some((a) => a.name === name && a.name !== old)) return false;
-  const pos = { ...s.pos };
-  if (pos['area:' + old]) {
-    pos['area:' + name] = pos['area:' + old];
-    delete pos['area:' + old];
-  }
-  set({
-    areas: s.areas.map((a) => (a.name === old ? { ...a, name } : a)),
-    pos,
-    sel: s.sel.map((x) => (x === 'area:' + old ? 'area:' + name : x)),
-  });
-  persist('areas', undefined, 500);
-  return true;
-}
-
-export function deleteArea(name: string) {
-  const s = get();
-  const pos = { ...s.pos };
-  delete pos['area:' + name];
-  set({ areas: s.areas.filter((a) => a.name !== name), pos, sel: s.sel.filter((x) => x !== 'area:' + name) });
-  persist('areas');
-}
-
-export function removeFromArea(name: string, id: string, rectOf: RectOf) {
-  const s = get();
-  const a = s.areas.find((x) => x.name === name);
-  if (!a) return;
-  const pos = { ...s.pos };
-  if ((a.modules ?? []).length === 1) {
-    const r = rectOf(a);
-    if (r) pos['area:' + name] = [r.x, r.y];
-  }
-  set({ areas: s.areas.map((x) => (x.name === name ? { ...x, modules: (x.modules ?? []).filter((m) => m !== id) } : x)), pos });
-  persist('areas');
-}
-
-// dropBox ends a box drag in one update: the box moves to `at` and joins `target`
-// (null: no area). Dropping on an area it's already in keeps it there.
-export function dropBox(id: string, at: [number, number], target: string | null, rectOf: RectOf) {
-  const s = get();
-  const cur = s.areas.filter((a) => (a.modules ?? []).includes(id)).map((a) => a.name);
-  const stay = target ? cur.includes(target) : !cur.length;
-  if (stay) set({ pos: { ...s.pos, [id]: at } });
-  else {
-    const left = leaveAreas(s.areas, [id], s.pos, rectOf, target ?? undefined);
-    const areas = left.areas.map((a) => (a.name === target && !(a.modules ?? []).includes(id) ? { ...a, modules: [...(a.modules ?? []), id] } : a));
-    set({ areas, pos: { ...left.pos, [id]: at } });
-    persist('areas');
-  }
-}
-
 // ---- positions ----
 
 export function toggleExpanded(id: string) {
@@ -461,10 +357,8 @@ export function splitBlock(from: string, labels: string[], name: string, at: [nu
     i = 2;
   while (taken.has(id)) id = `block:${slugify(name)}-${i++}`;
   const block: Block = { id, name, from, match: [...new Set(labels)].map(escapeGlob) };
-  const areas = s.areas.map((a) => ((a.modules ?? []).includes(from) ? { ...a, modules: [...(a.modules ?? []), id] } : a));
-  set({ blocks: [...s.blocks, block], areas, pos: { ...s.pos, [id]: at }, sel: [id], splitting: null, form: null });
+  set({ blocks: [...s.blocks, block], pos: { ...s.pos, [id]: at }, sel: [id], splitting: null, form: null });
   persist('blocks');
-  persist('areas');
   return id;
 }
 
@@ -479,12 +373,9 @@ export function mergeBlock(id: string) {
   if (!b) return;
   const pos = { ...s.pos };
   delete pos[id];
-  set({ blocks: s.blocks.filter((x) => x.id !== id), areas: without(s.areas, [id]), pos, sel: [b.from] });
+  set({ blocks: s.blocks.filter((x) => x.id !== id), pos, sel: [b.from] });
   persist('blocks');
-  persist('areas');
 }
-
-
 
 // ---- proposals ----
 
@@ -527,12 +418,11 @@ export function proposeNode(box: string, label: string, kind: string, method: st
   set({ form: null, sel: [id] });
 }
 
-export function proposeModule(label: string, area: string, at: [number, number]) {
+export function proposeModule(label: string, at: [number, number]) {
   const p = currentProposal(get());
   if (!p) return;
   const id = uniqueNewId('new:mod:' + label, p);
   const m: Loose = { id, label, pos: at };
-  if (area) m.area = area;
   updateProposal(p.slug, { modules: [...(p.modules ?? []), m] });
   set({ form: null, sel: [id] });
 }

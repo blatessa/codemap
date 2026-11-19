@@ -43,9 +43,8 @@ export interface Box {
   w: number;
   hasEntry: boolean;
   propPos?: [number, number];
-  propArea?: string;
   pub: number; // public rows
-  defH: number; // height with only public rows showing at the Code level (what layout uses)
+  defH: number; // laid-out height: at rest a box shows its header only (name and count line)
   shared: boolean; // used by most other modules; laid out along the bottom
   usedBy: number; // modules with edges into this one
   group?: string; // set on a folder group's box (groups.ts)
@@ -228,7 +227,7 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
       const id = str(m.id);
       if (!id || box.has(id)) continue;
       const pos = Array.isArray(m.pos) && m.pos.length === 2 ? ([Number(m.pos[0]), Number(m.pos[1])] as [number, number]) : undefined;
-      mkBox(id, str(m.label) || id, { prop: true, propPos: pos, propArea: str(m.area) || undefined });
+      mkBox(id, str(m.label) || id, { prop: true, propPos: pos });
     }
     for (const raw of proposal.nodes ?? []) {
       const n = proposalNode(raw);
@@ -312,10 +311,9 @@ export function buildModel(g: Graph, blocks: Block[], proposal: Proposal | null)
       if (shownRows.has(r.id)) r.pub = true;
     }
     b.pub = b.rows.filter((r) => r.pub).length;
-    // layout sizes a box for what it shows at rest (MapView's visible): a box
-    // that shows more for a selection is drawn above its neighbours
-    const lp = b.rows.filter((r) => r.node.entry || r.node.external || r.prop || r.ghost).length;
-    b.defH = heightOf(lp, lp < b.rows.length);
+    // layout sizes a box for what it shows at rest (MapView's visible): its
+    // header. A box showing rows (hovered, opened, on a path) draws above its neighbours.
+    b.defH = HEAD;
     b.hasEntry = b.rows.some((r) => r.node.entry);
     b.sub = subOf(b.rows, b.prop);
     b.w = widthOf(b);
@@ -426,15 +424,10 @@ function walkUp(m: Model, start: string): { nodes: Set<string>; edges: Set<numbe
   return { nodes, edges };
 }
 
-export interface AreaLike {
-  name: string;
-  modules: string[] | null;
-}
-
 // SYNTH numbers a selection's synthetic edges, above any real edge index.
 export const SYNTH = 1 << 24;
 
-export function selectionOf(m: Model, ids: string[], areas: AreaLike[], groups?: Map<string, { members: string[] }>): Sel | null {
+export function selectionOf(m: Model, ids: string[], groups?: Map<string, { members: string[] }>): Sel | null {
   const S: Sel = { nodes: new Set(), edges: new Set(), up: new Set(), down: new Set(), path: new Set(), extra: [] };
   const synth = (from: string, to: string, type: string, kind: 'skip' | 'reach') => {
     const e: MEdge = { i: SYNTH + S.extra.length, from, to, type, declared: false, prop: false, net: type === 'fetches', synth: kind };
@@ -469,10 +462,6 @@ export function selectionOf(m: Model, ids: string[], areas: AreaLike[], groups?:
       const g = groups?.get(id);
       if (!g) continue;
       bs = g.members.map((x) => m.box.get(x)).filter((b): b is Box => !!b);
-    } else if (id.startsWith('area:')) {
-      const a = areas.find((x) => 'area:' + x.name === id);
-      if (a) bs = (a.modules ?? []).map((x) => m.box.get(x)).filter((b): b is Box => !!b);
-      if (!a) continue;
     } else {
       const b = m.box.get(id);
       if (!b) continue;

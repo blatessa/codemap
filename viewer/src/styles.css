@@ -186,11 +186,6 @@ details.test .code{border:0;border-top:1px solid var(--line);border-radius:0}
 .cols-t td:nth-child(3){text-align:right}
 .chk{display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:12px;padding:2px 0;cursor:pointer}
 .chk input{accent-color:var(--accent);margin:0}
-.arect{fill:var(--lane)}
-.area.asel .arect{stroke:var(--accent);stroke-width:1.5}
-.area.empty .arect{stroke:var(--line);stroke-dasharray:6 5;fill:transparent}
-.ahead{cursor:move}
-.ahead:hover .alabel{fill:var(--ink)}
 .alabel{font-family:var(--sans);font-size:12.5px;font-weight:600;fill:var(--muted)}
 .mod.msel .box{stroke:var(--accent);stroke-width:2}
 .tgl{cursor:pointer}

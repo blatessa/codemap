@@ -1,13 +1,11 @@
-// The map: SVG with areas, boxes (modules/blocks) and edges. Pan, zoom, drag.
+// The map: SVG with boxes (modules/blocks), folder groups and edges. Pan, zoom, drag.
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { GROUP_H, chain, isGroup, layoutH, type Group, type Grouping } from './groups';
 import { innerLayout, layoutUnplaced, type LBox } from './layout';
 import { FAR, FARH, HEAD, MORE, ROW, heightOf, type Box, type MEdge, type Model, type Row, type Sel } from './model';
 import {
   currentProposal,
-  dropBox,
   getState,
-  groupingOf,
   moveNode,
   movePos,
   moveProposalModule,
@@ -20,9 +18,7 @@ import {
   useModel,
   useSel,
   useStore,
-  type RectOf,
 } from './store';
-import type { Area } from './types';
 import { boxCls, edgeCls, groupCls, nodeStatus, rowCls } from './revs';
 
 // Far-mode text: scaled by 1/k so it stays readable on screen, and cut to fit.
@@ -46,10 +42,11 @@ export interface DBox {
   fullH: number; // height with the rows it shows (not collapsed, not far)
   rows: Row[];
   col: boolean;
-  more: number; // internal and support rows: behind the "+N" row, or shown (open)
-  moreWord: string; // "internal", "support", or "more" when it's both
+  more: number; // rows left out of an opened or traced box, behind the "N more" row
+  moreWord: string; // "internal" for an opened box, else "more"
   open: boolean;
-  lift: boolean; // drawn above the others: taller than its laid-out height, or dragged
+  tgl: boolean; // has rows to collapse or expand
+  lift: boolean; // drawn above the others: taller than its laid-out height, hovered, or dragged
   sub: string;
   far?: FarText;
   inG?: string; // the open top-level group it's drawn in
@@ -59,15 +56,12 @@ export interface ARect {
   y: number;
   w: number;
   h: number;
-  empty: boolean;
-  fa?: number; // far mode: this area's title size
 }
 export interface Disp {
   boxes: DBox[];
   byId: Map<string, DBox>;
   row: Map<string, { d: DBox; idx: number }>;
   edges: MEdge[];
-  areas: { a: Area; r: ARect }[];
   groups: { g: Group; r: ARect; reveal: boolean; top: string }[]; // open folder groups
   shift: Map<string, [number, number]>; // how far open groups pushed each top-level box
   reveal: string; // groups opened for the selection, joined
@@ -96,7 +90,7 @@ function fitText(t: string, w: number, size: number, ch: number, path: boolean):
   return n > 2 ? t.slice(0, n - 1) + '…' : path ? t : '';
 }
 
-// Far mode: labels keep about 12.5px on screen, area labels about 13.5px.
+// Far mode: labels keep about 12.5px on screen, open groups' titles about 13.5px.
 // k is snapped to steps so zooming doesn't redraw every box on every tick.
 const snapK = (k: number) => Math.pow(2, Math.round(Math.log2(k) * 6) / 6);
 export const farFont = (k: number) => Math.max(17, 12.5 / snapK(k));
@@ -108,32 +102,6 @@ export function farHeight(fh: number, k: number) {
     fs = farSub(k);
   return Math.max(FARH, Math.min(Math.max(FARH, fh + 20), fs + fn * 1.2 + fs * 1.25));
 }
-const areaTop = (fa: number | null) => (fa ? Math.max(44, fa * 1.6 + 8) : 44);
-// areaFont is an area title's far-mode size: about 13.5px on screen, but no
-// wider than the area was laid out, so a title never stretches its area over a
-// neighbour (layout reserves room for the title at 13).
-const areaFont = (name: string, w: number, fa: number) => Math.max(13, Math.min(fa, w / (name.length * SANS + 1.4)));
-
-export function areaRect(a: Area, byId: Map<string, DBox>, pos: Record<string, [number, number]>, top = 44): ARect | null {
-  const ms = (a.modules ?? []).map((id) => byId.get(id)).filter((d): d is DBox => !!d);
-  if (!ms.length) {
-    const p = pos['area:' + a.name];
-    return p ? { x: p[0], y: p[1], w: 260, h: 140, empty: true } : null;
-  }
-  const x0 = Math.min(...ms.map((m) => m.x)) - 20,
-    y0 = Math.min(...ms.map((m) => m.y)) - top;
-  const x1 = Math.max(...ms.map((m) => m.x + m.w)) + 20,
-    y1 = Math.max(...ms.map((m) => m.y + m.h)) + 20;
-  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, empty: false };
-}
-
-// The box being dragged: its areas keep the rectangles they had when the drag
-// started, so the box can visibly leave them; it can't stretch any area.
-interface DragBox {
-  id: string;
-  frozen: Map<string, ARect>;
-}
-
 // A folder group drawn open: its contents, placed relative to the container.
 interface Cont {
   g: Group;
@@ -143,6 +111,8 @@ interface Cont {
   kids: { id: string; x: number; y: number; sub?: Cont }[];
 }
 const CPAD = 20;
+const CTOP = 44; // an open group's title bar, zoomed in
+const ctop = (k: number | null) => (k ? Math.max(CTOP, farArea(k) * 1.6 + 8) : CTOP);
 
 function buildDisp(
   m: Model,
@@ -153,11 +123,11 @@ function buildDisp(
   expanded: Set<string>,
   focus: boolean,
   k: number | null, // set in far mode
-  areas: Area[],
-  dragBox: DragBox | null,
-  G: Grouping | null,
+  dragId: string | null,
+  G: Grouping | null, // null: lay out exactly the boxes in pos (focus)
   selIds: string[],
-  connecting = false, // picking an edge's target in a proposal: every row is a target
+  connecting: boolean, // picking an edge's target in a proposal: every row is a target
+  hoverBox: string | null,
 ): Disp {
   const boxes: DBox[] = [];
   const byId = new Map<string, DBox>();
@@ -166,32 +136,33 @@ function buildDisp(
   const later: Box[] = [];
   const fn = k ? farFont(k) : 0,
     fs = k ? farSub(k) : 0;
-  const top = areaTop(k ? farArea(k) : null);
-  // How much a box shows follows what the user is doing:
-  // - at rest, the rows that say what a module is for: entry points, external
-  //   systems, proposed and changed rows;
-  // - a selected module adds its public surface: the functions other modules
-  //   call, without support code;
-  // - a selected function adds the rows on its trace.
+  const top = ctop(k);
+  // How much a box shows follows what the user is doing, the same on every map:
+  // - at rest, its name and what it holds (the count line), no rows; only rows
+  //   a proposal adds or a comparison changed show;
+  // - hovered or selected, its entry points, external systems and public
+  //   surface: the functions other modules call, without support code;
+  // - on a traced path, the rows on the path.
   // Internal functions never show (except as targets while connecting an
   // edge in a proposal); rows left out are counted in a quiet line.
   const openBoxes = new Set(selIds.filter((id) => m.box.has(id)));
-  const visible = (b: Box): { rows: Row[]; more: number; moreWord: string; open: boolean } => {
+  const marked = (r: Row) => r.prop || r.ghost || !!r.moved || !!nodeStatus(r.id);
+  const visible = (b: Box, hov = true): { rows: Row[]; more: number; moreWord: string; open: boolean } => {
     if (focusOn) return { rows: b.rows.filter((r) => S.nodes.has(r.id)), more: 0, moreWord: '', open: false };
     const all = b.rows;
     if (connecting) return { rows: all, more: 0, moreWord: '', open: false };
-    const open = openBoxes.has(b.id);
+    const open = openBoxes.has(b.id) || (hov && hoverBox === b.id);
     // a traced path shows only its own rows: the other commands and tables
     // in a box aren't part of this story
     if (S?.path.size && !open) {
-      const rows = all.filter((r) => S.path.has(r.id) || r.prop || r.ghost || !!r.moved || !!nodeStatus(r.id));
-      return { rows, more: all.length - rows.length, moreWord: 'more', open };
+      const rows = all.filter((r) => S.path.has(r.id) || marked(r));
+      return { rows, more: rows.length ? all.length - rows.length : 0, moreWord: 'more', open };
     }
-    const keep = (r: Row) =>
-      r.node.entry || r.node.external || r.prop || r.ghost || !!r.moved || !!nodeStatus(r.id) || !!S?.path.has(r.id) || (open && r.pub && !r.role);
-    const rows = all.filter(keep);
-    return { rows, more: all.length - rows.length, moreWord: open ? 'internal' : 'more', open };
+    if (!open) return { rows: all.filter(marked), more: 0, moreWord: '', open };
+    const rows = all.filter((r) => r.node.entry || r.node.external || marked(r) || !!S?.path.has(r.id) || (r.pub && !r.role));
+    return { rows, more: all.length - rows.length, moreWord: 'internal', open };
   };
+  const hOf = (v: { rows: Row[]; more: number }) => (v.rows.length || v.more ? heightOf(v.rows.length, v.more > 0) : HEAD);
 
   // Folded groups open when the user opens them, or for the selection: the
   // groups holding what's selected and, for a traced path, every box on it.
@@ -228,11 +199,9 @@ function buildDisp(
       }
       const b = cg ? cg.box : m.box.get(c)!;
       // zoomed in, an open group makes room for the rows its boxes show
+      // (not for a hovered one: that draws above its neighbours)
       let h = layoutH(b);
-      if (!k && !cg) {
-        const v = visible(b);
-        h = collapsed.has(b.id) ? HEAD : heightOf(v.rows.length, v.more > 0);
-      }
+      if (!k) h = cg || collapsed.has(b.id) ? HEAD : hOf(visible(b, false));
       return { id: c, w: b.w, h, entry: b.hasEntry };
     });
     const kidOf = new Map<string, string>();
@@ -255,7 +224,7 @@ function buildDisp(
     };
   };
 
-  // what's laid out at the top: every box, or on big maps the top level of the grouping
+  // what's laid out at the top: the top level of the grouping, or in focus every box placed
   const tops = G ? [...G.top, ...m.boxes.filter((b) => b.prop || b.ghost).map((b) => b.id)] : m.boxes.map((b) => b.id);
   const baseOf = (id: string): [number, number] | undefined => {
     const b = m.box.get(id);
@@ -310,7 +279,7 @@ function buildDisp(
     else addGroup(G!.groups.get(id)!, p);
   }
   function place(c: Cont, p: [number, number], topId: string) {
-    groupsOut.push({ g: c.g, r: { x: p[0], y: p[1], w: c.w, h: c.h, empty: false }, reveal: c.reveal, top: topId });
+    groupsOut.push({ g: c.g, r: { x: p[0], y: p[1], w: c.w, h: c.h }, reveal: c.reveal, top: topId });
     for (const kid of c.kids) {
       const q: [number, number] = [p[0] + CPAD + kid.x, p[1] + top + kid.y];
       if (kid.sub) place(kid.sub, q, topId);
@@ -343,11 +312,11 @@ function buildDisp(
   function add(b: Box, p: [number, number], inG?: string) {
     const v = visible(b);
     if (focusOn && !v.rows.length) return;
-    const fh = heightOf(v.rows.length, v.more > 0);
+    const fh = hOf(v);
     const sub = b.shared && !S ? `used by ${b.usedBy} module${b.usedBy === 1 ? '' : 's'}` : b.sub;
     let h = collapsed.has(b.id) ? HEAD : fh;
     let far: FarText | undefined;
-    if (k) ({ h, far } = farText(b, sub, fh));
+    if (k) ({ h, far } = farText(b, sub, G ? layoutH(b) - 20 : fh));
     const d: DBox = {
       b,
       x: p[0],
@@ -356,11 +325,12 @@ function buildDisp(
       h,
       fullH: fh,
       rows: v.rows,
-      col: !!k || collapsed.has(b.id),
+      col: !!k || collapsed.has(b.id) || (!v.rows.length && !v.more),
       more: v.more,
       moreWord: v.moreWord,
       open: v.open,
-      lift: dragBox?.id === b.id || (!k && h > (G ? layoutH(b) : b.defH)),
+      tgl: !k && (v.rows.length > 0 || v.more > 0),
+      lift: dragId === b.id || hoverBox === b.id || (!k && h > (G ? layoutH(b) : fh)),
       sub,
       far,
       inG,
@@ -378,62 +348,38 @@ function buildDisp(
     let h = GROUP_NEAR;
     let far: FarText | undefined;
     if (k) ({ h, far } = farText(b, b.sub, GROUP_H - 20, 0.9));
-    const d: DBox = { b, x: p[0], y: p[1], w: b.w, h, fullH: GROUP_NEAR, rows: [], col: true, more: 0, moreWord: '', open: false, lift: false, sub: b.sub, far, inG };
+    const d: DBox = { b, x: p[0], y: p[1], w: b.w, h, fullH: GROUP_NEAR, rows: [], col: true, more: 0, moreWord: '', open: false, tgl: false, lift: false, sub: b.sub, far, inG };
     boxes.push(d);
     byId.set(b.id, d);
     for (const r of b.rows) row.set(r.id, { d, idx: -1 });
   }
-  // proposed and missing boxes without a position: under their area, or under everything
+  // proposed and missing boxes without a position: under everything
   for (const b of later) {
-    const a = b.propArea ? areas.find((x) => x.name === b.propArea) : undefined;
-    const mem = a ? (a.modules ?? []).map((id) => byId.get(id)).filter((d): d is DBox => !!d) : [];
-    let p: [number, number];
-    if (mem.length) {
-      const low = mem.reduce((x, y) => (y.y + y.fullH > x.y + x.fullH ? y : x));
-      p = [low.x, low.y + low.fullH + 24];
-    } else {
-      const bottom = boxes.length ? Math.max(...boxes.map((d) => d.y + d.fullH)) : 0;
-      const left = boxes.length ? Math.min(...boxes.map((d) => d.x)) : 20;
-      p = [left, bottom + 70];
-    }
-    add(b, p);
+    const bottom = boxes.length ? Math.max(...boxes.map((d) => d.y + d.fullH)) : 0;
+    const left = boxes.length ? Math.min(...boxes.map((d) => d.x)) : 20;
+    add(b, [left, bottom + 70]);
   }
   // Show all: boxes grow to every row, and push the boxes below them down by as
   // much, so nothing overlaps and the map keeps its shape.
   if (connecting && !k) pushDown(boxes.filter((d) => !d.inG), (d) => (G ? layoutH(d.b) : d.b.defH));
-  // edges into shared modules only draw when the selection uses them
+  // At rest the map is boxes only. Calls draw for the selection and for the
+  // hovered box (in and out), and while sketching a proposal, its own calls.
   const edges = m.edges.filter((e) => {
     const a = row.get(e.from),
       b = row.get(e.to);
     if (!a || !b) return false;
-    if (focusOn) return S.edges.has(e.i);
-    if (b.d.b.shared && a.d !== b.d && !e.prop) return !!S && S.edges.has(e.i);
-    return true;
+    if (S?.edges.has(e.i)) return true;
+    if (focusOn) return false;
+    return e.prop || (!!hoverBox && (a.d.b.id === hoverBox || b.d.b.id === hoverBox));
   });
   // the selection's trace: calls through skipped forwarding functions, and
   // effects reached through code the trace doesn't show
   if (S) for (const e of S.extra) if (row.has(e.from) && row.has(e.to)) edges.push(e);
-  const out: Disp['areas'] = [];
-  let bottom = boxes.length ? Math.max(...boxes.map((d) => d.y + d.fullH)) + 60 : 80;
-  for (const a of areas) {
-    let r = dragBox?.frozen.get(a.name) ?? areaRect(a, byId, pos);
-    if (r && k && !r.empty && r.fa === undefined) {
-      const fa = areaFont(a.name, r.w, farArea(k)),
-        t = areaTop(fa);
-      r = { ...r, y: r.y + 44 - t, h: r.h - 44 + t, fa };
-    }
-    if (focusOn && (!r || r.empty)) continue;
-    if (!r && !(a.modules ?? []).some((id) => m.box.has(id))) {
-      r = { x: 20, y: bottom, w: 260, h: 140, empty: true };
-      bottom += 160;
-    }
-    if (r) out.push({ a, r });
-  }
-  if (k && G) uniqueNames(boxes);
-  if (k) declutter(boxes, edges, row, out, groupsOut, k);
-  // expanded and dragged boxes draw above their neighbours
+  if (k) uniqueNames(boxes);
+  if (k) declutter(boxes, groupsOut, k);
+  // expanded, hovered and dragged boxes draw above their neighbours
   boxes.sort((x, y) => Number(x.lift) - Number(y.lift));
-  return { boxes, byId, row, edges, areas: out, groups: groupsOut, shift, reveal: [...reveal].sort().join('\0'), boxSel: !!selIds.length && selIds.every((id) => m.box.has(id)) };
+  return { boxes, byId, row, edges, groups: groupsOut, shift, reveal: [...reveal].sort().join('\0'), boxSel: !!selIds.length && selIds.every((id) => m.box.has(id)) };
 }
 
 function pushDown(ds: DBox[], base: (d: DBox) => number) {
@@ -467,27 +413,14 @@ function uniqueNames(boxes: DBox[]) {
 }
 
 // declutter hides far-mode names that would overlap a more important one; they
-// show on hover. Importance: entry points, then links to other boxes, then size.
-function declutter(boxes: DBox[], edges: MEdge[], row: Disp['row'], areas: Disp['areas'], groups: Disp['groups'], k: number) {
+// show on hover. Importance: entry points, then how many modules use it, then size.
+function declutter(boxes: DBox[], groups: Disp['groups'], k: number) {
   type R = [number, number, number, number];
   const placed: R[] = [];
   const hit = (r: R) => placed.some((q) => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1]);
   const fa = farArea(k);
-  for (const { a, r } of areas) {
-    const f = r.fa ?? fa;
-    placed.push([r.x + f * 0.7, r.y + f * 0.25, r.x + f * 0.7 + a.name.length * f * SANS, r.y + f * 1.4]);
-  }
   for (const { g, r } of groups) placed.push([r.x + fa * 0.7, r.y + fa * 0.25, r.x + fa * 2.1 + g.path.length * fa * SANS, r.y + fa * 1.4]);
-  const nb = new Map<DBox, Set<DBox>>();
-  for (const e of edges) {
-    const a = row.get(e.from)!.d,
-      b = row.get(e.to)!.d;
-    if (a === b) continue;
-    (nb.get(a) ?? nb.set(a, new Set()).get(a)!).add(b);
-    (nb.get(b) ?? nb.set(b, new Set()).get(b)!).add(a);
-  }
-  const score = (d: DBox) =>
-    (d.b.hasEntry ? 4 : 0) + Math.log2(1 + (nb.get(d)?.size ?? 0)) * 2 + Math.log2(1 + d.b.rows.length) + (d.b.group ? 2 : 0);
+  const score = (d: DBox) => (d.b.hasEntry ? 4 : 0) + Math.log2(1 + d.b.usedBy) * 2 + Math.log2(1 + d.b.rows.length) + (d.b.group ? 2 : 0);
   const list = boxes.filter((d) => d.far).map((d) => ({ d, s: score(d) }));
   list.sort((x, y) => y.s - x.s || x.d.b.id.localeCompare(y.d.b.id));
   for (const { d } of list) {
@@ -523,26 +456,18 @@ function boxAt(disp: Disp, x: number, y: number): DBox | null {
   return null;
 }
 
-// dropTarget is the smallest area rectangle containing the point.
-function dropTarget(disp: Disp, x: number, y: number): string | null {
-  let best: { name: string; s: number } | null = null;
-  for (const { a, r } of disp.areas) {
-    if (x < r.x || x > r.x + r.w || y < r.y || y > r.y + r.h) continue;
-    const s = r.w * r.h;
-    if (!best || s < best.s) best = { name: a.name, s };
-  }
-  return best?.name ?? null;
-}
-
-function anchor(disp: Disp, id: string, side: 'l' | 'r'): [number, number] {
+// anchor is where a call meets a box: its row, or the header when the row
+// doesn't show or the line stands for every call between two boxes (`head`).
+function anchorAt(disp: Disp, id: string, side: 'l' | 'r', head = false): [number, number] {
   const { d, idx } = disp.row.get(id)!;
-  const y = d.col || idx < 0 ? d.y + (d.col ? d.h : HEAD) / 2 : d.y + HEAD + idx * ROW + ROW / 2;
+  const y = d.col ? d.y + d.h / 2 : head || idx < 0 ? d.y + HEAD / 2 : d.y + HEAD + idx * ROW + ROW / 2;
   return [side === 'r' ? d.x + d.w + 1 : d.x - 1, y];
 }
 
-function edgePath(disp: Disp, e: MEdge): string | null {
+function edgePath(disp: Disp, e: MEdge, head = false): string | null {
   const a = disp.row.get(e.from)!.d,
     b = disp.row.get(e.to)!.d;
+  const anchor = (d: Disp, id: string, side: 'l' | 'r') => anchorAt(d, id, side, head);
   if (a === b) {
     if (a.col) return null;
     const [x1, y1] = anchor(disp, e.from, 'l'),
@@ -607,7 +532,7 @@ const Edges = memo(function Edges({ disp, S, shown }: { disp: Disp; S: Sel | nul
       <path
         key={key}
         className={cls}
-        d={edgePath(disp, g.e) ?? ''}
+        d={edgePath(disp, g.e, true) ?? ''}
         style={{ strokeWidth: w + 'px' }}
         data-agg={g.n}
         markerEnd={`url(#${g.prop ? 'mk-p' : g.on ? 'mk-h' : 'mk-n'})`}
@@ -625,25 +550,7 @@ const Edges = memo(function Edges({ disp, S, shown }: { disp: Disp; S: Sel | nul
   );
 });
 
-const AreaG = memo(function AreaG({ a, r, sel, drop, fa: far }: { a: Area; r: ARect; sel: boolean; drop: boolean; fa: number | null }) {
-  const fa = far && (r.fa ?? far);
-  const hh = fa ? fa * 1.6 : 34;
-  // an area is always wide enough for its name
-  const w = Math.max(r.w, a.name.length * (fa ?? 13) * SANS + (fa ? fa * 1.4 : 32));
-  return (
-    <g className={`area${sel ? ' asel' : ''}${r.empty ? ' empty' : ''}${drop ? ' drop' : ''}`} data-area-box={a.name}>
-      <rect className="arect" x={r.x} y={r.y} width={w} height={r.h} rx={14} />
-      <g className="ahead" data-area={a.name}>
-        <rect className="hit" x={r.x} y={r.y} width={w} height={hh} rx={14} />
-        <text className="alabel" x={r.x + (fa ? fa * 0.7 : 16)} y={r.y + (fa ? fa * 1.15 : 23)} style={fa ? { fontSize: fa } : undefined}>
-          {a.name}
-        </text>
-      </g>
-    </g>
-  );
-});
-
-// An open folder group: a container like an area, with the folder's path.
+// An open folder group: a container with the folder's path.
 const GroupC = memo(function GroupC({ g, r, reveal, sel, fa }: { g: Group; r: ARect; reveal: boolean; sel: boolean; fa: number | null }) {
   const hh = fa ? fa * 1.6 : 34;
   const lx = r.x + (fa ? fa * 0.7 : 14);
@@ -709,7 +616,7 @@ const BoxG = memo(function BoxG({ d, S, selKey, hover, connectFrom, canAdd }: Bo
           </text>
         </g>
       )}
-      {!far && !b.group && (
+      {d.tgl && (
         <g className="tgl" data-toggle={b.id}>
           <rect className="hit" x={x + 3} y={y + 4} width={19} height={19} rx={4} />
           <text className="caret" x={x + 9} y={y + 16}>
@@ -798,9 +705,8 @@ const mk = (id: string) => (
 
 type Drag =
   | { kind: 'pan'; x: number; y: number; vx: number; vy: number; moved: boolean }
-  | { kind: 'box'; id: string; prop: boolean; grp: boolean; x: number; y: number; bx: number; by: number; moved: boolean; px: number; py: number }
-  | { kind: 'row'; id: string; x: number; y: number; moved: boolean; px: number; py: number }
-  | { kind: 'area'; name: string; x: number; y: number; start: { id: string; x: number; y: number }[]; ax: number; ay: number; moved: boolean };
+  | { kind: 'box'; id: string; prop: boolean; x: number; y: number; bx: number; by: number; moved: boolean; px: number; py: number }
+  | { kind: 'row'; id: string; x: number; y: number; moved: boolean; px: number; py: number };
 
 export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   const m = useModel();
@@ -810,7 +716,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   const collapsed = useStore((s) => s.collapsed);
   const expanded = useStore((s) => s.expanded);
   const focus = useStore((s) => s.focus);
-  const areas = useStore((s) => s.areas);
   const view = useStore((s) => s.view);
   const sel = useStore((s) => s.sel);
   const hover = useStore((s) => s.hover);
@@ -823,7 +728,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   const farK = far ? snapK(view.k) : null;
   const [over, setOverState] = useState<Record<string, [number, number]>>({});
   const overRef = useRef(over);
-  const setDragBox = (d: DragBox | null) => setDragBoxState(d);
   const setOver = (o: Record<string, [number, number]>) => {
     overRef.current = o;
     setOverState(o);
@@ -831,19 +735,20 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<Drag | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [dragBox, setDragBoxState] = useState<DragBox | null>(null);
-  const [drop, setDropState] = useState<string | null>(null);
-  const dropRef = useRef<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
   const [rowDrop, setRowDrop] = useState<string | null>(null);
   const modelRef = useRef(m);
   modelRef.current = m;
-  const setDrop = (t: string | null) => {
-    dropRef.current = t;
-    setDropState(t);
+  // the box under the pointer: it shows its rows and its calls in and out
+  const [hoverBox, setHoverBoxNow] = useState<string | null>(null);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const setHoverBox = (id: string | null) => {
+    clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHoverBoxNow(id), 60);
   };
 
-  // Focus lays out just the boxes on the selection's path, so a feature on a
-  // big map gets a picture of its own instead of a dimmed corner of the map.
+  // Focus lays out just the boxes on the selection's path, so a feature gets a
+  // picture of its own instead of a dimmed corner of the map.
   const [focusPos, setFocusPos] = useState<Record<string, [number, number]> | null>(null);
   useEffect(() => {
     if (!focus || !S) {
@@ -863,7 +768,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       if (a && b && a !== b) links.push([a, b]);
     }
     let live = true;
-    void layoutUnplaced(items, links, [], {}).then((p) => {
+    void layoutUnplaced(items, links, {}).then((p) => {
       if (!live) return;
       setFocusPos(p);
       setState({ fitSeq: getState().fitSeq + 1 });
@@ -875,13 +780,13 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
   const disp = useMemo(
     () =>
       focusPos
-        ? buildDisp(m, S, focusPos, {}, collapsed, expanded, focus, farK, [], null, null, sel, !!connectFrom)
-        : buildDisp(m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, !!connectFrom),
-    [m, S, pos, over, collapsed, expanded, focus, farK, areas, dragBox, G, sel, connectFrom, focusPos],
+        ? buildDisp(m, S, focusPos, {}, collapsed, expanded, focus, farK, null, null, sel, !!connectFrom, hoverBox)
+        : buildDisp(m, S, pos, over, collapsed, expanded, focus, farK, dragId, G, sel, !!connectFrom, hoverBox),
+    [m, S, pos, over, collapsed, expanded, focus, farK, dragId, G, sel, connectFrom, focusPos, hoverBox],
   );
 
-  // Big maps only draw what's near the viewport. The culling window moves in
-  // whole-screen steps, so panning re-renders rarely.
+  // Only what's near the viewport draws (for speed; it doesn't change what you
+  // see). The culling window moves in whole-screen steps, so panning re-renders rarely.
   const [vsize, setVsize] = useState({ w: 1500, h: 900 });
   useEffect(() => {
     const el = svgRef.current!;
@@ -889,19 +794,17 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const big = disp.row.size > 800;
   const cw = vsize.w / view.k,
     ch = vsize.h / view.k;
-  const tx = big ? Math.floor(-view.x / view.k / cw) : 0,
-    ty = big ? Math.floor(-view.y / view.k / ch) : 0;
+  const tx = Math.floor(-view.x / view.k / cw),
+    ty = Math.floor(-view.y / view.k / ch);
   const shown = useMemo(() => {
-    if (!big) return null;
     const x0 = (tx - 1) * cw,
       y0 = (ty - 1) * ch,
       x1 = (tx + 3) * cw,
       y1 = (ty + 3) * ch;
     return new Set(disp.boxes.filter((d) => d.x < x1 && d.x + d.w > x0 && d.y < y1 && d.y + d.h > y0).map((d) => d.b.id));
-  }, [big, disp, tx, ty, cw, ch]);
+  }, [disp, tx, ty, cw, ch]);
   const dispRef = useRef(disp);
   dispRef.current = disp;
 
@@ -937,8 +840,8 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     const { r, W } = size();
     const pad = W < 600 ? 12 : 28,
       top = 58;
-    // fits the map with each box `hOf` tall; areas end below their lowest member
-    // on big maps far names may run past their boxes; `lk` fits them too
+    // fits the map with each box `hOf` tall; far names may run past their
+    // boxes, and `lk` fits them too
     const fitWith = (hOf: (b: DBox) => number, maxK = 1.4, lk = 0) => {
       let x0 = 1e9,
         y0 = 1e9,
@@ -957,23 +860,15 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
         x1 = Math.max(x1, gr.x + gr.w);
         y1 = Math.max(y1, gr.y + gr.h);
       }
-      for (const { a, r: ar } of d.areas) {
-        const ms = (a.modules ?? []).map((id) => d.byId.get(id)).filter((x): x is DBox => !!x);
-        x0 = Math.min(x0, ar.x);
-        y0 = Math.min(y0, ar.y);
-        x1 = Math.max(x1, ar.x + ar.w);
-        y1 = Math.max(y1, ms.length ? Math.max(...ms.map((m) => m.y + hOf(m) + 20)) : ar.y + ar.h);
-      }
       const k = Math.max(0.02, Math.min((W - pad * 2) / (x1 - x0), (r.height - top - pad) / (y1 - y0), maxK));
       return { k, x: (W - (x1 - x0) * k) / 2 - x0 * k, y: top - y0 * k };
     };
     let v = fitWith((b) => b.fullH);
     // zoomed out, boxes are drawn short: fit what's drawn, staying zoomed out
-    // (big maps settle over a few rounds: the drawn heights shrink as the zoom grows)
-    const big = !!groupingOf(getState());
-    for (let i = 0, n = big ? 4 : 1; i < n && v.k < FAR; i++) {
+    // (it settles over a few rounds: the drawn heights shrink as the zoom grows)
+    for (let i = 0; i < 4 && v.k < FAR; i++) {
       const k = v.k;
-      const far = fitWith((b) => farHeight(b.fullH, k), FAR * 0.99, big ? k : 0);
+      const far = fitWith((b) => farHeight(b.fullH, k), FAR * 0.99, k);
       if (far.k > k) v = far;
       else break;
     }
@@ -1048,11 +943,8 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       if (!g.moved && Math.hypot(dx, dy) < 4) return;
       if (!g.moved) {
         setDragging(true);
-        if (g.kind === 'box' && !g.prop && !g.grp) {
-          const frozen = new Map<string, ARect>();
-          for (const { a, r } of dispRef.current.areas) if ((a.modules ?? []).includes(g.id)) frozen.set(a.name, r);
-          setDragBox({ id: g.id, frozen });
-        }
+        setHoverBox(null);
+        if (g.kind === 'box') setDragId(g.id);
       }
       g.moved = true;
       const v = getState().view,
@@ -1064,20 +956,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
         const d = boxAt(dispRef.current, g.px, g.py);
         setRowDrop(d && d.b.id !== modelRef.current.node.get(g.id)?.box.id ? d.b.id : null);
       } else if (g.kind === 'pan') setState({ view: { ...v, x: g.vx + dx, y: g.vy + dy }, touchedView: true });
-      else if (g.kind === 'box') {
-        setOver({ [g.id]: [Math.round(g.bx + dx / k), Math.round(g.by + dy / k)] });
-        const r = svgRef.current!.getBoundingClientRect();
-        g.px = (e.clientX - r.left - v.x) / k;
-        g.py = (e.clientY - r.top - v.y) / k;
-        // the rectangles don't depend on where the box is, so the last frame's will do
-        if (!g.prop && !g.grp) setDrop(dropTarget(dispRef.current, g.px, g.py));
-      } else {
-        const o: Record<string, [number, number]> = {};
-        for (const s of g.start) o[s.id] = [Math.round(s.x + dx / k), Math.round(s.y + dy / k)];
-        if (!g.start.length) o['area:' + g.name] = [Math.round(g.ax + dx / k), Math.round(g.ay + dy / k)];
-        if (g.start.length) setOver(o);
-        else movePos(o);
-      }
+      else setOver({ [g.id]: [Math.round(g.bx + dx / k), Math.round(g.by + dy / k)] });
     };
     const up = () => {
       const g = drag.current;
@@ -1086,8 +965,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
         // one update: the committed state is the last drag frame
         commitDrag(g, overRef.current);
         setOver({});
-        setDragBox(null);
-        setDrop(null);
+        setDragId(null);
       }
       setTimeout(() => (drag.current = null), 0);
     };
@@ -1110,48 +988,15 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     if (g.kind === 'box') {
       const p = o[g.id];
       if (!p) return;
-      if (g.prop) {
-        moveProposalModule(g.id, p);
-        return;
-      }
-      if (g.grp) {
-        movePos({ [g.id]: p });
-        return;
-      }
-      // the drop target is the area under the pointer, as highlighted
-      const areas = dispRef.current.areas;
-      const rectOf: RectOf = (a) => areas.find((x) => x.a.name === a.name)?.r ?? null;
-      dropBox(g.id, p, dropTarget(dispRef.current, g.px, g.py), rectOf);
-      return;
-    } else if (g.kind === 'area') {
-      const real: Record<string, [number, number]> = {};
-      for (const [id, p] of Object.entries(o)) {
-        const b = dispRef.current.byId.get(id)?.b;
-        if (b?.prop) moveProposalModule(id, p);
-        else if (b && !b.ghost) real[id] = p;
-      }
-      movePos(real);
+      if (g.prop) moveProposalModule(g.id, p);
+      else movePos({ [g.id]: p });
     }
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     const t = e.target as Element;
-    const ah = t.closest('[data-area]') as HTMLElement | null;
     const s = getState();
-    if (ah && !s.readOnly) {
-      const name = ah.dataset.area!;
-      const a = s.areas.find((x) => x.name === name);
-      const r = disp.areas.find((x) => x.a.name === name)?.r;
-      if (a && r) {
-        const start = (a.modules ?? [])
-          .map((id) => disp.byId.get(id))
-          .filter((d): d is DBox => !!d)
-          .map((d) => ({ id: d.b.id, x: d.x - (disp.shift.get(d.b.id)?.[0] ?? 0), y: d.y - (disp.shift.get(d.b.id)?.[1] ?? 0) }));
-        drag.current = { kind: 'area', name, x: e.clientX, y: e.clientY, start, ax: r.x, ay: r.y, moved: false };
-        return;
-      }
-    }
     // in a proposal, a function dragged onto another module is proposed to move there
     const rn = t.closest('[data-node]') as HTMLElement | null;
     if (rn && !s.readOnly && !s.connectFrom && s.mode === 'propose' && currentProposal(s)) {
@@ -1171,8 +1016,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       const at = inG ? disp.groups.find((x) => x.g.id === inG)?.r : d;
       if (id && at && !d?.b.ghost && !s.readOnly) {
         const sh = disp.shift.get(id) ?? [0, 0];
-        const grp = isGroup(id);
-        drag.current = { kind: 'box', id, prop: !!d?.b.prop, grp, x: e.clientX, y: e.clientY, bx: at.x - sh[0], by: at.y - sh[1], moved: false, px: 0, py: 0 };
+        drag.current = { kind: 'box', id, prop: !!d?.b.prop, x: e.clientX, y: e.clientY, bx: at.x - sh[0], by: at.y - sh[1], moved: false, px: 0, py: 0 };
         return;
       }
     }
@@ -1214,8 +1058,6 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       select(from);
       return;
     }
-    const ar = t.closest('[data-area]') as HTMLElement | null;
-    if (ar) return pick('area:' + ar.dataset.area);
     const gh = t.closest('[data-ghead]') as HTMLElement | null;
     if (gh) return pick(gh.dataset.ghead!);
     const mh = t.closest('[data-mod]') as HTMLElement | null;
@@ -1230,14 +1072,14 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
     if (id && isGroup(id) && !t.closest('[data-gtoggle]')) toggleExpanded(id);
   };
 
-  // far-mode names hidden by declutter show while hovered
-  const [hov, setHov] = useState<string | null>(null);
+  // hovering a box shows its rows and calls; far-mode names hidden by declutter show too
   const onPointerOver = (e: React.PointerEvent) => {
+    if (drag.current?.moved) return;
     const id = ((e.target as Element).closest('[data-box]') as HTMLElement | null)?.dataset.box ?? null;
-    const want = id && disp.byId.get(id)?.far?.hid ? id : null;
-    if (want !== hov) setHov(want);
+    if (id !== hoverBox) setHoverBox(id);
+    else clearTimeout(hoverTimer.current);
   };
-  const hd = hov ? disp.byId.get(hov) : undefined;
+  const hd = hoverBox ? disp.byId.get(hoverBox) : undefined;
 
   const selKeyOf = (d: DBox) => {
     if (!sel.length) return '';
@@ -1252,16 +1094,15 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
       aria-label="Architecture map"
       onPointerDown={onPointerDown}
       onPointerOver={onPointerOver}
+      onPointerLeave={() => setHoverBox(null)}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       data-zoom={view.k.toFixed(3)}
       data-far={far ? '1' : '0'}
+      data-hover={hoverBox ?? ''}
     >
       <defs>{['mk-n', 'mk-h', 'mk-p'].map(mk)}</defs>
       <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
-        {disp.areas.map(({ a, r }) => (
-          <AreaG key={a.name} a={a} r={r} sel={sel.includes('area:' + a.name)} drop={drop === a.name} fa={farK ? farArea(farK) : null} />
-        ))}
         {disp.groups.map(({ g, r, reveal }) => (
           <GroupC key={g.id} g={g} r={r} reveal={reveal} sel={sel.includes(g.id)} fa={farK ? farArea(farK) : null} />
         ))}
@@ -1277,7 +1118,7 @@ export function MapView({ drawerOpen }: { drawerOpen: boolean }) {
             canAdd={canAdd}
           />
         ))}
-        {far && <FarLabels boxes={shown ? disp.boxes.filter((d) => shown.has(d.b.id)) : disp.boxes} halo={!!G} />}
+        {far && <FarLabels boxes={shown ? disp.boxes.filter((d) => shown.has(d.b.id)) : disp.boxes} halo />}
         {hd?.far?.hid && (
           <text className="mname hovname" x={hd.x + hd.far.px} y={hd.y + hd.far.nb} style={{ fontSize: hd.far.fn, strokeWidth: hd.far.fn * 0.3 }}>
             {hd.far.hid}
@@ -1304,21 +1145,4 @@ export function zoomCenter(f: number) {
   if (!el) return;
   const r = el.getBoundingClientRect();
   zoomAt(r.width / 2, r.height / 2, f);
-}
-
-// mapRectOf gives drawer actions the same area rectangles the map draws.
-export function useAreaRect(): RectOf {
-  const m = useModel();
-  const pos = useStore((s) => s.pos);
-  return useCallback(
-    (a: Area) => {
-      const byId = new Map<string, DBox>();
-      for (const b of m.boxes) {
-        const p = pos[b.id];
-        if (p) byId.set(b.id, { b, x: p[0], y: p[1], w: b.w, h: b.defH, fullH: b.defH, rows: b.rows, col: false, more: 0, moreWord: '', open: false, lift: false, sub: b.sub });
-      }
-      return areaRect(a, byId, pos);
-    },
-    [m, pos],
-  );
 }

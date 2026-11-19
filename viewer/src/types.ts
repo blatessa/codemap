@@ -42,11 +42,6 @@ export interface Graph {
   edges: GEdge[] | null;
 }
 
-export interface Area {
-  name: string;
-  modules: string[] | null;
-}
-
 export interface Block {
   id: string;
   name: string;
@@ -74,7 +69,6 @@ export interface Proposal {
 
 export interface Project {
   config: unknown;
-  areas: Area[] | null;
   blocks: Block[] | null;
   external: unknown;
   proposals: Proposal[] | null;
