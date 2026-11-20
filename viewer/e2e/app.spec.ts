@@ -288,6 +288,13 @@ test('proposals: edit and delete what you added', async ({ page }) => {
   const edges = async () => ((await refunds(page)) as P & { edges?: { from: string; to: string; type?: string }[] }).edges?.filter((e) => e.from === 'new:Service.Cancel');
   await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: INSERT }]);
   await page.locator('#drawer .pcall2').click();
+  // a dropdown closes when you click away, and two are never open together
+  await page.locator('.mpop .mpick[aria-label="From"]').click();
+  await expect(page.locator('.mpop input[aria-label="From"]')).toBeVisible();
+  await page.locator('.mpop .mpick[aria-label="To"]').click();
+  await expect(page.locator('.mpop input[aria-label="From"]')).toHaveCount(0);
+  await page.locator('.mpop .mhd b').click();
+  await expect(page.locator('.mpop input[aria-label="To"]')).toHaveCount(0);
   await page.locator('.mpop .mpick[aria-label="To"]').click();
   await page.locator('.mpop input[aria-label="To"]').fill('orders');
   await page.locator('.mpop [data-pick="table:orders"]').click();

@@ -147,11 +147,12 @@ function Pick({ m, value, onPick, skip, noExternal, label }: { m: Model; value: 
       </button>
     );
   return (
-    <div className="mpicking">
+    // leaving it (a click anywhere else, Tab) closes it, so only one is ever open
+    <div className="mpicking" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setOpen(false)}>
       <input
         autoFocus
         aria-label={label}
-        placeholder="Search by name"
+        placeholder={m.node.has(value) ? qn(m, value) : 'Search by name'}
         autoComplete="off"
         value={q}
         onChange={(e) => (setQ(e.target.value), setAt(0))}
