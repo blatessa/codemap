@@ -6,7 +6,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { addLabel, linksOf, isFolder, markChar, markOf, type Item, type Link, type Parts, type Rect } from './parts';
 import type { Model, Sel } from './model';
 import { clampPop } from './MapPopup';
-import { getState, proposeEdge, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
+import { currentProposal, editProposalEdge, getState, proposeEdge, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
 import { boxCls, rowCls } from './revs';
 
 // what's lit: the selection's things and lines, or the hovered thing's
@@ -262,7 +262,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   // or on empty canvas to add a new node, wired from this one. A click on the
   // handle without dragging connects by clicking instead (the pill says so).
   const noClick = useRef(false);
-  const startWire = (e: React.PointerEvent, id: string) => {
+  const startWire = (e: React.PointerEvent, id: string, replace?: number) => {
     e.stopPropagation();
     e.preventDefault();
     const sx = e.clientX,
@@ -278,16 +278,18 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
       const pos = popAtXY(ev.clientX, ev.clientY);
       const end = { connectFrom: null };
       if (!to || to === id) {
+        // dropped on nothing: a new node, wired from this one (moving a line's end just stays put)
         const home = m.node.get(id)?.box.id;
-        return setState(to ? end : { ...end, form: { type: 'fn', box: home, from: id, ...pos } });
+        return setState(to || replace != null ? end : { ...end, form: { type: 'fn', box: home, from: id, ...pos } });
       }
       const n = m.node.get(to);
-      if (n?.row.node.external) return setState({ ...end, form: { type: 'edge', from: id, to, ...pos } });
+      if (n?.row.node.external) return setState({ ...end, form: { type: 'edge', from: id, to, edge: replace, ...pos } });
       if (n) {
-        proposeEdge(id, to);
+        if (replace != null) editProposalEdge(replace, { to, type: 'calls' });
+        else proposeEdge(id, to);
         return setState({ ...end, form: null });
       }
-      if (m.box.has(to)) return setState({ ...end, form: { type: 'target', box: to, from: id, ...pos } });
+      if (m.box.has(to)) return setState({ ...end, form: { type: 'target', box: to, from: id, edge: replace, ...pos } });
       setState(end);
     };
     window.addEventListener('pointerup', up);
@@ -312,8 +314,20 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
       if (m.box.has(id)) return setState({ form: { type: 'target', box: id, from, ...popAt(e) } });
       return;
     }
+    // click a call the proposal adds to change or remove it, in the popup that added it
+    const lk = (t.closest('[data-link]') as Element | null)?.getAttribute('data-link');
+    const link = lk && canAdd ? P.links.find((x) => x.key === lk) : undefined;
+    if (link?.prop && link.edges.length === 1) {
+      const me = m.all.edges[link.edges[0]];
+      const at = currentProposal(getState())?.edges?.findIndex((x) => x.from === me.from && x.to === me.to && (x.type || 'calls') === me.type) ?? -1;
+      if (at >= 0) return setState({ form: { type: 'edge', from: me.from, to: me.to, edge: at, ...popAt(e) }, connectFrom: null });
+    }
     if (!id) return setState({ sel: null, form: null, connectFrom: null });
     select(id);
+    // click something the proposal adds to edit it, in the popup that added it
+    const here = m.node.get(id);
+    const s = getState();
+    if (here?.row.prop && s.mode === 'propose' && s.pslug) setState({ form: { type: 'fn', edit: id, box: here.box.id, ...popAt(e) } });
   };
   const onPointerOver = (e: React.PointerEvent) => {
     if (drag.current?.moved) return;
@@ -347,10 +361,6 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
       onDoubleClick={(e) => {
         const id = target(e.target as Element);
         if (id && isFolder(id)) toggleFolder(id);
-        // double-click something the proposal adds to edit it, in the popup that added it
-        const s = getState();
-        const row = id ? m.node.get(id) : undefined;
-        if (id && row?.row.prop && s.mode === 'propose' && s.pslug) setState({ form: { type: 'fn', edit: id, box: row.box.id, ...popAt(e) }, sel: id, connectFrom: null });
       }}
       data-zoom={view.k.toFixed(3)}
       data-hover={hover ?? ''}
@@ -377,9 +387,12 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
               b = P.at.get(l.to);
             if (!a || !b) return null;
             return (
-              <path key={l.key} className={lineCls(l)} d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} style={{ strokeWidth: 1.2 + Math.log2(l.edges.length) * 0.8 + 'px' }} markerEnd={`url(#${lit ? 'mk-h' : l.prop ? 'mk-p' : l.diff ? { add: 'mk-a', rem: 'mk-r', chg: 'mk-c' }[l.diff] : 'mk-n'})`}>
+              <g key={l.key}>
+              {l.prop && canAdd && <path className="linehit" d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} />}
+              <path className={lineCls(l)} d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} style={{ strokeWidth: 1.2 + Math.log2(l.edges.length) * 0.8 + 'px' }} markerEnd={`url(#${lit ? 'mk-h' : l.prop ? 'mk-p' : l.diff ? { add: 'mk-a', rem: 'mk-r', chg: 'mk-c' }[l.diff] : 'mk-n'})`}>
                 <title>{`${VERB[l.kind]} · ${l.edges.length}`}</title>
               </path>
+              </g>
             );
           })}
         </g>
@@ -449,6 +462,21 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
               );
             }),
           )}
+        {canAdd && (
+          <g className="ehandles">
+            {shown.map((l) => {
+              if (!l.prop || l.edges.length !== 1) return null;
+              const a = P.at.get(l.from),
+                b = P.at.get(l.to);
+              if (!a || !b) return null;
+              // the line's far end is a handle: drag it to point the call somewhere else
+              const me = m.all.edges[l.edges[0]];
+              const at = currentProposal(getState())?.edges?.findIndex((x) => x.from === me.from && x.to === me.to && (x.type || 'calls') === me.type) ?? -1;
+              const end = /(-?[\d.]+)[ ,]+(-?[\d.]+)\s*$/.exec(linePath(a, b, m.node.has(l.from) || m.node.has(l.to)));
+              return at >= 0 && end ? <circle key={l.key} className="handle ehandle" data-link={l.key} cx={Number(end[1])} cy={Number(end[2])} r={5} onPointerDown={(e) => startWire(e, me.from, at)} /> : null;
+            })}
+          </g>
+        )}
         {connectFrom &&
           cursor &&
           (() => {

@@ -47,7 +47,7 @@ export function MapPopup({ m }: { m: Model }) {
     >
       {form.type === 'fn' && <AddNode key={key} m={m} box={m.box.get(form.box!)} from={form.from} edit={form.edit} />}
       {form.type === 'mod' && <AddPart key={key} />}
-      {form.type === 'target' && <Target key={key} m={m} box={m.box.get(form.box!)} from={form.from!} x={form.x} y={form.y} />}
+      {form.type === 'target' && <Target key={key} m={m} box={m.box.get(form.box!)} from={form.from!} x={form.x} y={form.y} edge={form.edge} />}
       {form.type === 'edge' && <Use key={key} m={m} from={form.from!} to={form.to!} edge={form.edge} />}
     </div>
   );
@@ -175,7 +175,7 @@ function AddPart() {
 }
 
 // Target: `from` calls something in this part. Type to find it, or to name a new one.
-function Target({ m, box, from, x, y }: { m: Model; box?: Box; from: string; x: number; y: number }) {
+function Target({ m, box, from, x, y, edge }: { m: Model; box?: Box; from: string; x: number; y: number; edge?: number }) {
   const [q, setQ] = useState('');
   const [at, setAt] = useState(0);
   const ref = useRef<HTMLInputElement>(null);
@@ -193,13 +193,16 @@ function Target({ m, box, from, x, y }: { m: Model; box?: Box; from: string; x: 
     const it = items[i];
     if (!it) return;
     let to = it.id;
+    // pointing an existing call somewhere else replaces it
+    const wire = (id: string) => (edge != null ? editProposalEdge(edge, { to: id, type: 'calls' }) : proposeEdge(from, id));
     if (!to) {
-      const id = proposeNode(box.id, q.trim(), kind, kind === 'route' ? 'GET' : '', box.external, { select: false, from: box.external ? undefined : from });
+      const id = proposeNode(box.id, q.trim(), kind, kind === 'route' ? 'GET' : '', box.external, { select: false });
       if (!id) return;
       to = id;
-    } else if (!it.ext) proposeEdge(from, to);
+      if (!box.external) wire(id);
+    } else if (!it.ext) wire(to);
     // data and services say how: reads or writes, and what query
-    if (it.ext) setState({ form: { type: 'edge', from, to, x, y } });
+    if (it.ext) setState({ form: { type: 'edge', from, to, edge, x, y } });
     else close();
   };
   return (
@@ -239,12 +242,12 @@ function Use({ m, from, to, edge }: { m: Model; from: string; to: string; edge?:
   const kind = m.node.get(to)?.row.node.kind ?? '';
   const had = typeof was?.type === 'string' ? was.type : 'calls';
   const types = kind === 'table' ? ['reads', 'writes'] : kind === 'topic' ? ['publishes'] : had !== 'calls' ? [had] : ['calls'];
-  const [type, setType] = useState(edge != null ? had : kind === 'table' ? 'writes' : types[0]);
+  const [type, setType] = useState(edge != null && types.includes(had) ? had : kind === 'table' ? 'writes' : types[0]);
   const [detail, setDetail] = useState(typeof was?.detail === 'string' ? was.detail : '');
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
   const submit = () => {
-    if (edge != null) editProposalEdge(edge, { type, detail: detail.trim() });
+    if (edge != null) editProposalEdge(edge, { to, type, detail: detail.trim() });
     else proposeEdge(from, to, type, detail);
     close();
   };

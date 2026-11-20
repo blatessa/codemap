@@ -16,7 +16,7 @@ import { ScreenOutline } from './ScreenOutline';
 import { Diagram } from './Diagram';
 import { entryPointsOf } from './connections';
 import { CallPicker } from './CallPicker';
-import { ProposedCalls, popupNear } from './ProposedCalls';
+import { ProposedCalls } from './ProposedCalls';
 
 // MoveTo: the part a proposal moves a function to.
 function MoveTo({ m, id, at }: { m: Model; id: string; at: string }) {
@@ -106,13 +106,7 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
               Add a call
             </button>
           )}
-          {row.prop ? (
-            <button className="btn" onClick={() => setState({ form: { type: 'fn', edit: id, box: box.id, ...popupNear(P, id) } })}>
-              Edit
-            </button>
-          ) : (
-            !n.external && !row.ghost && !box.external && <MoveTo m={m} id={id} at={box.id} />
-          )}
+          {!row.prop && !n.external && !row.ghost && !box.external && <MoveTo m={m} id={id} at={box.id} />}
         </div>
       )}
       {propose && <ProposedCalls m={m} P={P} id={id} />}

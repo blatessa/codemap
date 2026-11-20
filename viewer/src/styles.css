@@ -664,3 +664,7 @@ svg#map .handle:hover{fill:var(--plan)}
 .pcall2 .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pcall2 .q{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mpop .btn.danger{margin-right:auto}
+
+svg#map path.linehit{fill:none;stroke:transparent;stroke-width:12px;pointer-events:stroke;cursor:pointer}
+
+svg#map .ehandle{cursor:grab;opacity:.95}

@@ -262,8 +262,8 @@ test('proposals: edit and delete what you added', async ({ page }) => {
   await page.locator('#f-name').press('Enter');
   await page.keyboard.press('Escape');
   await page.locator('#map .padd[data-node="new:Service.Cancel"]').click();
-  // edit it in the popup that added it: rename it, say what it does
-  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  // clicking it on the map opens the popup that added it: rename it, say what it does
+  await expect(page.locator('#f-name')).toHaveValue('Service.Cancel');
   await page.locator('#f-name').fill('Service.Abort');
   await page.getByRole('button', { name: '+ What it does' }).click().catch(() => {});
   await page.locator('#f-doc').fill('Stops an order.');
@@ -282,8 +282,31 @@ test('proposals: edit and delete what you added', async ({ page }) => {
   await page.locator('#drawer .pcall2').click();
   await page.getByRole('button', { name: 'Remove', exact: true }).click();
   await expect.poll(edges).toHaveLength(0);
-  // double-click it on the map to edit; Delete there takes it out of the proposal
-  await page.locator('#map .padd[data-node="new:Service.Cancel"]').dblclick();
+  // click a call's line on the map to change it
+  await page.getByRole('button', { name: 'Add a call' }).click();
+  await page.locator('#pick-q').fill('orders');
+  await page.locator('#pick-q').press('Enter');
+  await expect.poll(edges).toHaveLength(1);
+  // the curve's middle is the middle of its box
+  const hb = (await page.locator('#map path.linehit[data-link*="new:Service.Cancel"]').first().boundingBox())!;
+  const mid = { x: hb.x + hb.width / 2, y: hb.y + hb.height / 2 };
+  await page.mouse.click(mid.x, mid.y);
+  await page.locator('#e-detail').fill('the whole table');
+  await page.locator('#e-detail').press('Enter');
+  await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: 'table:orders', type: 'writes', detail: 'the whole table' }]);
+  // drag the line's end to point the call somewhere else
+  await page.locator('#map .padd[data-node="new:Service.Cancel"]').hover();
+  await page.locator('#map path.linehit[data-link*="new:Service.Cancel"]').first().hover({ force: true });
+  const eh = (await page.locator('#map .ehandle[data-link*="new:Service.Cancel"]').first().boundingBox())!;
+  const stock = (await page.locator('#map [data-node="table:stock"]').boundingBox())!;
+  await page.mouse.move(eh.x + eh.width / 2, eh.y + eh.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(stock.x + stock.width / 2, stock.y + stock.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await page.locator('#e-detail').press('Enter');
+  await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: 'table:stock', type: 'writes', detail: 'the whole table' }]);
+  // Delete, in the node's popup, takes it out of the proposal
+  await page.locator('#map .padd[data-node="new:Service.Cancel"]').click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect.poll(async () => (await refunds(page)).nodes?.some((n) => n.id === 'new:Service.Cancel')).toBe(false);
 });
