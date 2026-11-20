@@ -96,6 +96,11 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   const fitSeq = useStore((s) => s.fitSeq);
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<string | null>(null);
+  // while connecting, a line runs from the thing to the cursor, so you can see what you're wiring
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!connectFrom) setCursor(null);
+  }, [connectFrom]);
   // hovering a name in the panel marks it on the map
   const panelHover = useStore((s) => s.hover);
   const hov = hover ?? (panelHover ? P.itemOf(panelHover) : null);
@@ -246,12 +251,48 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
     drag.current = { x: e.clientX, y: e.clientY, vx: v.x, vy: v.y, moved: false };
   };
   // where a popup opens: where you clicked, kept inside the map
-  const popAt = (e: React.MouseEvent) => {
+  const popAtXY = (cx: number, cy: number) => {
     const r = svgRef.current!.getBoundingClientRect();
-    return { x: Math.max(8, Math.min(e.clientX - r.left + 10, r.width - 290)), y: Math.max(8, Math.min(e.clientY - r.top + 10, r.height - 260)) };
+    return { x: Math.max(8, Math.min(cx - r.left + 10, r.width - 290)), y: Math.max(8, Math.min(cy - r.top + 10, r.height - 260)) };
+  };
+  const popAt = (e: React.MouseEvent) => popAtXY(e.clientX, e.clientY);
+  // Drag from a node's handle, as in FigJam, Obsidian and n8n: drop on a part to
+  // pick or name what it calls there, on a table or service to say how it's used,
+  // or on empty canvas to add a new node, wired from this one. A click on the
+  // handle without dragging connects by clicking instead (the pill says so).
+  const noClick = useRef(false);
+  const startWire = (e: React.PointerEvent, id: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const sx = e.clientX,
+      sy = e.clientY;
+    setState({ connectFrom: id, form: null });
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointerup', up);
+      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+      noClick.current = true;
+      setTimeout(() => (noClick.current = false), 0);
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const to = el ? target(el) : null;
+      const pos = popAtXY(ev.clientX, ev.clientY);
+      const end = { connectFrom: null };
+      if (!to || to === id) {
+        const home = m.node.get(id)?.box.id;
+        return setState(to ? end : { ...end, form: { type: 'fn', box: home, from: id, ...pos } });
+      }
+      const n = m.node.get(to);
+      if (n?.row.node.external) return setState({ ...end, form: { type: 'edge', from: id, to, ...pos } });
+      if (n) {
+        proposeEdge(id, to);
+        return setState({ ...end, form: null });
+      }
+      if (m.box.has(to)) return setState({ ...end, form: { type: 'target', box: to, from: id, ...pos } });
+      setState(end);
+    };
+    window.addEventListener('pointerup', up);
   };
   const onClick = (e: React.MouseEvent) => {
-    if (drag.current?.moved) return;
+    if (drag.current?.moved || noClick.current) return;
     const t = e.target as Element;
     const add = (t.closest('[data-add]') as HTMLElement | null)?.dataset.add;
     if (add) return setState({ form: { type: 'fn', box: add, ...popAt(e) }, sel: null, connectFrom: null });
@@ -295,6 +336,11 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
       aria-label="Architecture map"
       onPointerDown={onPointerDown}
       onPointerOver={onPointerOver}
+      onPointerMove={(e) => {
+        if (!connectFrom) return;
+        const r = svgRef.current!.getBoundingClientRect();
+        setCursor({ x: (e.clientX - r.left - view.x) / view.k, y: (e.clientY - r.top - view.y) / view.k });
+      }}
       onPointerLeave={() => setHover(null)}
       onClick={onClick}
       onDoubleClick={(e) => {
@@ -361,6 +407,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
                       <text x={a.x + 8} y={a.y + 12.5}>
                         <tspan className="pplus">{r.moved ? '↳' : markChar(r.id) || '+'}</tspan> {addLabel(r)}
                       </text>
+                      {canAdd && !r.moved && <circle className="handle" cx={a.x + a.w} cy={a.y + a.h / 2} r={5} onPointerDown={(e) => startWire(e, r.id)} />}
                     </g>
                   );
                 })}
@@ -397,6 +444,18 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
               );
             }),
           )}
+        {connectFrom &&
+          cursor &&
+          (() => {
+            const a = P.at.get(connectFrom) ?? P.at.get(P.itemOf(connectFrom));
+            if (!a) return null;
+            return (
+              <g className="rubber" pointerEvents="none">
+                <line x1={a.x + a.w} y1={a.y + a.h / 2} x2={cursor.x} y2={cursor.y} />
+                <circle cx={cursor.x} cy={cursor.y} r={4} />
+              </g>
+            );
+          })()}
       </g>
     </svg>
   );

@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, type ReactNode } from 'react';
 import { getSource, openInEditor } from './api';
 import { addNote, commentTarget, useStore } from './store';
-import { NoteBox, NoteBubble, ToProposal, selectedLines, useCanNote, where } from './Notes';
+import { NoteBox, NoteBubble, ToProposal, useCanNote, useCommentChip, useLineDrag, where } from './Notes';
 import type { Note } from './types';
 import { fileChanged, sourceRev, useCompare } from './revs';
 import { DiffSource } from './Compare';
@@ -28,15 +28,30 @@ export function highlight(code: string): ReactNode[] {
   return out;
 }
 
-export const CodeBlock = memo(function CodeBlock({ code, start, file, onLine, mark }: { code: string; start: number; file?: string; onLine?: (n: number, shift: boolean) => void; mark?: [number, number] | null }) {
+export type Gutter = { down: (n: number, shift: boolean) => void; enter: (n: number) => void };
+
+// CodeBlock is code with line numbers. With a `gutter`, hovering a number shows a
+// + to comment on that line; `mark` is the lines being commented on and `lit`
+// the lines that already have a comment.
+export const CodeBlock = memo(function CodeBlock({ code, start, file, gutter, mark, lit }: { code: string; start: number; file?: string; gutter?: Gutter; mark?: [number, number] | null; lit?: Set<number> }) {
   const n = code.split('\n').length;
   return (
-    <div className="code" data-file={file} data-start={start}>
+    <div className={`code${gutter ? ' cm' : ''}`} data-file={file} data-start={start}>
       <pre className="g">
-        {onLine
+        {gutter
           ? Array.from({ length: n }, (_, i) => start + i).map((x) => (
               <span key={x}>
-                <span className={`ln ${mark && x >= mark[0] && x <= mark[1] ? 'sel' : ''}`} data-ln={x} role="button" title="Add a note here" onClick={(e) => onLine(x, e.shiftKey)}>
+                <span
+                  className={`ln${mark && x >= mark[0] && x <= mark[1] ? ' sel' : ''}${lit?.has(x) ? ' has' : ''}`}
+                  data-ln={x}
+                  role="button"
+                  title="Comment on this line (drag for several)"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    gutter.down(x, e.shiftKey);
+                  }}
+                  onPointerEnter={() => gutter.enter(x)}
+                >
                   {x}
                 </span>
                 {x < start + n - 1 ? '\n' : ''}
@@ -62,26 +77,21 @@ function NotedCode({ code, start, file, on }: { code: string; start: number; fil
   const endOf = (n: Note) => Math.min(Math.max(n.to ?? n.from!, n.from!), end);
   const cuts = [...new Set([...notes.map(endOf), ...(draft ? [draft[1]] : [])])].sort((a, b) => a - b);
   if (!cuts.includes(end)) cuts.push(end);
-  const onLine = (n: number, shift: boolean) =>
-    setDraft((d) => (shift && d ? [Math.min(d[0], n), Math.max(d[1], n)] : d && d[0] === n && d[1] === n ? null : [n, n]));
+  const lit = new Set(notes.flatMap((n) => Array.from({ length: Math.min(endOf(n), end) - n.from! + 1 }, (_, i) => n.from! + i)));
+  const { drag, gutter } = useLineDrag((r, shift) => setDraft((d) => (shift && d ? [Math.min(d[0], r[0]), Math.max(d[1], r[1])] : r)));
   let from = start;
-  // highlighting code comments on it, as clicking a line number does
-  const onUp = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!can || (e.target as Element).closest('.note')) return;
-    const r = selectedLines(e.currentTarget);
-    if (!r) return;
-    window.getSelection()?.removeAllRanges();
-    setDraft([Math.max(r[0], start), Math.min(r[1], end)]);
-  };
+  // highlighting code offers to comment on it
+  const { onMouseUp, chip } = useCommentChip((r) => setDraft([Math.max(r[0], start), Math.min(r[1], end)]), can);
   return (
-    <div className="lined" onMouseUp={onUp}>
+    <div className="lined" onMouseUp={onMouseUp}>
+      {chip}
       {cuts.map((cut) => {
         const part = lines.slice(from - start, cut - start + 1).join('\n');
         const first = from;
         from = cut + 1;
         return (
           <div key={cut}>
-            <CodeBlock code={part} start={first} file={file} onLine={can ? onLine : undefined} mark={draft} />
+            <CodeBlock code={part} start={first} file={file} gutter={can ? gutter : undefined} mark={drag ?? draft} lit={lit} />
             {notes
               .filter((n) => endOf(n) === cut)
               .map((n, i) => (

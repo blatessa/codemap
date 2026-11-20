@@ -22,7 +22,7 @@ import {
   stopCompare,
   type DLine,
 } from './revs';
-import { NoteBox, NoteBubble, ToProposal, selectedLines, useCanNote, where } from './Notes';
+import { NoteBox, NoteBubble, ToProposal, useCanNote, useCommentChip, useLineDrag, where } from './Notes';
 import { addNote, commentTarget, getState, setState, useStore } from './store';
 
 function useOutside(open: boolean, close: () => void) {
@@ -365,7 +365,10 @@ function DiffLines({ lines, file, on }: { lines: DLine[]; file: string; on?: str
   lines.forEach((l, i) => l.n && idx.set(l.n, i));
   // a comment sits under the line that ends it, when the diff shows that line
   const cuts = [...new Set([...notes.map(endOf), ...(draft ? [draft[1]] : [])])].filter((n) => idx.has(n)).sort((a, b) => idx.get(a)! - idx.get(b)!);
-  const onLine = (n: number, shift: boolean) => setDraft((d) => (shift && d ? [Math.min(d[0], n), Math.max(d[1], n)] : d && d[0] === n && d[1] === n ? null : [n, n]));
+  const { drag, gutter } = useLineDrag((r, shift) => setDraft((d) => (shift && d ? [Math.min(d[0], r[0]), Math.max(d[1], r[1])] : r)));
+  const lit = new Set(notes.flatMap((n) => Array.from({ length: endOf(n) - n.from! + 1 }, (_, i) => n.from! + i)));
+  const mark = drag ?? draft;
+  const { onMouseUp, chip } = useCommentChip(setDraft, can);
   const chunks: { lines: DLine[]; cut?: number }[] = [];
   let at = 0;
   for (const c of cuts) {
@@ -374,24 +377,25 @@ function DiffLines({ lines, file, on }: { lines: DLine[]; file: string; on?: str
   }
   if (at < lines.length) chunks.push({ lines: lines.slice(at) });
   return (
-    <div
-      className={cuts.length || can ? 'lined' : undefined}
-      onMouseUp={(e) => {
-        if (!can || (e.target as Element).closest('.note')) return;
-        const r = selectedLines(e.currentTarget);
-        if (!r) return;
-        window.getSelection()?.removeAllRanges();
-        setDraft(r);
-      }}
-    >
+    <div className={cuts.length || can ? 'lined' : undefined} onMouseUp={onMouseUp}>
+      {chip}
       {chunks.map((ch, k) => (
         <div key={k}>
-          <div className="code cdiff">
+          <div className={`code cdiff${can ? ' cm' : ''}`}>
             <pre className="g">
               {ch.lines.map((l, i) => (
                 <span key={i}>
                   {l.n && can ? (
-                    <span className={`ln ${draft && l.n >= draft[0] && l.n <= draft[1] ? 'sel' : ''}`} role="button" title="Add a comment here" onClick={(e) => onLine(l.n!, e.shiftKey)}>
+                    <span
+                      className={`ln${mark && l.n >= mark[0] && l.n <= mark[1] ? ' sel' : ''}${lit.has(l.n) ? ' has' : ''}`}
+                      role="button"
+                      title="Comment on this line (drag for several)"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        gutter.down(l.n!, e.shiftKey);
+                      }}
+                      onPointerEnter={() => gutter.enter(l.n!)}
+                    >
                       {l.n}
                     </span>
                   ) : (

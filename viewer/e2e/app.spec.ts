@@ -156,6 +156,7 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
   // add to a part from a popup on the map, with what it does
   await page.locator(`#map [data-add="${ORDERS}"]`).click();
   await page.locator('#f-name').fill('Service.Cancel');
+  await page.getByRole('button', { name: '+ What it does' }).click();
   await page.locator('#f-doc').fill('Cancels an order and gives back its stock.');
   await page.locator('#f-doc').press('Enter');
   await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Cancel', module: ORDERS, doc: 'Cancels an order and gives back its stock.' });
@@ -194,7 +195,7 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
   await expect
     .poll(async () => (await refunds(page)).notes?.find((n) => n.text === 'Why is this a transaction?'))
     .toMatchObject({ on: 'go:shop/internal/orders.(*Service).Place', file: 'internal/orders/service.go' });
-  // highlighting code comments on those lines too
+  // highlighting code offers a Comment button; it opens the box under those lines
   await expect(async () => {
     const pre = page.locator('#drawer .code[data-file] pre.c').last();
     await pre.scrollIntoViewIfNeeded({ timeout: 500 });
@@ -203,6 +204,7 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
     await page.mouse.down();
     await page.mouse.move(b.x + b.width - 4, b.y + 40);
     await page.mouse.up();
+    await page.locator('.schip').click({ timeout: 500 });
     await expect(page.locator('#drawer .note.draft textarea')).toBeFocused({ timeout: 500 });
   }).toPass({ timeout: 5000 });
   await page.keyboard.type('Reserve after payment.');
@@ -211,6 +213,43 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
     .poll(async () => (await refunds(page)).notes?.find((n) => n.text === 'Reserve after payment.'))
     .toMatchObject({ file: 'internal/orders/service.go' });
   expect((await refunds(page)).notes?.find((n) => n.text === 'Reserve after payment.')?.to).toBeGreaterThan(0);
+  // a comment can be edited in place
+  await page.locator('#drawer .note p', { hasText: 'Reserve after payment.' }).click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.type('Reserve after the charge succeeds.');
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => (await refunds(page)).notes?.map((n) => n.text)).toContain('Reserve after the charge succeeds.');
+});
+
+test('proposals: drag from a node to wire it', async ({ page }) => {
+  await open(page);
+  await page.locator('#m-propose').click();
+  await page.locator('.pitem[data-slug="refunds"]').click();
+  await page.locator(`#map [data-add="${ORDERS}"]`).click();
+  await page.locator('#f-name').fill('Service.Cancel');
+  await page.locator('#f-name').press('Enter');
+  await page.keyboard.press('Escape');
+  const row = page.locator('#map .padd[data-node="new:Service.Cancel"]');
+  const drag = async (to: { x: number; y: number }) => {
+    await row.hover();
+    const b = (await row.locator('.handle').boundingBox())!;
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+  };
+  const edges = async () => ((await refunds(page)) as P & { edges?: { from: string; to: string; type?: string }[] }).edges;
+  // dropped on empty canvas: a new node, called by this one
+  const rb = (await row.boundingBox())!;
+  await drag({ x: rb.x + 20, y: rb.y - 200 });
+  await page.locator('#f-name').fill('Audit.Write');
+  await page.locator('#f-name').press('Enter');
+  await expect.poll(edges).toContainEqual({ from: 'new:Service.Cancel', to: 'new:Audit.Write' });
+  // dropped on a table: how it's used
+  const t = (await page.locator('#map [data-node="table:orders"]').boundingBox())!;
+  await drag({ x: t.x + t.width / 2, y: t.y + t.height / 2 });
+  await page.locator('#e-detail').press('Enter');
+  await expect.poll(edges).toContainEqual({ from: 'new:Service.Cancel', to: 'table:orders', type: 'writes' });
 });
 
 test('on a branch the map opens on what changed, and the summary jumps to it', async ({ page }) => {

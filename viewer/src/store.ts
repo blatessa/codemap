@@ -7,7 +7,7 @@ import type { Graph, Loose, Note, Proposal } from './types';
 
 export type Mode = 'explore' | 'propose';
 // Form is the popup open on the map, where it was clicked (x, y are in the map's own pixels):
-//   fn      add something to a part (box)
+//   fn      add something to a part (box); with `from`, it is wired from that node
 //   mod     add a part
 //   target  what does `from` call in this part (box)? pick one of its rows, or name a new one
 //   edge    how does `from` use `to` (reads or writes, with what query)?
@@ -419,6 +419,12 @@ export function addNote(note: Note): boolean {
   if (!p || !note.text.trim()) return false;
   updateProposal(p.slug, { notes: [...(p.notes ?? []), { ...note, text: note.text.trim() }] });
   return true;
+}
+
+export function editNote(n: Note, text: string) {
+  const p = commentTarget(get());
+  if (!p || !text.trim()) return;
+  updateProposal(p.slug, { notes: (p.notes ?? []).map((x) => (x === n ? { ...x, text: text.trim() } : x)) });
 }
 
 export function removeNote(n: Note) {

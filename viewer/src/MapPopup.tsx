@@ -35,7 +35,7 @@ export function MapPopup({ m }: { m: Model }) {
         }
       }}
     >
-      {form.type === 'fn' && <AddNode key={key} box={m.box.get(form.box!)} />}
+      {form.type === 'fn' && <AddNode key={key} m={m} box={m.box.get(form.box!)} from={form.from} />}
       {form.type === 'mod' && <AddPart key={key} />}
       {form.type === 'target' && <Target key={key} m={m} box={m.box.get(form.box!)} from={form.from!} x={form.x} y={form.y} />}
       {form.type === 'edge' && <Use key={key} m={m} from={form.from!} to={form.to!} />}
@@ -55,45 +55,66 @@ function Head({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
-// AddNode: what to put in this part. Enter adds it; then click what it calls.
-function AddNode({ box }: { box?: Box }) {
+// AddNode: what to put in this part. Type a name and press Enter; the kind is
+// what the part mostly holds, changeable in place. Then click what it calls.
+function AddNode({ m, box: first, from }: { m: Model; box?: Box; from?: string }) {
+  const [boxId, setBoxId] = useState(first?.id);
+  const box = (boxId && m.box.get(boxId)) || first;
   const [kind, setKind] = useState(commonKind(box));
   const [method, setMethod] = useState('POST');
   const [name, setName] = useState('');
   const [doc, setDoc] = useState('');
+  const [more, setMore] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
   if (!box) return null;
   const kinds = KINDS.includes(kind) ? KINDS : [kind, ...KINDS];
   const submit = () => {
     if (!name.trim()) return;
-    const id = proposeNode(box.id, name.trim(), kind, kind === 'route' ? method : '', box.external, { doc, select: false });
-    // what does it call? the next thing to click
-    if (id && !LEAF.includes(kind)) setState({ connectFrom: id });
+    const id = proposeNode(box.id, name.trim(), kind, kind === 'route' ? method : '', box.external, { doc, select: false, from });
+    // what does it call? the next thing to click (when dropped from a node, that wiring is done)
+    if (id && !from && !LEAF.includes(kind)) setState({ connectFrom: id });
   };
   const enter = (e: React.KeyboardEvent) => e.key === 'Enter' && (e.preventDefault(), submit());
   return (
     <>
-      <Head title="Add" sub={`to ${box.label}`} />
+      <Head title={from ? `New, called by ${qn(m, from)}` : 'Add'} sub={from ? undefined : `to ${box.label}`} />
+      {from && (
+        <select aria-label="Part" id="f-part" value={box.id} onChange={(e) => (setBoxId(e.target.value), setKind(commonKind(m.box.get(e.target.value))))}>
+          {m.boxes
+            .filter((b) => !b.external && !b.ghost)
+            .map((b) => (
+              <option key={b.id} value={b.id}>
+                in {b.label}
+              </option>
+            ))}
+        </select>
+      )}
       <div className="mrow">
-        <select aria-label="Kind" id="f-k" value={kind} onChange={(e) => setKind(e.target.value)}>
+        <select aria-label="Kind" id="f-k" className="mkind" value={kind} onChange={(e) => setKind(e.target.value)}>
           {kinds.map((k) => (
             <option key={k}>{k}</option>
           ))}
         </select>
         {kind === 'route' && (
-          <select aria-label="Method" id="f-m" value={method} onChange={(e) => setMethod(e.target.value)}>
+          <select aria-label="Method" id="f-m" className="mkind" value={method} onChange={(e) => setMethod(e.target.value)}>
             {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((x) => (
               <option key={x}>{x}</option>
             ))}
           </select>
         )}
+        <input ref={ref} id="f-name" placeholder={kind === 'route' ? '/orders/:id/cancel' : 'Name'} autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={enter} />
       </div>
-      <input ref={ref} id="f-name" placeholder={kind === 'route' ? '/orders/:id/cancel' : 'Name'} autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={enter} />
-      <input id="f-doc" placeholder="What it does (optional)" autoComplete="off" value={doc} onChange={(e) => setDoc(e.target.value)} onKeyDown={enter} />
+      {more ? (
+        <input id="f-doc" placeholder="What it does" autoComplete="off" autoFocus value={doc} onChange={(e) => setDoc(e.target.value)} onKeyDown={enter} />
+      ) : (
+        <button className="mlink" onClick={() => setMore(true)}>
+          + What it does
+        </button>
+      )}
       <div className="mfoot">
-        <span>Enter adds it</span>
-        <button className="btn primary sm" onClick={submit}>
+        <span>{from ? 'Enter to add' : 'Enter to add, then click what it calls'}</span>
+        <button className="btn primary sm" disabled={!name.trim()} onClick={submit}>
           Add
         </button>
       </div>

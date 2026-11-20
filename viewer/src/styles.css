@@ -600,12 +600,8 @@ details.test .code{margin:4px 0 8px}
 .lined{border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--code-bg)}
 .lined .code{border:0;border-radius:0}
 .lined .note{margin:0;border-radius:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.code .ln{cursor:pointer;display:inline-block;min-width:1.6em}
-.code .ln:hover,.code .ln.sel{color:var(--plan);font-weight:600}
-.code .ln:hover{background:color-mix(in srgb,var(--plan) 14%,transparent);border-radius:3px}
 .nto{display:flex;gap:6px;align-items:center;font-size:11.5px;color:var(--muted);margin:1px 0 3px}
 .nto select{font:inherit;color:var(--plan);background:none;border:0;padding:0;cursor:pointer}
-.code .ln.sel{background:color-mix(in srgb,var(--plan) 14%,transparent)}
 
 /* popups on the map */
 .mpop{position:absolute;z-index:30;width:270px;display:flex;flex-direction:column;gap:7px;padding:10px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 30px rgba(10,20,40,.18)}
@@ -626,3 +622,37 @@ details.test .code{margin:4px 0 8px}
 .cpill b{font-family:var(--mono);font-weight:600}
 .cpill .x{color:var(--surface);font-size:12px;padding:3px 9px;background:rgba(255,255,255,.18)}
 .cpill .x:hover{background:rgba(255,255,255,.3)}
+
+.nbox{display:flex;flex-direction:column;gap:6px}
+.nbox .notebox{margin:2px 0 0;min-height:44px}
+.nfoot{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.nfoot span{margin-right:auto}
+.note p.editable{cursor:text}
+.note p.editable:hover{background:color-mix(in srgb,var(--plan) 8%,transparent);border-radius:3px}
+.schip{all:unset;position:fixed;z-index:50;cursor:pointer;padding:4px 11px;font-size:12px;font-weight:600;color:var(--surface);background:var(--plan);border-radius:999px;box-shadow:0 4px 14px rgba(10,20,40,.25)}
+.schip:hover{filter:brightness(1.1)}
+
+.mpop .mrow .mkind{width:auto;flex:none;max-width:104px}
+.mpop .mrow input{flex:1;min-width:0}
+.mpop .mlink{all:unset;cursor:pointer;font-size:12px;color:var(--plan);align-self:flex-start}
+.mpop .mlink:hover{text-decoration:underline}
+.mpop .btn:disabled{opacity:.45;cursor:default}
+svg#map .rubber line{stroke:var(--plan);stroke-width:2;stroke-dasharray:5 4;opacity:.85}
+svg#map .rubber circle{fill:var(--plan)}
+svg#map.connecting g.mod:hover .box{stroke:var(--plan);stroke-width:2.5}
+svg#map.connecting g.padd:hover rect,svg#map.connecting [data-node]:hover rect{stroke:var(--plan);stroke-width:2}
+
+/* the gutter's add-comment icon: a + by the number you hover, a mark on lines that have comments */
+.code.cm .g{padding-left:22px}
+.code .ln{display:inline-block;position:relative;min-width:1.6em;border-radius:3px}
+.code.cm .ln{cursor:pointer}
+.code.cm .ln::before{content:'+';position:absolute;left:-17px;top:50%;transform:translateY(-50%);width:15px;height:15px;line-height:14px;text-align:center;font:600 13px var(--sans);border-radius:4px;background:var(--plan);color:var(--surface);opacity:0}
+.code.cm .ln:hover::before{opacity:1}
+.code.cm .ln:hover{color:var(--plan)}
+.code .ln.has{color:var(--plan);font-weight:600;background:color-mix(in srgb,var(--plan) 12%,transparent)}
+.code .ln.sel{color:var(--plan);font-weight:600;background:color-mix(in srgb,var(--plan) 22%,transparent)}
+
+/* a node's handle: drag it to wire */
+svg#map .handle{fill:var(--surface);stroke:var(--plan);stroke-width:1.5;opacity:0;cursor:crosshair}
+svg#map .padd:hover .handle,svg#map .padd.sel .handle{opacity:1}
+svg#map .handle:hover{fill:var(--plan)}
