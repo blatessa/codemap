@@ -3,11 +3,32 @@
 // agents read them with codemap proposal show.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { qn, type Model } from './model';
-import { removeNote, select, useStore, commentTarget } from './store';
+import { removeNote, select, setState, useStore, commentTarget } from './store';
 import type { Note } from './types';
 
 // useCanNote is whether notes can be added: a proposal to put them in, and the live code.
 export const useCanNote = () => useStore((s) => !!commentTarget(s) && !s.readOnly && s.rev === 'worktree');
+
+// ToProposal names the proposal a comment goes to, and switches it when several are open.
+export function ToProposal() {
+  const p = useStore(commentTarget);
+  const proposals = useStore((s) => s.proposals);
+  const open = proposals.filter((x) => x.status !== 'archived');
+  if (!p) return null;
+  if (open.length < 2) return <div className="nto">Comment in {p.name}</div>;
+  return (
+    <label className="nto">
+      Comment in
+      <select aria-label="Proposal to comment in" value={p.slug} onChange={(e) => setState({ cslug: e.target.value })}>
+        {open.map((x) => (
+          <option key={x.slug} value={x.slug}>
+            {x.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 // NoteBox is the one-line-to-start box a note is typed in.
 export function NoteBox({ id, placeholder, onSubmit, onCancel, autoFocus }: { id?: string; placeholder: string; onSubmit: (text: string) => void; onCancel?: () => void; autoFocus?: boolean }) {
@@ -89,4 +110,35 @@ export function NotesList({ m, notes }: { m: Model; notes: Note[] }) {
       ))}
           </div>
   );
+}
+
+// selectedLines reads which lines of a code block the user just highlighted, as
+// [first, last] line numbers. `root` is the block's container; null when the
+// selection isn't inside it, or is empty.
+export function selectedLines(root: HTMLElement): [number, number] | null {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+  const r = sel.getRangeAt(0);
+  if (!root.contains(r.commonAncestorContainer)) return null;
+  // a diff: its lines are elements numbered on the new side
+  const ns = [...root.querySelectorAll<HTMLElement>('.dl[data-n]')].filter((e) => r.intersectsNode(e) && e.dataset.n);
+  if (root.querySelector('.dl')) return ns.length ? [Number(ns[0].dataset.n), Number(ns[ns.length - 1].dataset.n)] : null;
+  // plain source: one block of text, so count the lines before each end
+  const lineAt = (node: Node, off: number, end: boolean): number | null => {
+    const el = (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>('.code[data-start]');
+    const pre = el?.querySelector('pre.c');
+    if (!el || !pre || !pre.contains(node)) return null;
+    const q = document.createRange();
+    q.selectNodeContents(pre);
+    q.setEnd(node, off);
+    const text = q.toString();
+    // a selection that ends at the very start of a line (a triple click) doesn't include it
+    return Number(el.dataset.start) + text.split('\n').length - 1 - (end && text.endsWith('\n') ? 1 : 0);
+  };
+  let a = lineAt(r.startContainer, r.startOffset, false);
+  let b = lineAt(r.endContainer, r.endOffset, true);
+  if (a == null && b == null) return null;
+  a ??= b;
+  b ??= a;
+  return [Math.min(a!, b!), Math.max(a!, b!)];
 }

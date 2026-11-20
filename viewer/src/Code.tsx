@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, type ReactNode } from 'react';
 import { getSource, openInEditor } from './api';
 import { addNote, commentTarget, useStore } from './store';
-import { NoteBox, NoteBubble, useCanNote, where } from './Notes';
+import { NoteBox, NoteBubble, ToProposal, selectedLines, useCanNote, where } from './Notes';
 import type { Note } from './types';
 import { fileChanged, sourceRev, useCompare } from './revs';
 import { DiffSource } from './Compare';
@@ -65,8 +65,16 @@ function NotedCode({ code, start, file, on }: { code: string; start: number; fil
   const onLine = (n: number, shift: boolean) =>
     setDraft((d) => (shift && d ? [Math.min(d[0], n), Math.max(d[1], n)] : d && d[0] === n && d[1] === n ? null : [n, n]));
   let from = start;
+  // highlighting code comments on it, as clicking a line number does
+  const onUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!can || (e.target as Element).closest('.note')) return;
+    const r = selectedLines(e.currentTarget);
+    if (!r) return;
+    window.getSelection()?.removeAllRanges();
+    setDraft([Math.max(r[0], start), Math.min(r[1], end)]);
+  };
   return (
-    <div className="lined">
+    <div className="lined" onMouseUp={onUp}>
       {cuts.map((cut) => {
         const part = lines.slice(from - start, cut - start + 1).join('\n');
         const first = from;
@@ -83,6 +91,7 @@ function NotedCode({ code, start, file, on }: { code: string; start: number; fil
               ))}
             {draft && draft[1] === cut && (
               <div className="note draft">
+                <ToProposal />
                 <NoteBox
                   autoFocus
                   placeholder={`Note on ${file.split('/').pop()}:${draft[0]}${draft[1] > draft[0] ? '–' + draft[1] : ''}`}
@@ -128,7 +137,7 @@ export function Source(p: { file: string; from: number; to?: number; on?: string
   const rev = diff ? sourceRev(p.file, p.from) ?? undefined : undefined;
   const plain = <PlainSource {...p} rev={rev} />;
   if (!diff || !fileChanged(p.file)) return plain;
-  return <DiffSource file={p.file} from={p.from} to={p.to && p.to >= p.from ? p.to : p.from} plain={plain} />;
+  return <DiffSource file={p.file} from={p.from} to={p.to && p.to >= p.from ? p.to : p.from} plain={plain} on={p.on} />;
 }
 
 function PlainSource({ file, from, to, on, rev: at }: { file: string; from: number; to?: number; on?: string; rev?: string }) {

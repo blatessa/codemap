@@ -155,11 +155,12 @@ useStore.subscribe((s, prev) => {
   }
 });
 
-// commentTarget is the open proposal comments go to: the last one opened, or the
-// only open one.
+// commentTarget is the open proposal comments go to: the one being viewed, the last
+// one opened, or else the most recently updated. There is always one when any is open.
 export function commentTarget(s: S): Proposal | null {
   const open = s.proposals.filter((p) => p.status !== 'archived');
-  return open.find((p) => p.slug === (s.pslug ?? s.cslug)) ?? (open.length === 1 ? open[0] : null);
+  const want = s.pslug ?? s.cslug;
+  return open.find((p) => p.slug === want) ?? open.reduce<Proposal | null>((a, p) => (!a || (p.updated ?? '') > (a.updated ?? '') ? p : a), null);
 }
 
 export const currentProposal = (s: S) => (s.pslug ? s.proposals.find((p) => p.slug === s.pslug) ?? null : null);

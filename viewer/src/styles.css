@@ -602,6 +602,9 @@ details.test .code{margin:4px 0 8px}
 .lined .note{margin:0;border-radius:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .code .ln{cursor:pointer;display:inline-block;min-width:1.6em}
 .code .ln:hover,.code .ln.sel{color:var(--plan);font-weight:600}
+.code .ln:hover{background:color-mix(in srgb,var(--plan) 14%,transparent);border-radius:3px}
+.nto{display:flex;gap:6px;align-items:center;font-size:11.5px;color:var(--muted);margin:1px 0 3px}
+.nto select{font:inherit;color:var(--plan);background:none;border:0;padding:0;cursor:pointer}
 .code .ln.sel{background:color-mix(in srgb,var(--plan) 14%,transparent)}
 
 /* popups on the map */

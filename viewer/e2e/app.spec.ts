@@ -28,7 +28,7 @@ const box = (page: Page, id: string) => page.locator(`#map [data-box="${id}"]`).
 const ORDERS = 'mod:go:shop/internal/orders';
 const INSERT = 'go:shop/internal/orders.(*Repo).Insert';
 
-type P = { slug: string; body: string; nodes?: { id: string; module?: string; doc?: string }[]; notes?: { on?: string; file?: string; from?: number; text: string }[] };
+type P = { slug: string; body: string; nodes?: { id: string; module?: string; doc?: string }[]; notes?: { on?: string; file?: string; from?: number; to?: number; text: string }[] };
 const refunds = async (page: Page) => ((await (await page.request.get('/api/proposals')).json()) as P[]).find((p) => p.slug === 'refunds')!;
 
 // The fixture is on a branch, which opens on "this branch vs main";
@@ -194,6 +194,23 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
   await expect
     .poll(async () => (await refunds(page)).notes?.find((n) => n.text === 'Why is this a transaction?'))
     .toMatchObject({ on: 'go:shop/internal/orders.(*Service).Place', file: 'internal/orders/service.go' });
+  // highlighting code comments on those lines too
+  await expect(async () => {
+    const pre = page.locator('#drawer .code[data-file] pre.c').last();
+    await pre.scrollIntoViewIfNeeded({ timeout: 500 });
+    const b = (await pre.boundingBox())!;
+    await page.mouse.move(b.x + 2, b.y + 4);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width - 4, b.y + 40);
+    await page.mouse.up();
+    await expect(page.locator('#drawer .note.draft textarea')).toBeFocused({ timeout: 500 });
+  }).toPass({ timeout: 5000 });
+  await page.keyboard.type('Reserve after payment.');
+  await page.keyboard.press('Enter');
+  await expect
+    .poll(async () => (await refunds(page)).notes?.find((n) => n.text === 'Reserve after payment.'))
+    .toMatchObject({ file: 'internal/orders/service.go' });
+  expect((await refunds(page)).notes?.find((n) => n.text === 'Reserve after payment.')?.to).toBeGreaterThan(0);
 });
 
 test('on a branch the map opens on what changed, and the summary jumps to it', async ({ page }) => {

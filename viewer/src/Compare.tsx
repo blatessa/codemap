@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CodeBlock, highlight } from './Code';
 import { Head, Section } from './panel/common';
 import { diffHook, qn, type Model, type Row } from './model';
-import type { GEdge } from './types';
+import type { GEdge, Note } from './types';
 import {
   compare,
   getSourceDiff,
@@ -22,7 +22,8 @@ import {
   stopCompare,
   type DLine,
 } from './revs';
-import { getState, setState, useStore } from './store';
+import { NoteBox, NoteBubble, ToProposal, selectedLines, useCanNote, where } from './Notes';
+import { addNote, commentTarget, getState, setState, useStore } from './store';
 
 function useOutside(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -352,24 +353,98 @@ export function SummaryPanel({ m }: { m: Model }) {
 
 const diffCache = new Map<string, Promise<DLine[]>>();
 
-function DiffLines({ lines }: { lines: DLine[] }) {
+// DiffLines is a diff you can comment on, like the plain source: click a line
+// number (of the new side) and type under it.
+function DiffLines({ lines, file, on }: { lines: DLine[]; file: string; on?: string }) {
+  const p = useStore(commentTarget);
+  const can = useCanNote();
+  const [draft, setDraft] = useState<[number, number] | null>(null);
+  const notes = (p?.notes ?? []).filter((n) => n.file === file && n.from != null);
+  const endOf = (n: Note) => Math.max(n.to ?? n.from!, n.from!);
+  const idx = new Map<number, number>(); // new-side line number -> its index in lines
+  lines.forEach((l, i) => l.n && idx.set(l.n, i));
+  // a comment sits under the line that ends it, when the diff shows that line
+  const cuts = [...new Set([...notes.map(endOf), ...(draft ? [draft[1]] : [])])].filter((n) => idx.has(n)).sort((a, b) => idx.get(a)! - idx.get(b)!);
+  const onLine = (n: number, shift: boolean) => setDraft((d) => (shift && d ? [Math.min(d[0], n), Math.max(d[1], n)] : d && d[0] === n && d[1] === n ? null : [n, n]));
+  const chunks: { lines: DLine[]; cut?: number }[] = [];
+  let at = 0;
+  for (const c of cuts) {
+    chunks.push({ lines: lines.slice(at, idx.get(c)! + 1), cut: c });
+    at = idx.get(c)! + 1;
+  }
+  if (at < lines.length) chunks.push({ lines: lines.slice(at) });
   return (
-    <div className="code cdiff">
-      <pre className="g">{lines.map((l) => (l.n || l.o || '') + '').join('\n')}</pre>
-      <pre className="c">
-        {lines.map((l, i) => (
-          <span key={i} className={`dl${l.t === '+' ? ' la' : l.t === '-' ? ' lr' : ''}`}>
-            {l.text ? highlight(l.text) : ' '}
-          </span>
-        ))}
-      </pre>
+    <div
+      className={cuts.length || can ? 'lined' : undefined}
+      onMouseUp={(e) => {
+        if (!can || (e.target as Element).closest('.note')) return;
+        const r = selectedLines(e.currentTarget);
+        if (!r) return;
+        window.getSelection()?.removeAllRanges();
+        setDraft(r);
+      }}
+    >
+      {chunks.map((ch, k) => (
+        <div key={k}>
+          <div className="code cdiff">
+            <pre className="g">
+              {ch.lines.map((l, i) => (
+                <span key={i}>
+                  {l.n && can ? (
+                    <span className={`ln ${draft && l.n >= draft[0] && l.n <= draft[1] ? 'sel' : ''}`} role="button" title="Add a comment here" onClick={(e) => onLine(l.n!, e.shiftKey)}>
+                      {l.n}
+                    </span>
+                  ) : (
+                    (l.n || l.o || '') + ''
+                  )}
+                  {i < ch.lines.length - 1 ? '\n' : ''}
+                </span>
+              ))}
+            </pre>
+            <pre className="c">
+              {ch.lines.map((l, i) => (
+                <span key={i} data-n={l.n || undefined} className={`dl${l.t === '+' ? ' la' : l.t === '-' ? ' lr' : ''}`}>
+                  {l.text ? highlight(l.text) : ' '}
+                </span>
+              ))}
+            </pre>
+          </div>
+          {ch.cut != null &&
+            notes
+              .filter((n) => endOf(n) === ch.cut)
+              .map((n, i) => (
+                <NoteBubble key={i} note={n}>
+                  {n.to && n.to > n.from! && <div className="nwhere">{where(n)}</div>}
+                </NoteBubble>
+              ))}
+          {ch.cut != null && draft && draft[1] === ch.cut && (
+            <div className="note draft">
+              <ToProposal />
+              <NoteBox
+                autoFocus
+                placeholder={`Comment on ${file.split('/').pop()}:${draft[0]}${draft[1] > draft[0] ? '–' + draft[1] : ''}`}
+                onCancel={() => setDraft(null)}
+                onSubmit={(text) => {
+                  const [a, b] = draft;
+                  const quote = lines
+                    .filter((l) => l.n && l.n >= a && l.n <= b && l.t !== '-')
+                    .map((l) => l.text)
+                    .join('\n');
+                  addNote({ on, file, from: a, to: b > a ? b : undefined, quote, text });
+                  setDraft(null);
+                }}
+              />
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
 // DiffSource shows a node's lines as a diff between the compared revisions,
 // with a toggle back to the plain source. Ranges with no changed lines show plain.
-export function DiffSource({ file, from, to, plain }: { file: string; from: number; to: number; plain: React.ReactNode }) {
+export function DiffSource({ file, from, to, plain, on }: { file: string; from: number; to: number; plain: React.ReactNode; on?: string }) {
   const diff = useCompare((s) => s.diff);
   const [mode, setMode] = useState<'diff' | 'source'>('diff');
   const [lines, setLines] = useState<DLine[] | null>(null);
@@ -404,7 +479,7 @@ export function DiffSource({ file, from, to, plain }: { file: string; from: numb
           Source
         </button>
       </div>
-      {mode === 'diff' ? <DiffLines lines={lines} /> : old ? <CodeBlock code={lines.filter((l) => l.t !== '+').map((l) => l.text).join('\n')} start={from} /> : plain}
+      {mode === 'diff' ? <DiffLines lines={lines} file={file} on={on} /> : old ? <CodeBlock code={lines.filter((l) => l.t !== '+').map((l) => l.text).join('\n')} start={from} /> : plain}
     </div>
   );
 }
