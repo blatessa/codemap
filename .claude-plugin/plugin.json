@@ -1,6 +1,6 @@
 {
   "name": "codemap",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Query a codebase's architecture map, review what a change did to it, and write proposals for the codemap viewer",
   "author": { "name": "blatessa" },
   "homepage": "https://github.com/blatessa/codemap",
