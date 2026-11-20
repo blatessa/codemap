@@ -170,13 +170,11 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
   await page.locator('.pitem[data-slug="refunds"]').click();
   // the parts it changes are marked, with what it proposes counted
   await expect(page.locator('#map .mod.pchg').first()).toContainText('proposed');
-  // add to a part from a popup on the map, with what it does
+  // add to a part from a popup on the map
   await page.locator(`#map [data-add="${ORDERS}"]`).click();
   await page.locator('#f-name').fill('Service.Cancel');
-  await page.getByRole('button', { name: '+ What it does' }).click();
-  await page.locator('#f-doc').fill('Cancels an order and gives back its stock.');
-  await page.locator('#f-doc').press('Enter');
-  await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Cancel', module: ORDERS, doc: 'Cancels an order and gives back its stock.' });
+  await page.locator('#f-name').press('Enter');
+  await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Cancel', module: ORDERS });
   // then click what it calls: a function in a part...
   await expect(page.locator('.cpill')).toContainText('Service.Cancel');
   await page.locator(`#map [data-box="${ORDERS}"]`).first().click({ position: { x: 20, y: 10 } });
@@ -185,12 +183,11 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
   await expect.poll(async () => ((await refunds(page)) as P & { edges?: { from: string; to: string }[] }).edges).toContainEqual({ from: 'new:Service.Cancel', to: INSERT });
   // ...or a table, with how it's used
   await page.locator('#map [data-node="table:orders"]').click();
-  await page.getByRole('button', { name: 'writes' }).click();
-  await page.locator('#e-detail').fill('UPDATE orders SET status');
-  await page.locator('#e-detail').press('Enter');
+  await page.locator('.mpop').getByRole('button', { name: 'reads', exact: true }).click();
+  await page.locator('.mpop').getByRole('button', { name: 'Add', exact: true }).click();
   await expect
-    .poll(async () => ((await refunds(page)) as P & { edges?: { from: string; to: string; type?: string; detail?: string }[] }).edges)
-    .toContainEqual({ from: 'new:Service.Cancel', to: 'table:orders', type: 'writes', detail: 'UPDATE orders SET status' });
+    .poll(async () => ((await refunds(page)) as P & { edges?: { from: string; to: string; type?: string }[] }).edges)
+    .toContainEqual({ from: 'new:Service.Cancel', to: 'table:orders', type: 'reads' });
   await page.keyboard.press('Escape');
   // it's drawn inside its part, and listed under it in the proposal's changes
   await expect(page.locator('#map .padd[data-node="new:Service.Cancel"]')).toBeVisible();
@@ -266,7 +263,7 @@ test('proposals: drag from a node to wire it', async ({ page }) => {
   // dropped on a table: how it's used
   const t = (await page.locator('#map [data-node="table:orders"]').boundingBox())!;
   await drag({ x: t.x + t.width / 2, y: t.y + t.height / 2 });
-  await page.locator('#e-detail').press('Enter');
+  await page.locator('.mpop').getByRole('button', { name: 'Add', exact: true }).click();
   await expect.poll(edges).toContainEqual({ from: 'new:Service.Cancel', to: 'table:orders', type: 'writes' });
 });
 
@@ -279,49 +276,46 @@ test('proposals: edit and delete what you added', async ({ page }) => {
   await page.locator('#f-name').press('Enter');
   await page.keyboard.press('Escape');
   await page.locator('#map .padd[data-node="new:Service.Cancel"]').click();
-  // clicking it on the map opens the popup that added it: rename it, say what it does
+  // clicking it on the map opens the popup that added it: changes apply as you make them
   await expect(page.locator('#f-name')).toHaveValue('Service.Cancel');
   await page.locator('#f-name').fill('Service.Abort');
-  await page.getByRole('button', { name: '+ What it does' }).click().catch(() => {});
-  await page.locator('#f-doc').fill('Stops an order.');
-  await page.locator('#f-doc').press('Enter');
-  await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Abort', module: ORDERS, doc: 'Stops an order.' });
-  // give it a call, then change and remove it, in the same popup that added it
+  await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Abort', module: ORDERS });
+  await page.locator('#f-name').press('Enter');
+  // give it a call; then change what it connects to, and how, in the call's popup
   await page.getByRole('button', { name: 'Add a call' }).click();
   await page.locator('#pick-q').fill('Repo.Insert');
   await page.locator('#pick-q').press('Enter');
-  const edges = async () => ((await refunds(page)) as P & { edges?: { from: string; to: string; detail?: string }[] }).edges?.filter((e) => e.from === 'new:Service.Cancel');
-  await expect.poll(edges).toHaveLength(1);
+  const edges = async () => ((await refunds(page)) as P & { edges?: { from: string; to: string; type?: string }[] }).edges?.filter((e) => e.from === 'new:Service.Cancel');
+  await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: INSERT }]);
   await page.locator('#drawer .pcall2').click();
-  await page.locator('#e-detail').fill('inserts the order');
-  await page.locator('#e-detail').press('Enter');
-  await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: INSERT, detail: 'inserts the order' }]);
-  await page.locator('#drawer .pcall2').click();
-  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.locator('.mpop .mpick[aria-label="To"]').click();
+  await page.locator('.mpop input[aria-label="To"]').fill('orders');
+  await page.locator('.mpop [data-pick="table:orders"]').click();
+  await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: 'table:orders', type: 'writes' }]);
+  await page.locator('.mpop').getByRole('button', { name: 'reads', exact: true }).click();
+  await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: 'table:orders', type: 'reads' }]);
+  await page.keyboard.press('Escape');
+  // click the call's line on the map to open the same popup; Delete removes the call
+  await clickLine(page, page.locator('#map path.linehit[data-link*="new:Service.Cancel"]'));
+  await page.locator('.mpop').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect.poll(edges).toHaveLength(0);
-  // click a call's line on the map to change it
+  // a call's end can be dragged to point it somewhere else
   await page.getByRole('button', { name: 'Add a call' }).click();
   await page.locator('#pick-q').fill('orders');
   await page.locator('#pick-q').press('Enter');
   await expect.poll(edges).toHaveLength(1);
-  await clickLine(page, page.locator('#map path.linehit[data-link*="new:Service.Cancel"]'));
-  await page.locator('#e-detail').fill('the whole table');
-  await page.locator('#e-detail').press('Enter');
-  await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: 'table:orders', type: 'writes', detail: 'the whole table' }]);
-  // drag the line's end to point the call somewhere else
   await page.locator('#map .padd[data-node="new:Service.Cancel"]').hover();
-  await page.locator('#map path.linehit[data-link*="new:Service.Cancel"]').first().hover({ force: true });
   const eh = (await page.locator('#map .ehandle[data-link*="new:Service.Cancel"]').first().boundingBox())!;
   const stock = (await page.locator('#map [data-node="table:stock"]').boundingBox())!;
   await page.mouse.move(eh.x + eh.width / 2, eh.y + eh.height / 2);
   await page.mouse.down();
   await page.mouse.move(stock.x + stock.width / 2, stock.y + stock.height / 2, { steps: 8 });
   await page.mouse.up();
-  await page.locator('#e-detail').press('Enter');
-  await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: 'table:stock', type: 'writes', detail: 'the whole table' }]);
+  await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: 'table:stock', type: 'writes' }]);
+  await page.keyboard.press('Escape');
   // Delete, in the node's popup, takes it out of the proposal
   await page.locator('#map .padd[data-node="new:Service.Cancel"]').click();
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.locator('.mpop').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect.poll(async () => (await refunds(page)).nodes?.some((n) => n.id === 'new:Service.Cancel')).toBe(false);
 });
 
@@ -345,7 +339,7 @@ test('proposals: a popup stays with its node; a line of several calls lists them
   await clickLine(page, hit);
   await expect(page.locator('.mpop .mlist button[data-edge]')).toHaveCount(2);
   await page.locator('.mpop .mlist button[data-edge]').first().click();
-  await expect(page.locator('#e-detail')).toBeVisible();
+  await expect(page.locator('.mpop .mpick[aria-label="To"]')).toBeVisible();
   await page.keyboard.press('Escape');
   // edit popup sits beside its node, and moves with it when the map is dragged
   await page.locator('#map .padd[data-node="new:Service.Cancel"]').click();

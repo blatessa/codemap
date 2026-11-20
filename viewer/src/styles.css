@@ -603,21 +603,37 @@ details.test .code{margin:4px 0 8px}
 .nto{display:flex;gap:6px;align-items:center;font-size:11.5px;color:var(--muted);margin:1px 0 3px}
 .nto select{font:inherit;color:var(--plan);background:none;border:0;padding:0;cursor:pointer}
 
-/* popups on the map */
-.mpop{position:absolute;z-index:30;width:270px;display:flex;flex-direction:column;gap:7px;padding:10px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 30px rgba(10,20,40,.18)}
-.mpop .mhd{display:flex;align-items:baseline;gap:6px;font-size:12.5px;min-width:0}
-.mpop .mhd b{font-family:var(--mono);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* popups on the map: an inspector for the thing you are sketching */
+.mpop{box-sizing:border-box;position:absolute;z-index:30;display:flex;flex-direction:column;gap:12px;padding:14px 16px 14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 36px rgba(10,20,40,.2);font-size:13px;color:var(--ink)}
+.mpop .mhd{display:flex;align-items:baseline;gap:8px;min-width:0}
+.mpop .mhd b{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mpop .mhd span{color:var(--muted);font-size:12px;white-space:nowrap}
-.mpop .mhd .x{margin-left:auto}
-.mpop .mrow{display:flex;gap:6px}
-.mpop input,.mpop select{width:100%;box-sizing:border-box;font-family:var(--mono);font-size:12.5px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
-.mpop input:focus,.mpop select:focus{outline:none;border-color:var(--plan)}
-.mpop .mfoot{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.mpop .mhd .x{margin-left:auto;font-size:20px}
+.mpop .mfield{display:flex;flex-direction:column;gap:5px;min-width:0}
+.mpop .mfield>span{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.mpop .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mpop .mgrid:has(.mfield:only-child){grid-template-columns:1fr}
+.mpop input,.mpop select{width:100%;box-sizing:border-box;height:34px;font-family:var(--mono);font-size:13px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+.mpop input:focus,.mpop select:focus,.mpop .mpick:focus-visible{outline:none;border-color:var(--plan);box-shadow:0 0 0 3px color-mix(in srgb,var(--plan) 18%,transparent)}
+.mpop .mval{font-family:var(--mono);font-size:13px;padding:7px 0;overflow-wrap:anywhere}
+.mpop .mpick{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-family:var(--mono);font-size:13px;cursor:pointer}
+.mpop .mpick:hover{border-color:var(--muted)}
+.mpop .mpick span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpop .mpick i{font-style:normal;color:var(--muted)}
+.mpop .mpicking{display:flex;flex-direction:column;gap:4px}
 .mpop .mlist{display:flex;flex-direction:column;gap:1px;max-height:220px;overflow:auto}
-.mpop .mlist button{all:unset;cursor:pointer;font-family:var(--mono);font-size:12px;padding:4px 7px;border-radius:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpop .mlist button{all:unset;box-sizing:border-box;cursor:pointer;font-family:var(--mono);font-size:12.5px;padding:7px 9px;border-radius:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mpop .mlist button.on{background:var(--bg);box-shadow:inset 2px 0 var(--plan)}
 .mpop .mlist button.mk{color:var(--plan)}
-.mpop .seg{align-self:flex-start}
+.mpop .mlist .none{padding:6px 9px;margin:0}
+.mpop .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;width:100%}
+.mpop .seg button{padding:7px 14px;font-size:13px;text-align:center}
+.mpop .mfoot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:2px}
+.mpop .mact{display:flex;gap:8px}
+.mpop .btn{height:32px;padding:0 16px;font-size:13px}
+.mpop .btn.danger{background:none;border-color:transparent;color:var(--warn);padding:0 8px}
+.mpop .btn.danger:hover{background:var(--bg)}
+.mpop .btn:disabled{opacity:.45;cursor:default}
 .cpill{position:absolute;z-index:20;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:6px 8px 6px 14px;background:var(--plan);color:var(--surface);border-radius:999px;font-size:12.5px;box-shadow:0 6px 20px rgba(10,20,40,.2)}
 .cpill b{font-family:var(--mono);font-weight:600}
 .cpill .x{color:var(--surface);font-size:12px;padding:3px 9px;background:rgba(255,255,255,.18)}
@@ -632,10 +648,6 @@ details.test .code{margin:4px 0 8px}
 .schip{all:unset;position:fixed;z-index:50;cursor:pointer;padding:4px 11px;font-size:12px;font-weight:600;color:var(--surface);background:var(--plan);border-radius:999px;box-shadow:0 4px 14px rgba(10,20,40,.25)}
 .schip:hover{filter:brightness(1.1)}
 
-.mpop .mrow .mkind{width:auto;flex:none;max-width:104px}
-.mpop .mrow input{flex:1;min-width:0}
-.mpop .mlink{all:unset;cursor:pointer;font-size:12px;color:var(--plan);align-self:flex-start}
-.mpop .mlink:hover{text-decoration:underline}
 .mpop .btn:disabled{opacity:.45;cursor:default}
 svg#map .rubber line{stroke:var(--plan);stroke-width:2;stroke-dasharray:5 4;opacity:.85}
 svg#map .rubber circle{fill:var(--plan)}

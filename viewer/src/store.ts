@@ -395,9 +395,12 @@ export function proposeModule(label: string) {
   set({ form: null, sel: id });
 }
 
-export function proposeEdge(from: string, to: string, type = 'calls', detail = '') {
+export function proposeEdge(from: string, to: string, how?: string, detail = '') {
   const p = currentProposal(get());
   if (!p || from === to) return;
+  // what it reaches says how it's used, unless told: a table is written, a topic published to
+  const kind = modelOf(get()).node.get(to)?.row.node.kind;
+  const type = how ?? (kind === 'table' ? 'writes' : kind === 'topic' ? 'publishes' : 'calls');
   if ((p.edges ?? []).some((e) => e.from === from && e.to === to && (e.type ?? 'calls') === type)) return;
   const e: Loose = { from, to };
   if (type !== 'calls') e.type = type;

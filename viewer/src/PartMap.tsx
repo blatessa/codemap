@@ -5,7 +5,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addLabel, linksOf, isFolder, markChar, markOf, type Item, type Link, type Parts, type Rect } from './parts';
 import type { Model, Sel } from './model';
-import { currentProposal, editProposalEdge, getState, proposeEdge, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
+import { retargetCall } from './MapPopup';
+import { currentProposal, getState, proposeEdge, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
 import { boxCls, rowCls } from './revs';
 
 // what's lit: the selection's things and lines, or the hovered thing's
@@ -269,10 +270,19 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
     e.preventDefault();
     const sx = e.clientX,
       sy = e.clientY;
-    setState({ connectFrom: id, form: null });
+    let moved = false;
+    // from a node's handle, connecting starts at once (a click on it connects by clicking);
+    // from a line or its end, only once it is dragged (a click on it edits the call)
+    if (replace == null) setState({ connectFrom: id, form: null });
+    const move = (ev: PointerEvent) => {
+      if (moved || Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+      moved = true;
+      setState({ connectFrom: id, form: null });
+    };
     const up = (ev: PointerEvent) => {
       window.removeEventListener('pointerup', up);
-      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+      window.removeEventListener('pointermove', move);
+      if (!moved) return;
       noClick.current = true;
       setTimeout(() => (noClick.current = false), 0);
       const el = document.elementFromPoint(ev.clientX, ev.clientY);
@@ -285,15 +295,19 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
         return setState(to || replace != null ? end : { ...end, form: { type: 'fn', box: home, from: id, ...pos } });
       }
       const n = m.node.get(to);
-      if (n?.row.node.external) return setState({ ...end, form: { type: 'edge', from: id, to, edge: replace, ...pos } });
+      if (n?.row.node.external) {
+        if (replace != null) retargetCall(m, replace, to);
+        return setState({ ...end, form: { type: 'edge', from: id, to, edge: replace, ...pos } });
+      }
       if (n) {
-        if (replace != null) editProposalEdge(replace, { to, type: 'calls' });
+        if (replace != null) retargetCall(m, replace, to);
         else proposeEdge(id, to);
         return setState({ ...end, form: null });
       }
       if (m.box.has(to)) return setState({ ...end, form: { type: 'target', box: to, from: id, edge: replace, ...pos } });
       setState(end);
     };
+    window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
   // the proposal's own calls (their indexes) that a line on the map stands for
@@ -401,7 +415,18 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
             if (!a || !b) return null;
             return (
               <g key={l.key}>
-               {canAdd && proposalCalls(l).length > 0 && <path className="linehit" d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} />}
+              {canAdd && proposalCalls(l).length > 0 && (
+                <path
+                  className="linehit"
+                  d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))}
+                  data-link={l.key}
+                  onPointerDown={(e) => {
+                    // grab a line that is one call and drag to point it elsewhere; a click edits it
+                    const one = proposalCalls(l);
+                    if (one.length === 1 && l.edges.length === 1) startWire(e, String(currentProposal(getState())!.edges![one[0]].from), one[0]);
+                  }}
+                />
+              )}
               <path className={lineCls(l)} d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} style={{ strokeWidth: 1.2 + Math.log2(l.edges.length) * 0.8 + 'px' }} markerEnd={`url(#${lit ? 'mk-h' : l.prop ? 'mk-p' : l.diff ? { add: 'mk-a', rem: 'mk-r', chg: 'mk-c' }[l.diff] : 'mk-n'})`}>
                 <title>{`${VERB[l.kind]} · ${l.edges.length}`}</title>
               </path>
@@ -486,7 +511,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
               const me = m.all.edges[l.edges[0]];
               const at = currentProposal(getState())?.edges?.findIndex((x) => x.from === me.from && x.to === me.to && (x.type || 'calls') === me.type) ?? -1;
               const end = /(-?[\d.]+)[ ,]+(-?[\d.]+)\s*$/.exec(linePath(a, b, m.node.has(l.from) || m.node.has(l.to)));
-              return at >= 0 && end ? <circle key={l.key} className="handle ehandle" data-link={l.key} cx={Number(end[1])} cy={Number(end[2])} r={5} onPointerDown={(e) => startWire(e, me.from, at)} /> : null;
+              return at >= 0 && end ? <circle key={l.key} className="handle ehandle" data-link={l.key} cx={Number(end[1])} cy={Number(end[2])} r={Math.min(12, Math.max(4, 6 / view.k))} onPointerDown={(e) => startWire(e, me.from, at)} /> : null;
             })}
           </g>
         )}
