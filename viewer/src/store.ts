@@ -11,6 +11,7 @@ export type Mode = 'explore' | 'propose';
 //   mod     add a part
 //   target  what does `from` call in this part (box)? pick one of its rows, or name a new one
 //   edge    how does `from` use `to` (reads or writes, with what query)?
+// Editing is the same popup, filled in: `edit` for a node, `edge` for a call.
 export interface Form {
   type: 'fn' | 'mod' | 'target' | 'edge';
   x: number;
@@ -18,6 +19,8 @@ export interface Form {
   box?: string;
   from?: string;
   to?: string;
+  edit?: string; // fn: change this node the proposal adds, instead of adding one
+  edge?: number; // edge: change this call of the proposal (its index), instead of adding one
 }
 
 export interface S {
@@ -431,6 +434,41 @@ export function removeNote(n: Note) {
   const p = commentTarget(get());
   if (!p) return;
   updateProposal(p.slug, { notes: (p.notes ?? []).filter((x) => x !== n) });
+}
+
+// editProposedNode changes a node the open proposal adds: its name, kind, method or description.
+export function editProposedNode(id: string, patch: Loose) {
+  const p = currentProposal(get());
+  if (!p) return;
+  updateProposal(p.slug, {
+    nodes: (p.nodes ?? []).map((n) => {
+      if (n.id !== id) return n;
+      const next: Loose = { ...n, ...patch };
+      for (const k of Object.keys(next)) if (next[k] === '' || next[k] === undefined) delete next[k];
+      if ('kind' in patch) {
+        const entry = ['route', 'page', 'job', 'subscriber', 'command'].includes(String(next.kind));
+        if (entry) next.entry = true;
+        else delete next.entry;
+        if (next.kind !== 'route') delete next.method;
+        else next.method ??= 'GET';
+      }
+      return next;
+    }),
+  });
+}
+
+// editProposalEdge changes a call the open proposal adds: how it's used, and the detail.
+export function editProposalEdge(i: number, patch: Loose) {
+  const p = currentProposal(get());
+  if (!p) return;
+  updateProposal(p.slug, {
+    edges: (p.edges ?? []).map((e, j) => {
+      if (j !== i) return e;
+      const next: Loose = { ...e, ...patch };
+      for (const k of Object.keys(next)) if (next[k] === '' || next[k] === 'calls') delete next[k];
+      return next;
+    }),
+  });
 }
 
 export function removeProposalNode(id: string) {

@@ -10,6 +10,7 @@ import {
   currentProposal,
   getState,
   load,
+  removeProposalNode,
   select,
   storyOf,
   setMode,
@@ -101,12 +102,14 @@ interface Menu {
 function ContextMenu({ menu, close }: { menu: Menu; close: () => void }) {
   const m = useModel();
   const map = useMapCommands();
+  const inProposal = useStore((s) => s.mode === 'propose' && !!currentProposal(s));
   const ref = useOutside<HTMLDivElement>(true, close);
   let items: (Cmd | null)[] = [];
   if (menu.kind === 'node') {
     const x = m.node.get(menu.id)!;
     const n = x.row.node;
     items = [
+      { id: 'del', label: 'Delete from the proposal', hint: '⌫', run: () => (removeProposalNode(menu.id), select(null)), off: !x.row.prop || !inProposal },
       { id: 'editor', label: 'Open in editor', run: () => void openInEditor(n.file!, n.line ?? 1), off: !n.file },
       { id: 'copy', label: 'Copy ID', run: () => void navigator.clipboard?.writeText(menu.id) },
     ];
@@ -171,6 +174,15 @@ export function App() {
       const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName);
       if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
         if (e.key === '0') return fit();
+        // Delete takes a node the proposal adds out of it
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          const s = getState();
+          if (s.mode === 'propose' && s.sel && currentProposal(s)?.nodes?.some((n) => n.id === s.sel)) {
+            e.preventDefault();
+            removeProposalNode(s.sel);
+            return select(null);
+          }
+        }
       }
       if (e.key !== 'Escape') return;
       if (t.id === 'q') return;

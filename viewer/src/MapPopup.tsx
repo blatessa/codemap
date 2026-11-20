@@ -3,7 +3,7 @@
 // functions (or a new one), and clicking a table or service asks how it's used.
 import { useEffect, useRef, useState } from 'react';
 import { qn, type Box, type Model } from './model';
-import { proposeEdge, proposeModule, proposeNode, setState, useStore } from './store';
+import { currentProposal, editProposalEdge, editProposedNode, proposeEdge, proposeModule, proposeNode, removeProposalEdge, removeProposalNode, select, setState, useStore } from './store';
 
 const KINDS = ['function', 'route', 'page', 'job', 'subscriber', 'command', 'component', 'table', 'topic', 'service'];
 const LEAF = ['table', 'topic', 'service']; // nothing to call from these
@@ -17,10 +17,20 @@ function commonKind(b?: Box): string {
 
 const close = () => setState({ form: null });
 
+// clampPop keeps a popup inside the part of the map you can see: not under the panel.
+export function clampPop(x: number, y: number) {
+  const map = document.getElementById('map')?.getBoundingClientRect();
+  const d = document.getElementById('drawer');
+  const panel = d && !d.hidden ? d.offsetWidth : 0;
+  const w = (map?.width ?? 1200) - panel;
+  const h = map?.height ?? 800;
+  return { x: Math.max(8, Math.min(x, w - 290)), y: Math.max(8, Math.min(y, h - 280)) };
+}
+
 export function MapPopup({ m }: { m: Model }) {
   const form = useStore((s) => s.form);
   if (!form) return null;
-  const key = [form.type, form.box, form.from, form.to].join('|');
+  const key = [form.type, form.box, form.from, form.to, form.edit, form.edge].join('|');
   return (
     <div
       className="mpop"
@@ -35,10 +45,10 @@ export function MapPopup({ m }: { m: Model }) {
         }
       }}
     >
-      {form.type === 'fn' && <AddNode key={key} m={m} box={m.box.get(form.box!)} from={form.from} />}
+      {form.type === 'fn' && <AddNode key={key} m={m} box={m.box.get(form.box!)} from={form.from} edit={form.edit} />}
       {form.type === 'mod' && <AddPart key={key} />}
       {form.type === 'target' && <Target key={key} m={m} box={m.box.get(form.box!)} from={form.from!} x={form.x} y={form.y} />}
-      {form.type === 'edge' && <Use key={key} m={m} from={form.from!} to={form.to!} />}
+      {form.type === 'edge' && <Use key={key} m={m} from={form.from!} to={form.to!} edge={form.edge} />}
     </div>
   );
 }
@@ -57,20 +67,30 @@ function Head({ title, sub }: { title: string; sub?: string }) {
 
 // AddNode: what to put in this part. Type a name and press Enter; the kind is
 // what the part mostly holds, changeable in place. Then click what it calls.
-function AddNode({ m, box: first, from }: { m: Model; box?: Box; from?: string }) {
-  const [boxId, setBoxId] = useState(first?.id);
+function AddNode({ m, box: first, from, edit }: { m: Model; box?: Box; from?: string; edit?: string }) {
+  // editing is the same form, filled in with what the proposal already says
+  const was = useStore((s) => (edit ? currentProposal(s)?.nodes?.find((n) => n.id === edit) : undefined));
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  const [boxId, setBoxId] = useState((was && str(was.module)) || first?.id);
   const box = (boxId && m.box.get(boxId)) || first;
-  const [kind, setKind] = useState(commonKind(box));
-  const [method, setMethod] = useState('POST');
-  const [name, setName] = useState('');
-  const [doc, setDoc] = useState('');
-  const [more, setMore] = useState(false);
+  const [kind, setKind] = useState(str(was?.kind) || commonKind(box));
+  const [method, setMethod] = useState(str(was?.method) || 'POST');
+  const [name, setName] = useState(str(was?.label));
+  const [doc, setDoc] = useState(str(was?.doc));
+  const [more, setMore] = useState(!!str(was?.doc));
   const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => ref.current?.focus(), []);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
   if (!box) return null;
   const kinds = KINDS.includes(kind) ? KINDS : [kind, ...KINDS];
   const submit = () => {
     if (!name.trim()) return;
+    if (edit) {
+      editProposedNode(edit, { kind, label: name.trim(), method: kind === 'route' ? method : '', doc: doc.trim(), module: box.id });
+      return close();
+    }
     const id = proposeNode(box.id, name.trim(), kind, kind === 'route' ? method : '', box.external, { doc, select: false, from });
     // what does it call? the next thing to click (when dropped from a node, that wiring is done)
     if (id && !from && !LEAF.includes(kind)) setState({ connectFrom: id });
@@ -78,9 +98,9 @@ function AddNode({ m, box: first, from }: { m: Model; box?: Box; from?: string }
   const enter = (e: React.KeyboardEvent) => e.key === 'Enter' && (e.preventDefault(), submit());
   return (
     <>
-      <Head title={from ? `New, called by ${qn(m, from)}` : 'Add'} sub={from ? undefined : `to ${box.label}`} />
-      {from && (
-        <select aria-label="Part" id="f-part" value={box.id} onChange={(e) => (setBoxId(e.target.value), setKind(commonKind(m.box.get(e.target.value))))}>
+      <Head title={edit ? 'Edit' : from ? `New, called by ${qn(m, from)}` : 'Add'} sub={edit || from ? undefined : `to ${box.label}`} />
+      {(from || edit) && (
+        <select aria-label="Part" id="f-part" value={box.id} onChange={(e) => (setBoxId(e.target.value), !edit && setKind(commonKind(m.box.get(e.target.value))))}>
           {m.boxes
             .filter((b) => !b.external && !b.ghost)
             .map((b) => (
@@ -106,16 +126,29 @@ function AddNode({ m, box: first, from }: { m: Model; box?: Box; from?: string }
         <input ref={ref} id="f-name" placeholder={kind === 'route' ? '/orders/:id/cancel' : 'Name'} autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={enter} />
       </div>
       {more ? (
-        <input id="f-doc" placeholder="What it does" autoComplete="off" autoFocus value={doc} onChange={(e) => setDoc(e.target.value)} onKeyDown={enter} />
+        <input id="f-doc" placeholder="What it does" autoComplete="off" value={doc} onChange={(e) => setDoc(e.target.value)} onKeyDown={enter} />
       ) : (
         <button className="mlink" onClick={() => setMore(true)}>
           + What it does
         </button>
       )}
       <div className="mfoot">
-        <span>{from ? 'Enter to add' : 'Enter to add, then click what it calls'}</span>
+        {edit ? (
+          <button
+            className="btn danger sm"
+            onClick={() => {
+              removeProposalNode(edit);
+              select(null);
+              close();
+            }}
+          >
+            Delete
+          </button>
+        ) : (
+          <span>{from ? 'Enter to add' : 'Enter to add, then click what it calls'}</span>
+        )}
         <button className="btn primary sm" disabled={!name.trim()} onClick={submit}>
-          Add
+          {edit ? 'Save' : 'Add'}
         </button>
       </div>
     </>
@@ -199,15 +232,22 @@ function Target({ m, box, from, x, y }: { m: Model; box?: Box; from: string; x: 
   );
 }
 
-// Use: how `from` uses a table, topic or service.
-function Use({ m, from, to }: { m: Model; from: string; to: string }) {
+// Use: how `from` uses a table, topic or service. Also changes or removes a call
+// the proposal already adds (`edge`).
+function Use({ m, from, to, edge }: { m: Model; from: string; to: string; edge?: number }) {
+  const was = useStore((s) => (edge != null ? currentProposal(s)?.edges?.[edge] : undefined));
   const kind = m.node.get(to)?.row.node.kind ?? '';
-  const types = kind === 'table' ? ['reads', 'writes'] : kind === 'topic' ? ['publishes'] : ['calls'];
-  const [type, setType] = useState(kind === 'table' ? 'writes' : types[0]);
-  const [detail, setDetail] = useState('');
+  const had = typeof was?.type === 'string' ? was.type : 'calls';
+  const types = kind === 'table' ? ['reads', 'writes'] : kind === 'topic' ? ['publishes'] : had !== 'calls' ? [had] : ['calls'];
+  const [type, setType] = useState(edge != null ? had : kind === 'table' ? 'writes' : types[0]);
+  const [detail, setDetail] = useState(typeof was?.detail === 'string' ? was.detail : '');
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
-  const submit = () => (proposeEdge(from, to, type, detail), close());
+  const submit = () => {
+    if (edge != null) editProposalEdge(edge, { type, detail: detail.trim() });
+    else proposeEdge(from, to, type, detail);
+    close();
+  };
   return (
     <>
       <Head title={qn(m, from)} sub={`→ ${qn(m, to)}`} />
@@ -222,9 +262,21 @@ function Use({ m, from, to }: { m: Model; from: string; to: string }) {
       )}
       <input ref={ref} id="e-detail" placeholder={kind === 'table' ? 'The query (optional)' : 'Detail (optional)'} autoComplete="off" value={detail} onChange={(e) => setDetail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
       <div className="mfoot">
-        <span>Enter adds it</span>
+        {edge != null ? (
+          <button
+            className="btn danger sm"
+            onClick={() => {
+              removeProposalEdge(edge);
+              close();
+            }}
+          >
+            Remove
+          </button>
+        ) : (
+          <span>Enter to add</span>
+        )}
         <button className="btn primary sm" onClick={submit}>
-          Add
+          {edge != null ? 'Save' : 'Add'}
         </button>
       </div>
     </>

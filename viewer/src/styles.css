@@ -656,3 +656,11 @@ svg#map.connecting g.padd:hover rect,svg#map.connecting [data-node]:hover rect{s
 svg#map .handle{fill:var(--surface);stroke:var(--plan);stroke-width:1.5;opacity:0;cursor:crosshair}
 svg#map .padd:hover .handle,svg#map .padd.sel .handle{opacity:1}
 svg#map .handle:hover{fill:var(--plan)}
+
+/* the calls a proposal adds, as a list */
+.pcalls{display:flex;flex-direction:column;gap:1px}
+.pcall2{all:unset;cursor:pointer;display:flex;align-items:baseline;gap:8px;padding:4px 6px;border-radius:5px;font-family:var(--mono);font-size:12px;min-width:0}
+.pcall2:hover{background:var(--bg)}
+.pcall2 .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcall2 .q{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpop .btn.danger{margin-right:auto}

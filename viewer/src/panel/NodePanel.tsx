@@ -9,13 +9,14 @@ import { edgeChanges, nodeStatus, useCompare } from '../revs';
 import { Fields } from '../Fields';
 import { screenRoot, qn, type MEdge, type Model } from '../model';
 import type { Parts } from '../parts';
-import { currentProposal, moveNode, removeProposalNode, select, setState, useSel, useStore } from '../store';
+import { currentProposal, moveNode, select, setState, useSel, useStore } from '../store';
 import { Section, Head, Tests, onPath, Entries, cap, FileLink } from './common';
 import { CallTree } from './CallTree';
 import { ScreenOutline } from './ScreenOutline';
 import { Diagram } from './Diagram';
 import { entryPointsOf } from './connections';
 import { CallPicker } from './CallPicker';
+import { ProposedCalls, popupNear } from './ProposedCalls';
 
 // MoveTo: the part a proposal moves a function to.
 function MoveTo({ m, id, at }: { m: Model; id: string; at: string }) {
@@ -105,20 +106,16 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
               Add a call
             </button>
           )}
-          {!n.external && !row.ghost && !box.external && <MoveTo m={m} id={id} at={box.id} />}
-          {row.prop && (
-            <button
-              className="btn danger"
-              onClick={() => {
-                removeProposalNode(id);
-                select(null);
-              }}
-            >
-              Remove
+          {row.prop ? (
+            <button className="btn" onClick={() => setState({ form: { type: 'fn', edit: id, box: box.id, ...popupNear(P, id) } })}>
+              Edit
             </button>
+          ) : (
+            !n.external && !row.ghost && !box.external && <MoveTo m={m} id={id} at={box.id} />
           )}
         </div>
       )}
+      {propose && <ProposedCalls m={m} P={P} id={id} />}
       {!row.ghost && <Diagram m={m} P={P} id={id} />}
       {!row.ghost && !n.entry && !n.external && (
         <Section title="Entry points" count={entries.length || undefined}>

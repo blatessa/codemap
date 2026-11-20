@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addLabel, linksOf, isFolder, markChar, markOf, type Item, type Link, type Parts, type Rect } from './parts';
 import type { Model, Sel } from './model';
+import { clampPop } from './MapPopup';
 import { getState, proposeEdge, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
 import { boxCls, rowCls } from './revs';
 
@@ -253,7 +254,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   // where a popup opens: where you clicked, kept inside the map
   const popAtXY = (cx: number, cy: number) => {
     const r = svgRef.current!.getBoundingClientRect();
-    return { x: Math.max(8, Math.min(cx - r.left + 10, r.width - 290)), y: Math.max(8, Math.min(cy - r.top + 10, r.height - 260)) };
+    return clampPop(cx - r.left + 10, cy - r.top + 10);
   };
   const popAt = (e: React.MouseEvent) => popAtXY(e.clientX, e.clientY);
   // Drag from a node's handle, as in FigJam, Obsidian and n8n: drop on a part to
@@ -346,6 +347,10 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
       onDoubleClick={(e) => {
         const id = target(e.target as Element);
         if (id && isFolder(id)) toggleFolder(id);
+        // double-click something the proposal adds to edit it, in the popup that added it
+        const s = getState();
+        const row = id ? m.node.get(id) : undefined;
+        if (id && row?.row.prop && s.mode === 'propose' && s.pslug) setState({ form: { type: 'fn', edit: id, box: row.box.id, ...popAt(e) }, sel: id, connectFrom: null });
       }}
       data-zoom={view.k.toFixed(3)}
       data-hover={hover ?? ''}

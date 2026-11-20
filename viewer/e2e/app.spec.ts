@@ -215,6 +215,7 @@ test('proposals: open one, sketch a function and a call, move one, comment', asy
   expect((await refunds(page)).notes?.find((n) => n.text === 'Reserve after payment.')?.to).toBeGreaterThan(0);
   // a comment can be edited in place
   await page.locator('#drawer .note p', { hasText: 'Reserve after payment.' }).click();
+  await expect(page.locator('#drawer .note.draft textarea')).toBeFocused();
   await page.keyboard.press('Control+a');
   await page.keyboard.type('Reserve after the charge succeeds.');
   await page.keyboard.press('Enter');
@@ -250,6 +251,41 @@ test('proposals: drag from a node to wire it', async ({ page }) => {
   await drag({ x: t.x + t.width / 2, y: t.y + t.height / 2 });
   await page.locator('#e-detail').press('Enter');
   await expect.poll(edges).toContainEqual({ from: 'new:Service.Cancel', to: 'table:orders', type: 'writes' });
+});
+
+test('proposals: edit and delete what you added', async ({ page }) => {
+  await open(page);
+  await page.locator('#m-propose').click();
+  await page.locator('.pitem[data-slug="refunds"]').click();
+  await page.locator(`#map [data-add="${ORDERS}"]`).click();
+  await page.locator('#f-name').fill('Service.Cancel');
+  await page.locator('#f-name').press('Enter');
+  await page.keyboard.press('Escape');
+  await page.locator('#map .padd[data-node="new:Service.Cancel"]').click();
+  // edit it in the popup that added it: rename it, say what it does
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.locator('#f-name').fill('Service.Abort');
+  await page.getByRole('button', { name: '+ What it does' }).click().catch(() => {});
+  await page.locator('#f-doc').fill('Stops an order.');
+  await page.locator('#f-doc').press('Enter');
+  await expect.poll(async () => (await refunds(page)).nodes).toContainEqual({ id: 'new:Service.Cancel', kind: 'function', label: 'Service.Abort', module: ORDERS, doc: 'Stops an order.' });
+  // give it a call, then change and remove it, in the same popup that added it
+  await page.getByRole('button', { name: 'Add a call' }).click();
+  await page.locator('#pick-q').fill('Repo.Insert');
+  await page.locator('#pick-q').press('Enter');
+  const edges = async () => ((await refunds(page)) as P & { edges?: { from: string; to: string; detail?: string }[] }).edges?.filter((e) => e.from === 'new:Service.Cancel');
+  await expect.poll(edges).toHaveLength(1);
+  await page.locator('#drawer .pcall2').click();
+  await page.locator('#e-detail').fill('inserts the order');
+  await page.locator('#e-detail').press('Enter');
+  await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: INSERT, detail: 'inserts the order' }]);
+  await page.locator('#drawer .pcall2').click();
+  await page.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect.poll(edges).toHaveLength(0);
+  // double-click it on the map to edit; Delete there takes it out of the proposal
+  await page.locator('#map .padd[data-node="new:Service.Cancel"]').dblclick();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect.poll(async () => (await refunds(page)).nodes?.some((n) => n.id === 'new:Service.Cancel')).toBe(false);
 });
 
 test('on a branch the map opens on what changed, and the summary jumps to it', async ({ page }) => {
