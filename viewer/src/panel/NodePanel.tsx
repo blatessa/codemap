@@ -109,7 +109,7 @@ export function NodePanel({ m, P, id }: { m: Model; P: Parts; id: string }) {
           {!row.prop && !n.external && !row.ghost && !box.external && <MoveTo m={m} id={id} at={box.id} />}
         </div>
       )}
-      {propose && <ProposedCalls m={m} P={P} id={id} />}
+      {propose && <ProposedCalls m={m} id={id} />}
       {!row.ghost && <Diagram m={m} P={P} id={id} />}
       {!row.ghost && !n.entry && !n.external && (
         <Section title="Entry points" count={entries.length || undefined}>

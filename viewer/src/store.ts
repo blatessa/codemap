@@ -11,11 +11,18 @@ export type Mode = 'explore' | 'propose';
 //   mod     add a part
 //   target  what does `from` call in this part (box)? pick one of its rows, or name a new one
 //   edge    how does `from` use `to` (reads or writes, with what query)?
+//   edges   a line that stands for several of the proposal's calls: pick one to change
 // Editing is the same popup, filled in: `edit` for a node, `edge` for a call.
 export interface Form {
-  type: 'fn' | 'mod' | 'target' | 'edge';
-  x: number;
-  y: number;
+  type: 'fn' | 'mod' | 'target' | 'edge' | 'edges';
+  // where it sits: beside a node or part (`anchor`, so it follows it when the map moves), or at a point on
+  // the map (gx, gy), or at a fixed spot on screen (x, y)
+  anchor?: string;
+  gx?: number;
+  gy?: number;
+  x?: number;
+  y?: number;
+  edges?: number[]; // edges: the proposal's calls (their indexes) a line on the map stands for
   box?: string;
   from?: string;
   to?: string;

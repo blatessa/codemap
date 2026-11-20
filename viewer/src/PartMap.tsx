@@ -5,7 +5,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addLabel, linksOf, isFolder, markChar, markOf, type Item, type Link, type Parts, type Rect } from './parts';
 import type { Model, Sel } from './model';
-import { clampPop } from './MapPopup';
 import { currentProposal, editProposalEdge, getState, proposeEdge, select, setState, storyOf, toggleFolder, useModel, useParts, useSel, useStore } from './store';
 import { boxCls, rowCls } from './revs';
 
@@ -106,6 +105,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   const panelHover = useStore((s) => s.hover);
   const hov = hover ?? (panelHover ? P.itemOf(panelHover) : null);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number; moved: boolean } | null>(null);
+  const panEnd = useRef(0); // when the map was last dragged: the click that ends a drag isn't a click
   const [dragging, setDragging] = useState(false);
 
   // a selected folder lights like a hovered thing: its connections
@@ -229,6 +229,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
       setState({ view: { ...getState().view, x: d.vx + dx, y: d.vy + dy }, touchedView: true });
     };
     const up = () => {
+      if (drag.current?.moved) panEnd.current = Date.now();
       setDragging(false);
       setTimeout(() => (drag.current = null), 0);
     };
@@ -254,7 +255,8 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
   // where a popup opens: where you clicked, kept inside the map
   const popAtXY = (cx: number, cy: number) => {
     const r = svgRef.current!.getBoundingClientRect();
-    return clampPop(cx - r.left + 10, cy - r.top + 10);
+    const v = getState().view;
+    return { gx: (cx - r.left - v.x) / v.k, gy: (cy - r.top - v.y) / v.k };
   };
   const popAt = (e: React.MouseEvent) => popAtXY(e.clientX, e.clientY);
   // Drag from a node's handle, as in FigJam, Obsidian and n8n: drop on a part to
@@ -294,8 +296,17 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
     };
     window.addEventListener('pointerup', up);
   };
+  // the proposal's own calls (their indexes) that a line on the map stands for
+  const proposalCalls = (l: Link): number[] => {
+    const es = currentProposal(getState())?.edges ?? [];
+    return l.edges
+      .map((i) => m.all.edges[i])
+      .filter((x) => x.prop)
+      .map((me) => es.findIndex((x) => x.from === me.from && x.to === me.to && (x.type || 'calls') === me.type))
+      .filter((i) => i >= 0);
+  };
   const onClick = (e: React.MouseEvent) => {
-    if (drag.current?.moved || noClick.current) return;
+    if (drag.current?.moved || noClick.current || Date.now() - panEnd.current < 100) return;
     const t = e.target as Element;
     const add = (t.closest('[data-add]') as HTMLElement | null)?.dataset.add;
     if (add) return setState({ form: { type: 'fn', box: add, ...popAt(e) }, sel: null, connectFrom: null });
@@ -314,20 +325,22 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
       if (m.box.has(id)) return setState({ form: { type: 'target', box: id, from, ...popAt(e) } });
       return;
     }
-    // click a call the proposal adds to change or remove it, in the popup that added it
+    // click a call the proposal adds to change or remove it, in the popup that added it;
+    // a line that stands for several calls lists them
     const lk = (t.closest('[data-link]') as Element | null)?.getAttribute('data-link');
     const link = lk && canAdd ? P.links.find((x) => x.key === lk) : undefined;
-    if (link?.prop && link.edges.length === 1) {
-      const me = m.all.edges[link.edges[0]];
-      const at = currentProposal(getState())?.edges?.findIndex((x) => x.from === me.from && x.to === me.to && (x.type || 'calls') === me.type) ?? -1;
-      if (at >= 0) return setState({ form: { type: 'edge', from: me.from, to: me.to, edge: at, ...popAt(e) }, connectFrom: null });
+    const calls = link ? proposalCalls(link) : [];
+    if (calls.length === 1) {
+      const me = currentProposal(getState())!.edges![calls[0]];
+      return setState({ form: { type: 'edge', from: String(me.from), to: String(me.to), edge: calls[0], ...popAt(e) }, connectFrom: null });
     }
+    if (calls.length > 1) return setState({ form: { type: 'edges', edges: calls, ...popAt(e) }, connectFrom: null });
     if (!id) return setState({ sel: null, form: null, connectFrom: null });
     select(id);
     // click something the proposal adds to edit it, in the popup that added it
     const here = m.node.get(id);
     const s = getState();
-    if (here?.row.prop && s.mode === 'propose' && s.pslug) setState({ form: { type: 'fn', edit: id, box: here.box.id, ...popAt(e) } });
+    if (here?.row.prop && s.mode === 'propose' && s.pslug) setState({ form: { type: 'fn', edit: id, box: here.box.id, anchor: id } });
   };
   const onPointerOver = (e: React.PointerEvent) => {
     if (drag.current?.moved) return;
@@ -388,7 +401,7 @@ export function PartMap({ drawerOpen }: { drawerOpen: boolean }) {
             if (!a || !b) return null;
             return (
               <g key={l.key}>
-              {l.prop && canAdd && <path className="linehit" d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} />}
+               {canAdd && proposalCalls(l).length > 0 && <path className="linehit" d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} />}
               <path className={lineCls(l)} d={linePath(a, b, m.node.has(l.from) || m.node.has(l.to))} data-link={l.key} style={{ strokeWidth: 1.2 + Math.log2(l.edges.length) * 0.8 + 'px' }} markerEnd={`url(#${lit ? 'mk-h' : l.prop ? 'mk-p' : l.diff ? { add: 'mk-a', rem: 'mk-r', chg: 'mk-c' }[l.diff] : 'mk-n'})`}>
                 <title>{`${VERB[l.kind]} · ${l.edges.length}`}</title>
               </path>

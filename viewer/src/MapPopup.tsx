@@ -3,7 +3,7 @@
 // functions (or a new one), and clicking a table or service asks how it's used.
 import { useEffect, useRef, useState } from 'react';
 import { qn, type Box, type Model } from './model';
-import { currentProposal, editProposalEdge, editProposedNode, proposeEdge, proposeModule, proposeNode, removeProposalEdge, removeProposalNode, select, setState, useStore } from './store';
+import { useParts, currentProposal, editProposalEdge, editProposedNode, proposeEdge, proposeModule, proposeNode, removeProposalEdge, removeProposalNode, select, setState, useStore } from './store';
 
 const KINDS = ['function', 'route', 'page', 'job', 'subscriber', 'command', 'component', 'table', 'topic', 'service'];
 const LEAF = ['table', 'topic', 'service']; // nothing to call from these
@@ -24,17 +24,42 @@ export function clampPop(x: number, y: number) {
   const panel = d && !d.hidden ? d.offsetWidth : 0;
   const w = (map?.width ?? 1200) - panel;
   const h = map?.height ?? 800;
-  return { x: Math.max(8, Math.min(x, w - 290)), y: Math.max(8, Math.min(y, h - 280)) };
+  return { x: Math.max(8, Math.min(x, w - POP_W - 8)), y: Math.max(8, Math.min(y, h - 280)) };
 }
+
+const POP_W = 300; // a popup's width, with room to spare
+
+// visibleWidth is how much of the map the panel leaves.
+function visibleWidth() {
+  const map = document.getElementById('map')?.getBoundingClientRect();
+  const d = document.getElementById('drawer');
+  return (map?.width ?? 1200) - (d && !d.hidden ? d.offsetWidth : 0);
+}
+
+// where carries a popup's place on to the next popup: beside the same node, or at the same point.
+const where = (f: { anchor?: string; gx?: number; gy?: number; x?: number; y?: number }) => ({ anchor: f.anchor, gx: f.gx, gy: f.gy, x: f.x, y: f.y });
 
 export function MapPopup({ m }: { m: Model }) {
   const form = useStore((s) => s.form);
+  const view = useStore((s) => s.view);
+  const P = useParts();
   if (!form) return null;
-  const key = [form.type, form.box, form.from, form.to, form.edit, form.edge].join('|');
+  const key = [form.type, form.box, form.from, form.to, form.edit, form.edge, form.edges?.join(',')].join('|');
+  // beside the node it is about (so it moves with it), or at the point on the map where it was asked for
+  const a = form.anchor ? (P.at.get(form.anchor) ?? P.at.get(P.itemOf(form.anchor))) : undefined;
+  // beside the node: to its right, or its left when the panel leaves no room
+  const right = a ? view.x + (a.x + a.w) * view.k + 14 : 0;
+  const left = a ? view.x + a.x * view.k - POP_W - 14 : 0;
+  const raw = a
+    ? { x: right + POP_W > visibleWidth() && left >= 8 ? left : right, y: view.y + a.y * view.k - 4 }
+    : form.gx != null
+      ? { x: view.x + form.gx * view.k + 10, y: view.y + form.gy! * view.k + 10 }
+      : { x: form.x ?? 24, y: form.y ?? 24 };
+  const at = clampPop(raw.x, raw.y);
   return (
     <div
       className="mpop"
-      style={{ left: form.x, top: form.y }}
+      style={{ left: at.x, top: at.y }}
       role="dialog"
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.stopPropagation()}
@@ -47,8 +72,9 @@ export function MapPopup({ m }: { m: Model }) {
     >
       {form.type === 'fn' && <AddNode key={key} m={m} box={m.box.get(form.box!)} from={form.from} edit={form.edit} />}
       {form.type === 'mod' && <AddPart key={key} />}
-      {form.type === 'target' && <Target key={key} m={m} box={m.box.get(form.box!)} from={form.from!} x={form.x} y={form.y} edge={form.edge} />}
+      {form.type === 'target' && <Target key={key} m={m} box={m.box.get(form.box!)} from={form.from!} at={where(form)} edge={form.edge} />}
       {form.type === 'edge' && <Use key={key} m={m} from={form.from!} to={form.to!} edge={form.edge} />}
+      {form.type === 'edges' && <Calls key={key} m={m} list={form.edges ?? []} at={where(form)} />}
     </div>
   );
 }
@@ -175,7 +201,7 @@ function AddPart() {
 }
 
 // Target: `from` calls something in this part. Type to find it, or to name a new one.
-function Target({ m, box, from, x, y, edge }: { m: Model; box?: Box; from: string; x: number; y: number; edge?: number }) {
+function Target({ m, box, from, at: place, edge }: { m: Model; box?: Box; from: string; at: ReturnType<typeof where>; edge?: number }) {
   const [q, setQ] = useState('');
   const [at, setAt] = useState(0);
   const ref = useRef<HTMLInputElement>(null);
@@ -202,7 +228,7 @@ function Target({ m, box, from, x, y, edge }: { m: Model; box?: Box; from: strin
       if (!box.external) wire(id);
     } else if (!it.ext) wire(to);
     // data and services say how: reads or writes, and what query
-    if (it.ext) setState({ form: { type: 'edge', from, to, edge, x, y } });
+    if (it.ext) setState({ form: { type: 'edge', from, to, edge, ...place } });
     else close();
   };
   return (
@@ -281,6 +307,29 @@ function Use({ m, from, to, edge }: { m: Model; from: string; to: string; edge?:
         <button className="btn primary sm" onClick={submit}>
           {edge != null ? 'Save' : 'Add'}
         </button>
+      </div>
+    </>
+  );
+}
+
+// Calls: a line on the map that stands for several of the proposal's calls. Pick one to change or remove it.
+function Calls({ m, list, at }: { m: Model; list: number[]; at: ReturnType<typeof where> }) {
+  const edges = useStore((s) => currentProposal(s)?.edges);
+  const name = (id: unknown) => (m.node.has(String(id)) ? qn(m, String(id)) : String(id));
+  return (
+    <>
+      <Head title="Calls on this line" sub={String(list.length)} />
+      <div className="mlist">
+        {list.map((i) => {
+          const e = edges?.[i];
+          if (!e) return null;
+          const type = typeof e.type === 'string' ? e.type : 'calls';
+          return (
+            <button key={i} data-edge={i} onClick={() => setState({ form: { type: 'edge', from: String(e.from), to: String(e.to), edge: i, ...at } })}>
+              {name(e.from)} {type === 'calls' ? '→' : type} {name(e.to)}
+            </button>
+          );
+        })}
       </div>
     </>
   );

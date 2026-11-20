@@ -31,6 +31,23 @@ const INSERT = 'go:shop/internal/orders.(*Repo).Insert';
 type P = { slug: string; body: string; nodes?: { id: string; module?: string; doc?: string }[]; notes?: { on?: string; file?: string; from?: number; to?: number; text: string }[] };
 const refunds = async (page: Page) => ((await (await page.request.get('/api/proposals')).json()) as P[]).find((p) => p.slug === 'refunds')!;
 
+// clickLine clicks a visible stretch of a line on the map: some point along it that nothing else covers.
+async function clickLine(page: Page, line: ReturnType<Page['locator']>) {
+  const pt = await line.first().evaluate((p: SVGGeometryElement) => {
+    const c = (p as unknown as SVGGraphicsElement).getScreenCTM()!;
+    const len = p.getTotalLength();
+    for (const f of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8, 0.1, 0.9]) {
+      const q = p.getPointAtLength(len * f);
+      const x = q.x * c.a + c.e,
+        y = q.y * c.d + c.f;
+      if (document.elementFromPoint(x, y) === p) return { x, y };
+    }
+    return null;
+  });
+  if (!pt) throw new Error('no visible stretch of the line');
+  await page.mouse.click(pt.x, pt.y);
+}
+
 // The fixture is on a branch, which opens on "this branch vs main";
 // #plain opens the plain map.
 async function open(page: Page, hash = '#plain') {
@@ -287,10 +304,7 @@ test('proposals: edit and delete what you added', async ({ page }) => {
   await page.locator('#pick-q').fill('orders');
   await page.locator('#pick-q').press('Enter');
   await expect.poll(edges).toHaveLength(1);
-  // the curve's middle is the middle of its box
-  const hb = (await page.locator('#map path.linehit[data-link*="new:Service.Cancel"]').first().boundingBox())!;
-  const mid = { x: hb.x + hb.width / 2, y: hb.y + hb.height / 2 };
-  await page.mouse.click(mid.x, mid.y);
+  await clickLine(page, page.locator('#map path.linehit[data-link*="new:Service.Cancel"]'));
   await page.locator('#e-detail').fill('the whole table');
   await page.locator('#e-detail').press('Enter');
   await expect.poll(edges).toEqual([{ from: 'new:Service.Cancel', to: 'table:orders', type: 'writes', detail: 'the whole table' }]);
@@ -309,6 +323,49 @@ test('proposals: edit and delete what you added', async ({ page }) => {
   await page.locator('#map .padd[data-node="new:Service.Cancel"]').click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect.poll(async () => (await refunds(page)).nodes?.some((n) => n.id === 'new:Service.Cancel')).toBe(false);
+});
+
+test('proposals: a popup stays with its node; a line of several calls lists them', async ({ page }) => {
+  await open(page);
+  await page.locator('#m-propose').click();
+  await page.locator('.pitem[data-slug="refunds"]').click();
+  await page.locator(`#map [data-add="${ORDERS}"]`).click();
+  await page.locator('#f-name').fill('Service.Cancel');
+  await page.locator('#f-name').press('Enter');
+  await page.keyboard.press('Escape');
+  // two calls into one part make one line that stands for both
+  for (const name of ['Client.Charge', 'Handler.HandleWebhook']) {
+    await page.locator('#map .padd[data-node="new:Service.Cancel"]').click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Add a call' }).click();
+    await page.locator('#pick-q').fill(name);
+    await page.locator('#pick-q').press('Enter');
+  }
+  const hit = page.locator('#map path.linehit[data-link^="new:Service.Cancel>mod:go:shop/internal/payments"]');
+  await clickLine(page, hit);
+  await expect(page.locator('.mpop .mlist button[data-edge]')).toHaveCount(2);
+  await page.locator('.mpop .mlist button[data-edge]').first().click();
+  await expect(page.locator('#e-detail')).toBeVisible();
+  await page.keyboard.press('Escape');
+  // edit popup sits beside its node, and moves with it when the map is dragged
+  await page.locator('#map .padd[data-node="new:Service.Cancel"]').click();
+  await expect(page.locator('#f-name')).toBeVisible();
+  const node = page.locator('#map .padd[data-node="new:Service.Cancel"] rect');
+  // beside the node, or kept inside the map you can see when the node is near its edge
+  const beside = async () => {
+    const pop = (await page.locator('.mpop').boundingBox())!;
+    const n = (await node.boundingBox())!;
+    const right = Math.abs(pop.x - (n.x + n.width + 14)) < 3;
+    const left = Math.abs(pop.x + pop.width - (n.x - 14)) < 16;
+    expect(right || left).toBe(true);
+    return pop.x;
+  };
+  const before = await beside();
+  // zoom the map: the node moves, and the popup goes with it
+  await page.locator('#zin').click();
+  await expect(page.locator('#f-name')).toBeVisible();
+  const after = await beside();
+  expect(after).not.toBe(before);
 });
 
 test('on a branch the map opens on what changed, and the summary jumps to it', async ({ page }) => {
